@@ -70,6 +70,14 @@ def face_on(R):
     return (R.state.get("vlm", {}).get("plan") or {}).get("face_visible", True) is not False
 
 
+def texture_source(R):
+    """The picture the colour and texture projections read. A run set to use the picture as is (--direct) textures from that picture, upscaled but not redrawn:
+    the face close-up redraw only serves the 3D shape (it is in the Pixal3D input), its pixels are not used for the texture. Otherwise the redraw / mesh source."""
+    raw = R.A.get("edit_upscaled_raw")
+    if R.state.get("direct") and raw and os.path.exists(raw): return raw
+    return R.A.get("mesh_source") or R.A["edit_upscaled"]
+
+
 def face_redraw_on(R):
     """Redraw the face as a full-resolution close-up (before the 3D step, or for the texture)? --face-redraw on|off; default: config FACE_REFINE_EARLY. Never when there is no visible face."""
     v = R.state.get("face_redraw")
@@ -539,7 +547,7 @@ def st_color(R):
     """A quick base colour before rigging (CPU only, ~20 s): the redraw's front is projected onto the mesh, so the rig is built and
     checked on a coloured model. The full texture (face fit, extra views) comes last, after animating, and is swapped onto the rig."""
     faceproj.FRAME = R.A.get("frame_json") if mesh_mode(R) else None
-    raw = R.A["mesh_glb"]; d = os.path.dirname(raw); src = R.A.get("mesh_source") or R.A["edit_upscaled"]
+    raw = R.A["mesh_glb"]; d = os.path.dirname(raw); src = texture_source(R)
     out, note = raw, "kept the mesh's own colours"
     try:
         out = faceproj.project_body(raw, src, raw.replace(".glb", "_colored.glb"), os.path.join(d, "color"), R.log, agree_check=not mesh_mode(R)); note = "front colours projected onto the mesh"
@@ -554,11 +562,11 @@ def st_color(R):
 def st_texture(R):
     """Last step: sharpen the face by projecting the redraw onto the (raw, textured) mesh, then put that texture on the rig."""
     faceproj.FRAME = R.A.get("frame_json") if mesh_mode(R) else None
-    raw = R.A["mesh_glb"]; d = os.path.dirname(raw); src = R.A.get("mesh_source") or R.A["edit_upscaled"]
+    raw = R.A["mesh_glb"]; d = os.path.dirname(raw); src = texture_source(R)
     plan = R.state["vlm"]["plan"]; sty = prompts.style_text(plan, R.state.get("look", "asis"))
     # video tip: redraw a close-up of the face at full resolution and use it as the texture reference for the head
     # (already done before the 3D step in new runs: mesh_source is that sharpened image)
-    if not R.state.get("face_refined_early") and face_redraw_on(R):
+    if not R.state.get("face_refined_early") and face_redraw_on(R) and not R.state.get("direct"):      # as-is runs keep the picture's own face pixels
       try:
         style = R.state["vlm"]["plan"].get("style", "photo")
         src, (fb, fa) = edit.refine_face(src, os.path.join(d, "source_face_refined.png"), prompts.FACE_REFINE.format(style=prompts.style_text(R.state["vlm"]["plan"], R.state.get("look", "asis"))), R.log)

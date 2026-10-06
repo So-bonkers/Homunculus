@@ -258,7 +258,7 @@ async function home(scrollTo) {
       </label>
       <form class="form" id="form" autocomplete="off" onsubmit="return false">
         <div class="field"><label for="name">Run name</label><input class="input" id="name" placeholder="e.g. hero_v1" maxlength="40" spellcheck="false"><div class="hint" id="namehint"></div></div>
-        <div class="switch"><div><b>Use my picture as is</b><small>Skip the redraw: for clean full-body references (T/A-pose, open hands, plain background)</small></div><button type="button" class="tg" id="direct"></button></div>
+        <div class="switch"><div><b>Use my picture as is</b><small>Skip the redraw: for clean full-body references (T/A-pose, open hands, plain background). The texture then comes from your picture itself (upscaled, not redrawn).</small></div><button type="button" class="tg" id="direct"></button></div>
         <div class="field" id="lookf"><span class="flabel">Look</span>${seg("look", LOOKS, "choose")}<div class="hint" id="lookhint"></div></div>
         <div class="field"><span class="flabel">Outfit</span>${seg("outfit", [["keep", "Keep"], ["shirtless", "Shirtless"], ["nude", "Nude"]], "keep")}<div class="hint" id="outfithint"></div></div>
         <div class="field" id="facef"><span class="flabel">Face</span>${seg("face", [["auto", "Auto"], ["off", "No face (helmet / mask)"], ["on", "Always"]], "auto")}<div class="hint" id="facehint"></div></div>
