@@ -42,6 +42,32 @@ And on a character the pipeline built from a single picture (a fantasy knight, f
 
 UniMate is an early research model: simple locomotion and gestures are good; acrobatics (backflips, handstands) and anything involving props are hit and miss. Clips are 1.6 s, 30 fps. The GIFs were rendered with Blender's workbench renderer (`tools/make_samples.sh`).
 
+## The stages in pictures
+
+Snapshots the app saves at each important moment of one real run (*knight_full*, from a single picture). They appear live in the run page's Activity tab.
+
+| stage | snapshot |
+|---|---|
+| **1 · Upscale** the input 4× with the model that fits its style | ![](docs/media/stages/1-upscale.jpg) |
+| **2 · Plan**: a VLM describes the character and writes the redraw prompt | ![](docs/media/stages/2-plan.jpg) |
+| **3 · Redraw + pick**: rig-friendly T-pose candidates, the judges (and you) choose | ![](docs/media/stages/3-redraw-pick.jpg) |
+| **4 · Face close-up** redrawn at full resolution *before* the 3D step | ![](docs/media/stages/4-face-closeup.jpg) |
+| **5 · 3D shape check**: three Pixal3D shapes rendered from several sides and judged | ![](docs/media/stages/5-3d-shape-check.jpg) |
+| **6 · Quick colour** projected onto the mesh so the rig is built on a coloured model | ![](docs/media/stages/6-quick-colour.jpg) |
+| **7 · Rig check**: test poses of the 52-bone skeleton, judged for tearing | ![](docs/media/stages/7-rig-check.jpg) |
+| **8 · Animate**: UniMate clips for your prompts, driven on this rig | ![](docs/media/stages/8-animate.jpg) |
+| **9 · Final texture**: face fit plus cleaned side and back views, put on the rig and every clip | ![](docs/media/stages/9-final-texture.jpg) |
+
+## The app in pictures
+
+| | |
+|---|---|
+| ![Home](docs/media/screens/01-home.jpg) **Home**: a live 3D turntable of your latest character | ![Launcher](docs/media/screens/03-launcher.jpg) **New run**: every option in one form |
+| ![Tour](docs/media/screens/02-tour-step4.jpg) **Guided tour** (the *Tour* button, offered on first visit): spotlights each control | ![Tips](docs/media/screens/05-tips.jpg) **Tips** for pictures, prompts and review modes |
+| ![Presets male](docs/media/screens/04-preset-library-preview.jpg) **Preset library** with a 3D ▶ preview on a male character… | ![Presets female](docs/media/screens/04b-preset-preview-female.jpg) …and on a female one, with the creators credited |
+| ![Runs](docs/media/screens/06-runs.jpg) **Runs** with live status, Stop and Fork | ![Pipeline](docs/media/screens/07-run-pipeline.jpg) **Run page**: the pipeline as a node graph, then Activity, downloads and the planner's notes |
+| ![Animate](docs/media/screens/09-run-animate.jpg) **Animate** tab: type or pick prompts, play the clips | ![3D](docs/media/screens/10-run-3d-model.jpg) **3D model** viewer: final, rigged, clay, wireframe, bones |
+
 ## Features
 
 - **One local web app** (http://127.0.0.1:8765): upload a picture or 3D model, choose every option, start, watch and review. Live node graph of the 14 stages, snapshots at every important moment, 3D viewer (textured / rigged / clay / wireframe / bones), activity timeline, log, downloads (FBX, GLB, Mixamo zip).
@@ -88,11 +114,45 @@ Measured on one finished image run, *knight_full* (a fantasy knight from a 576×
 
 Other timings: a UniMate batch of 30 prompts × 2 takes takes about 15 minutes, so the whole preset library (190 prompts × 2 takes) is **~90 minutes per character**. These are single measurements, not averages; the Pixal3D and texture stages vary the most with how many candidates the judges reject. A run that is stopped for the judges' retries takes longer. The STL route has no timing yet.
 
+## Setup
+
+Homunculus is a thin orchestrator around other projects, so setup is mostly installing and downloading those. `./setup.sh [all|app|comfy|mia|unimate|skintokens]` does the scriptable parts; it is written from the author's working machine and **has not been run from a clean install**, so treat it as an executable checklist.
+
+**You need:** Linux, a GPU with **24 GB** VRAM (tested on AMD/ROCm; NVIDIA should work for the PyTorch parts), ~**100 GB** of free disk for the models and environments, [uv](https://docs.astral.sh/uv/), git, Node.js (only for `preset_clips`), ffmpeg (only for sample GIFs), [Blender](https://www.blender.org/download/) on your `PATH` (tested with 5.2), the [Hugging Face CLI](https://huggingface.co/docs/huggingface_hub/guides/cli) (`uv tool install huggingface_hub`) and [Unsloth Studio](https://unsloth.ai/docs/new/studio).
+
+1. **Clone and install the app:** `git clone https://github.com/So-bonkers/Homunculus && cd Homunculus && ./setup.sh app`
+2. **Unsloth Studio** ([install guide](https://unsloth.ai/docs/new/studio), [GitHub](https://github.com/unslothai/unsloth)) serves Qwen-Image and the three judges. Run its API on `127.0.0.1:8888` (`unsloth studio --api-only -H 127.0.0.1 -p 8888`, ideally as a user service called `unsloth-api`). The models below load by name the first time the pipeline asks for them, so you do not need to download them by hand (to pre-fetch: `hf download <repo> <file>`).
+3. **ComfyUI + Pixal3D + upscalers:** `./setup.sh comfy`
+4. **Make-It-Animatable:** `./setup.sh mia`
+5. **UniMate:** `./setup.sh unimate`, then install UniMate's requirements into `unimate/.venv` (its README lists them)
+6. **SkinTokens** (optional, only for 3D models that are not in a T-pose): `./setup.sh skintokens`, then build it with CMake
+7. `./launch.sh`, drop a picture, press **Start run**.
+
+### Every model and where to get it
+
+| role | model | size | licence | link |
+|---|---|---|---|---|
+| Redraw / face repaint / texture clean-up | **Qwen-Image 2.1 edit** (`qwen-image-2.1-F16.gguf`) via Unsloth Studio | 14.2 GB | Qwen Research | [unsloth/Qwen-Image-2.1-GGUF](https://huggingface.co/unsloth/Qwen-Image-2.1-GGUF) |
+| Planner + judge 1 | **Qwen3.8 27B** vision (`UD-Q4_K_M` + `mmproj-F16`) | 16.5 + 0.9 GB | Apache-2.0 | [unsloth/Qwen3.8-27B-GGUF](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF) |
+| Judge 2 | **Gemma 4 26B-A4B** QAT (`UD-Q4_K_XL` + `mmproj-F16`) | 14.2 + 1.2 GB | Apache-2.0 | [unsloth/gemma-4-26B-A4B-it-qat-GGUF](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF) |
+| Judge 3 | **Qwen3.6 35B-A3B** MTP (`UD-IQ4_NL` + `mmproj-F16`) | 18.5 + 0.9 GB | Apache-2.0 | [unsloth/Qwen3.6-35B-A3B-MTP-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF) |
+| Image → 3D shape | **Pixal3D** `pixal3d_bf16` + DINOv3 encoder + two TRELLIS-2 VAEs, run in ComfyUI | 11 + 1.2 + 2 GB | MIT | [Comfy-Org/Pixal3D](https://huggingface.co/Comfy-Org/Pixal3D) · [ComfyUI](https://github.com/comfyanonymous/ComfyUI) |
+| Upscaler (photos) | **RealESRGAN x4plus** | 67 MB | BSD-3 | [release v0.1.0](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth) · [project](https://github.com/xinntao/Real-ESRGAN) |
+| Upscaler (anime) | **RealESRGAN x4plus anime 6B** | 18 MB | BSD-3 | [release v0.2.2.4](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth) |
+| Upscaler (3D renders) | **4x-UltraSharp** | 67 MB | CC BY-NC-SA 4.0 | [Kim2091/UltraSharp](https://huggingface.co/Kim2091/UltraSharp) |
+| Auto-rig | **Make-It-Animatable** weights (`output/best/new`) + Mixamo template data | 2.3 GB | Apache-2.0 | [jasongzy/Make-It-Animatable](https://huggingface.co/jasongzy/Make-It-Animatable) · [jasongzy/Mixamo](https://huggingface.co/datasets/jasongzy/Mixamo) · [code](https://github.com/jasongzy/Make-It-Animatable) |
+| Text → motion | **UniMate** `unimate_uniml3d_f60_v3` (one checkpoint) | 1.2 GB | **CC BY-NC 4.0** | [Linzhan/UniMate](https://huggingface.co/Linzhan/UniMate) · [code](https://github.com/Friedrich-M/UniMate) |
+| T-pose for odd-posed 3D models | **SkinTokens** F16 GGUF | 1.2 GB | MIT | [LocalAI-io/SkinTokens-GGUF](https://huggingface.co/LocalAI-io/SkinTokens-GGUF) · [skin-tokens.cpp](https://github.com/localai-org/skin-tokens.cpp) |
+| FBX → GLB converter used by MIA | **FBX2glTF** | small | see repo | [release v0.9.7](https://github.com/facebookincubator/FBX2glTF/releases/tag/v0.9.7) |
+| Face landmarks | **MediaPipe Face Landmarker** (included in `models/`) | 3.6 MB | Apache-2.0 | [guide](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) |
+
+Licences are taken from each model card at the time of writing; read them before commercial use. The judge models are interchangeable: change `JUDGES` and `VLM_MODEL` in `homunculus/config.py`. UniRig ([VAST-AI-Research/UniRig](https://github.com/VAST-AI-Research/UniRig)) and Puppeteer ([Seed3D/Puppeteer](https://github.com/Seed3D/Puppeteer)) were evaluated as alternative riggers but are not used.
+
 ## Quick start
 
 ```bash
-git clone https://github.com/<you>/homunculus && cd homunculus
-./setup.sh                 # see the notes inside: it is best-effort and untested from a clean machine
+git clone https://github.com/So-bonkers/Homunculus && cd Homunculus
+# install everything first: see Setup above
 ./launch.sh                # starts the app and opens http://127.0.0.1:8765
 ```
 
