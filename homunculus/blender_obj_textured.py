@@ -1,8 +1,8 @@
-"""OBJ without its .mtl -> textured GLB: materials 'body' and 'hairs' get <name>_albedo / _normal from the textures folder, facing -Y, Z up.
+"""OBJ without its .mtl -> textured GLB: materials 'body' and 'hairs' get <name>_albedo / _normal from the textures folder, Y-up like every glTF.
 blender -b --python blender_obj_textured.py -- model.obj textures_dir out.glb"""
 import bpy, sys, os
 src, tex, out = sys.argv[sys.argv.index("--") + 1:][:3]
-bpy.ops.wm.read_factory_settings(use_empty=True); bpy.ops.wm.obj_import(filepath=src, forward_axis="NEGATIVE_Y", up_axis="Z")
+bpy.ops.wm.read_factory_settings(use_empty=True); bpy.ops.wm.obj_import(filepath=src)
 for o in bpy.data.objects:
     if o.type != "MESH": continue
     for slot in o.material_slots:

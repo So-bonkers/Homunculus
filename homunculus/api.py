@@ -120,7 +120,7 @@ def run(name, live):
     return {"name": name, "status": _status(S, is_live), "live": is_live, "file": os.path.basename(S.get("input", "")),
             "input": _url(name, A.get("input")), "thumb": _thumb(name, S), "chosen": _url(name, A.get("chosen_edit")),
             "t_start": S.get("t_start"), "t_total": S.get("t_total"), "now": time.time(),
-            "looks": looks, "animations": anims, "mode": S.get("mode", "image"), "options": {"rigger": S.get("rigger", "mia"), "anim_prompts": S.get("anim_prompts", []), "anim_reps": S.get("anim_reps", 2), "direct": bool(S.get("direct")), "look": S.get("look", "asis"), "outfit": S.get("outfit", "keep"), "review": S.get("review_mode", "override"), "grace": S.get("review_grace", 60),
+            "looks": looks, "animations": anims, "mode": S.get("mode", "image"), "options": {"face": S.get("face", "auto"), "face_redraw": S.get("face_redraw", True), "rigger": S.get("rigger", "mia"), "anim_prompts": S.get("anim_prompts", []), "anim_reps": S.get("anim_reps", 2), "direct": bool(S.get("direct")), "look": S.get("look", "asis"), "outfit": S.get("outfit", "keep"), "review": S.get("review_mode", "override"), "grace": S.get("review_grace", 60),
                         "style": S.get("style_override") or S.get("style_guess")},
             "stages": st, "review": review, "snapshots": snaps, "files": files, "models": models,
             "zip": f"/api/zip/{name}.zip" if A.get("mesh_glb") else None,

@@ -7,7 +7,8 @@ Reply with ONLY this JSON:
 {"style": "photo" | "anime" | "3d_render",
  "subject": "one sentence: who/what the character is, gender presentation, age range, body build",
  "body": "body shape, proportions, musculature and visible anatomy/skin details to preserve",
- "face": "facial features to preserve: face shape, eyes and eye colour, eyebrows, nose, lips, facial hair, skin, makeup. Describe the features only, NOT the current expression (no 'open mouth', 'shouting', 'smiling')",
+ "face": "facial features to preserve: face shape, eyes and eye colour, eyebrows, nose, lips, facial hair, skin, makeup. Describe the features only, NOT the current expression (no 'open mouth', 'shouting', 'smiling'). If a full-face helmet, mask or visor hides the face, say so and describe that object instead (colour, visor tint), not facial features",
+ "face_visible": true | false,   (false when a full-face helmet, mask or visor hides the face, so there is no face to keep),
  "hair": "hairstyle, length and colour",
  "clothing": "every garment top to bottom with colours, materials, logos, numbers, stripes",
  "footwear": "shoes/boots or barefoot",
@@ -30,7 +31,8 @@ auto-rigged game character. There is no reference picture: invent a fitting, coh
 {"style": "photo" | "anime" | "3d_render",
  "subject": "one sentence: who/what the character is, gender presentation, age range, body build (as the shapes suggest)",
  "body": "body shape and proportions as modelled",
- "face": "facial features to paint: skin tone, eye colour, eyebrows, lips, facial hair (no expression)",
+ "face": "facial features to paint: skin tone, eye colour, eyebrows, lips, facial hair (no expression). If the model wears a full-face helmet or mask, describe the helmet instead",
+ "face_visible": true | false,   (false when a full-face helmet, mask or visor hides the face),
  "hair": "hairstyle as modelled and the colour you choose",
  "clothing": "every garment / armour piece top to bottom with the colours and materials you choose",
  "footwear": "shoes / boots and their colours, or barefoot",
@@ -237,3 +239,9 @@ def edit_prompt(plan, fix_notes="", hands="tpose", outfit="keep", look="asis"):
                     style=style_text(plan, look))
     if look in LOOK: p = p.replace("Keep the identity exactly: ", "Keep the character recognisable: ")
     return p + (" " + fix_notes if fix_notes else "")
+
+
+def no_face(p):
+    """The judge prompt for a character whose face is hidden (full-face helmet, mask): nobody should look for eyes, a nose or a mouth."""
+    return p.replace("head and face have a plausible human shape (nose, eyes sockets, mouth, ears) roughly matching the reference build;",
+                     "the head has a plausible shape roughly matching the reference build; a full-face helmet, visor or mask is expected, so do NOT look for eyes, nose, mouth or ears;")

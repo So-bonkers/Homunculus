@@ -63,6 +63,23 @@ def mesh_mode(R):
     """Mesh-first run: the input is a 3D model without a picture; the picture is painted onto its grey render."""
     return R.state.get("mode") == "mesh"
 
+def face_on(R):
+    """Is there a visible face to work on? --face on|off|auto (auto: the planner says whether a helmet or mask hides it). With no face, the face close-up, face reshape and face fit are all skipped."""
+    f = R.state.get("face", "auto")
+    if f in ("on", "off"): return f == "on"
+    return (R.state.get("vlm", {}).get("plan") or {}).get("face_visible", True) is not False
+
+
+def face_redraw_on(R):
+    """Redraw the face as a full-resolution close-up (before the 3D step, or for the texture)? --face-redraw on|off; default: config FACE_REFINE_EARLY. Never when there is no visible face."""
+    v = R.state.get("face_redraw")
+    return face_on(R) and (C.FACE_REFINE_EARLY if v is None else bool(v))
+
+
+def fp(R, prompt):
+    return prompt if face_on(R) else prompts.no_face(prompt)
+
+
 def redraw_prompt(R, plan, notes, hands, look):
     if mesh_mode(R): return prompts.paint_prompt(plan, notes, look=look)
     return prompts.edit_prompt(plan, notes, hands=hands, outfit=R.state.get("outfit", "keep"), look=look)
@@ -385,7 +402,8 @@ def st_upscale_edit(R):
     progress.snap(R, "upscale_edit", "chosen redraw, cleaned and upscaled for Pixal3D", [R.A["chosen_edit"], src, R.A["edit_upscaled"]],
                   ["chosen", "residue clean-up" if src != R.A["chosen_edit"] else "(no clean-up needed)", "upscaled"])
     R.state["face_refined_early"] = False
-    if C.FACE_REFINE_EARLY:      # a sharp face in Pixal3D's input gives the mesh real eye sockets, nose and lips
+    if not face_on(R): R.log("no visible face (helmet/mask): the face close-up and face fit are skipped")
+    if face_redraw_on(R):      # a sharp face in Pixal3D's input gives the mesh real eye sockets, nose and lips
         try:
             ref, (fb, fa) = edit.refine_face(R.A["edit_upscaled"], R.p("04_upscale_edit", "edit_face_refined.png"),
                                              prompts.FACE_REFINE.format(style=prompts.style_text(R.state["vlm"]["plan"], R.state.get("look", "asis"))), R.log)
@@ -459,7 +477,7 @@ def st_mesh_and_check(R):
                 for c in ok:
                     keys = ["front", "side", "face"] + ([k for k in c["views"] if k.startswith(("handR_", "handL_"))] if C.HAND_VIEWS else [])
                     labels = ["Image 1 = REFERENCE image"] + [f"Image {i+2} = {k.replace('handR_', 'RIGHT HAND, view: ').replace('handL_', 'LEFT HAND, view: ').upper()}" for i, k in enumerate(keys)]
-                    queries.append((prompts.MESH_CHECK if C.HAND_VIEWS else prompts.MESH_CHECK_NOHANDS, [R.A["edit_upscaled"]] + [c["views"][k] for k in keys], labels))
+                    queries.append((fp(R, prompts.MESH_CHECK if C.HAND_VIEWS else prompts.MESH_CHECK_NOHANDS), [R.A["edit_upscaled"]] + [c["views"][k] for k in keys], labels))
                 for c, votes in zip(ok, vlm.panel_multi(queries, required=("pass",), log=R.log, cancel=decided(R), human_notes=R.state.get("human_notes", ""))):
                     c["verdict"] = vlm.majority_pass(votes, R.log)
             for c in shapes: R.state["vlm"][f"mesh_check_try{c['try']}"] = c["verdict"]
@@ -506,7 +524,7 @@ def _full_mesh(R, tdir, tag, seed, t0):
     clean = glb.replace(".glb", "_clean.glb")
     r_ = subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "clean_mesh.py"), "--", glb, clean], capture_output=True, text=True)
     if os.path.exists(clean): R.log(next((l for l in r_.stdout.splitlines() if l.startswith("[clean]")), "[clean] done")); glb = clean
-    if C.FACE_RESHAPE:      # move the mesh's eyes/nose/mouth to where the reference has them, before rigging
+    if C.FACE_RESHAPE and face_on(R):      # move the mesh's eyes/nose/mouth to where the reference has them, before rigging
         try:
             fit = faceproj.reshape(glb, R.A["edit_upscaled"], glb.replace(".glb", "_facefit.glb"), os.path.join(os.path.dirname(glb), "facefit"), R.log,
                                    style=prompts.style_text(R.state["vlm"]["plan"], R.state.get("look", "asis")), face_desc=str(R.state["vlm"]["plan"].get("face", "")))
@@ -540,7 +558,7 @@ def st_texture(R):
     plan = R.state["vlm"]["plan"]; sty = prompts.style_text(plan, R.state.get("look", "asis"))
     # video tip: redraw a close-up of the face at full resolution and use it as the texture reference for the head
     # (already done before the 3D step in new runs: mesh_source is that sharpened image)
-    if not R.state.get("face_refined_early"):
+    if not R.state.get("face_refined_early") and face_redraw_on(R):
       try:
         style = R.state["vlm"]["plan"].get("style", "photo")
         src, (fb, fa) = edit.refine_face(src, os.path.join(d, "source_face_refined.png"), prompts.FACE_REFINE.format(style=prompts.style_text(R.state["vlm"]["plan"], R.state.get("look", "asis"))), R.log)
@@ -552,8 +570,14 @@ def st_texture(R):
         try: base = faceproj.project_body(raw, src, raw.replace(".glb", "_body.glb"), os.path.join(d, "texviews"), R.log, agree_check=not mesh_mode(R))
         except Exception as e: R.log(f"[texture] body projection skipped ({type(e).__name__}: {str(e)[:120]})")
     out = raw.replace(".glb", "_faceproj.glb")
-    glb, before, after = faceproj.run(base, src, out, os.path.join(d, "faceproj"), R.log, style=prompts.style_text(R.state["vlm"]["plan"], R.state.get("look", "asis")),
-                                      method=C.FACE_FIT, face_desc=str(R.state["vlm"]["plan"].get("face", "")))
+    before = after = None
+    if face_on(R):
+        glb, before, after = faceproj.run(base, src, out, os.path.join(d, "faceproj"), R.log, style=prompts.style_text(R.state["vlm"]["plan"], R.state.get("look", "asis")),
+                                          method=C.FACE_FIT, face_desc=str(R.state["vlm"]["plan"].get("face", "")))
+    else:      # a helmet or mask: no face to fit, the body projection covers the head too
+        R.log("[texture] no visible face: face fit skipped")
+        shutil.copy(base, out); bp = base[:-4] + "_basecolor.png"
+        if os.path.exists(bp): shutil.copy(bp, out[:-4] + "_basecolor.png")
     if C.TEXTURE_VIEWS:      # turn the model; the image model cleans each view; project back where that view sees best
         try:
             desc = "; ".join(str(plan.get(k)) for k in ("hair", "clothing", "footwear", "accessories") if plan.get(k) and plan.get(k) != "none")[:500]
@@ -561,6 +585,7 @@ def st_texture(R):
             if mv:
                 # the extra views may have repainted the edges of the fitted face: fit the face once more so it has the final say
                 try:
+                    if not face_on(R): raise RuntimeError("no visible face")
                     out2, before, after = faceproj.run(mv, src, raw.replace(".glb", "_final_tex.glb"), os.path.join(d, "faceproj2"), R.log, style=sty,
                                                        method=C.FACE_FIT, face_desc=str(plan.get("face", "")))
                     mv = out2
@@ -584,8 +609,8 @@ def st_texture(R):
     ref = os.path.join(d, "faceproj", "reference_face.png"); im = Image.open(src).convert("RGB"); W, H = im.size
     im.crop((W // 2 - H // 12, int(H * 0.06), W // 2 + H // 12, int(H * 0.06) + H // 6)).save(ref)
     views = blender.mesh_views(out, os.path.join(d, "final_views"), tag="final"); R.A["final_views"] = views
-    progress.snap(R, "texture", "final texture: body front from the redraw, fitted face, cleaned side and back views" if C.TEXTURE_VIEWS else "final texture (face projected from the redraw)", [before, after, ref, views["front"], views["side"]],
-                  ["Pixal3D face", "after projection", "redraw", "final front", "final side"])
+    progress.snap(R, "texture", "final texture: body front from the redraw, fitted face, cleaned side and back views" if C.TEXTURE_VIEWS else "final texture (face projected from the redraw)", ([before, after] if before else []) + [ref, views["front"], views["side"]],
+                  (["Pixal3D face", "after projection"] if before else []) + ["redraw", "final front", "final side"])
     return os.path.basename(out)
 
 def st_animate(R):
@@ -609,7 +634,7 @@ def rig_once(R, variant, extra):
     views = blender.pose_views(fbx, str(R.dir / "08_rig_check" / variant)); R.A["pose_views"] = views
     keys = ("rest_front", "walk_front", "walk_34", "wave_front") + (("wave_hand", "fist_Left_a", "fist_Right_a") if C.HAND_VIEWS else ())
     open_review(R, "rig_check", f"rig ({variant}) test poses", [views[k] for k in keys], RIG_CAPS[:len(keys)])
-    v = {"pass": True, "score": 0, "tally": "your call", "problems": [], "votes": {}} if manual(R) else vlm.majority_pass(vlm.panel(prompts.RIG_CHECK if C.HAND_VIEWS else prompts.RIG_CHECK_NOHANDS, [views[k] for k in keys], required=("pass",), log=R.log, cancel=decided(R), human_notes=R.state.get("human_notes", "")), R.log)
+    v = {"pass": True, "score": 0, "tally": "your call", "problems": [], "votes": {}} if manual(R) else vlm.majority_pass(vlm.panel(fp(R, prompts.RIG_CHECK if C.HAND_VIEWS else prompts.RIG_CHECK_NOHANDS), [views[k] for k in keys], required=("pass",), log=R.log, cancel=decided(R), human_notes=R.state.get("human_notes", "")), R.log)
     R.state["vlm"][f"rig_check_{variant}"] = v; R.save()
     progress.snap(R, "rig_check", f"rig ({variant}) test poses: your call" if manual(R) else
                   f"rig ({variant}): judges {v['tally']} -> {'PASS' if v.get('pass') else 'FAIL'} (mean {v.get('score')}/10) - test poses, not the final pose",
@@ -672,6 +697,8 @@ def main():
     ap.add_argument("--anim-reps", type=int, default=None, help="clips per prompt (default 2)")
     ap.add_argument("--zip", action="store_true", help="also write exports/mixamo_<name>.zip (OBJ+MTL+texture) for uploading to Mixamo")
     ap.add_argument("--review-grace", type=int, default=None, help="seconds to respond in override mode (default 60)")
+    ap.add_argument("--face", choices=["auto", "on", "off"], help="auto (default): the planner decides whether a full-face helmet or mask hides the face; off: no face work at all (no face close-up, reshape or fit); on: always work on the face")
+    ap.add_argument("--face-redraw", dest="face_redraw", choices=["on", "off"], help="on (default): redraw the face as a full-resolution close-up before the 3D step (a sharper face in the mesh and texture); off: use the full-body redraw as it is")
     ap.add_argument("--outfit", choices=["keep", "shirtless", "nude"], help="keep: outfit from the image (default); shirtless: bare torso and arms (avoids sleeve/cuff layers at the wrists); nude: unclothed, anatomy preserved")
     a = ap.parse_args()
     # one run at a time: runs share the GPU, ComfyUI and Studio, and each frees the GPU between stages
@@ -685,6 +712,8 @@ def main():
     lockf.seek(0); lockf.truncate(); lockf.write(f"homunculus run '{a.name}' (pid {os.getpid()})"); lockf.flush()
     R = Run(os.path.abspath(a.image), a.name, a.style)
     if a.outfit: R.state["outfit"] = a.outfit; R.save()
+    if a.face: R.state["face"] = a.face; R.save()
+    if a.face_redraw: R.state["face_redraw"] = a.face_redraw == "on"; R.save()
     if a.review: R.state["review_mode"] = a.review
     if a.review_grace is not None: R.state["review_grace"] = a.review_grace
     R.state["zip"] = bool(a.zip)

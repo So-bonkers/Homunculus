@@ -38,7 +38,7 @@ async function openFork(d, stage, preset = {}) {
   let runs = []; try { runs = await api("/api/runs"); } catch {}
   const names = new Set(runs.map((r) => r.name)); let n = 1; while (names.has(`${d.name}_f${n}`)) n++;
   const firstOpen = d.stages.find((s) => s.status !== "done");
-  const F = { stage: FORK_OF[stage] || FORK_OF[firstOpen?.key] || "edit", rigger: d.options.rigger || "mia", mode: "new", look: preset.look || d.options.look || "asis", outfit: d.options.outfit, review: d.options.review, zip: d.zip_on };
+  const F = { stage: FORK_OF[stage] || FORK_OF[firstOpen?.key] || "edit", rigger: d.options.rigger || "mia", mode: "new", look: preset.look || d.options.look || "asis", face: d.options.face || "auto", faceRedraw: d.options.face_redraw !== false, outfit: d.options.outfit, review: d.options.review, zip: d.zip_on };
   const box = document.createElement("div"); box.className = "sheet-bg";
   box.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">
     <div class="sh-head"><div><div class="eb">${ICON.fork} Fork</div><h2>Restart ${esc(d.name)} from a stage</h2></div><button class="x" data-x>✕</button></div>
@@ -52,6 +52,8 @@ async function openFork(d, stage, preset = {}) {
     <div class="field"><span class="flabel">Look</span>${seg("flook", LOOKS, F.look)}<div class="hint" id="flookhint"></div></div>
     <div class="row2"><div class="field"><span class="flabel">Outfit</span>${seg("foutfit", [["keep", "Keep"], ["shirtless", "Shirtless"], ["nude", "Nude"]], F.outfit)}</div>
       <div class="field"><span class="flabel">Your review</span>${seg("freview", [["override", "Override"], ["manual", "Manual"], ["off", "Off"]], F.review)}</div></div>
+    <div class="row2"><div class="field"><span class="flabel">Face</span>${seg("fface", [["auto", "Auto"], ["off", "No face (helmet / mask)"], ["on", "Always"]], F.face)}</div>
+      <div class="switch" id="ffrf"><div><b>Face close-up redraw</b></div><button type="button" class="tg ${F.faceRedraw ? "on" : ""}" id="ffr"></button></div></div>
     <div class="field"><span class="flabel">Rigger</span>${seg("frigger", RIGGERS, d.options.rigger || "mia")}</div>
     <div class="field"><label class="flabel" for="fanim">Animation prompts <small style="text-transform:none;letter-spacing:0;font-weight:500">(one per line)</small></label>
       <textarea class="notes" id="fanim" rows="2" placeholder="walks forward">${esc((d.options.anim_prompts || []).join("\n"))}</textarea><div id="fpresets" class="presetbox"></div></div>
@@ -68,6 +70,9 @@ async function openFork(d, stage, preset = {}) {
   initSeg($('[data-seg="fmode"]', box), (v) => { F.mode = v; $("#fname", box).disabled = v === "same"; hint(); });
   initSeg($('[data-seg="foutfit"]', box), (v) => (F.outfit = v));
   initSeg($('[data-seg="frigger"]', box), (v) => (F.rigger = v));
+  initSeg($('[data-seg="fface"]', box), (v) => { F.face = v; $("#ffrf", box).style.visibility = v === "off" ? "hidden" : ""; });
+  $("#ffr", box).onclick = (e) => { F.faceRedraw = !F.faceRedraw; e.currentTarget.classList.toggle("on", F.faceRedraw); };
+  $("#ffrf", box).style.visibility = F.face === "off" ? "hidden" : "";
   const lookHint = () => ($("#flookhint", box).textContent = LOOK_HINT[F.look] + (F.look !== (d.options.look || "asis") && FORKABLE.indexOf(F.stage) > FORKABLE.indexOf("edit") ? " A new look only shows if you restart from Redraw or earlier." : ""));
   initSeg($('[data-seg="flook"]', box), (v) => { F.look = v; lookHint(); });
   initSeg($('[data-seg="freview"]', box), (v) => { F.review = v; hint(); });
@@ -81,7 +86,7 @@ async function openFork(d, stage, preset = {}) {
     $("#fgo", box).disabled = true; msg.textContent = F.mode === "new" ? "Copying the finished stages…" : "Restarting…";
     try {
       const r = await fetch("/api/fork", { method: "POST", body: JSON.stringify({ run: d.name, name: target, stage: F.stage, notes: $("#fnotes", box).value,
-        look: F.look, rigger: F.rigger, anim: $("#fanim", box).value.trim(), anim_reps: d.options.anim_reps || 2, outfit: F.outfit, review: F.review, grace: $("#fgrace", box).value, zip: F.zip }) });
+        look: F.look, rigger: F.rigger, anim: $("#fanim", box).value.trim(), anim_reps: d.options.anim_reps || 2, outfit: F.outfit, face: F.face, face_redraw: F.faceRedraw ? "1" : "0", review: F.review, grace: $("#fgrace", box).value, zip: F.zip }) });
       const j = await r.json();
       if (!r.ok) { msg.textContent = j.error || "Could not fork."; $("#fgo", box).disabled = false; return; }
       close(); toast(F.mode === "new" ? `Forked into ${target}` : `Restarted ${target} from ${LABEL_OF(F.stage)}`);
@@ -256,6 +261,8 @@ async function home(scrollTo) {
         <div class="switch"><div><b>Use my picture as is</b><small>Skip the redraw: for clean full-body references (T/A-pose, open hands, plain background)</small></div><button type="button" class="tg" id="direct"></button></div>
         <div class="field" id="lookf"><span class="flabel">Look</span>${seg("look", LOOKS, "choose")}<div class="hint" id="lookhint"></div></div>
         <div class="field"><span class="flabel">Outfit</span>${seg("outfit", [["keep", "Keep"], ["shirtless", "Shirtless"], ["nude", "Nude"]], "keep")}<div class="hint" id="outfithint"></div></div>
+        <div class="field" id="facef"><span class="flabel">Face</span>${seg("face", [["auto", "Auto"], ["off", "No face (helmet / mask)"], ["on", "Always"]], "auto")}<div class="hint" id="facehint"></div></div>
+        <div class="switch" id="fredrawf"><div><b>Redraw the face as a close-up</b><small>A sharper face for the 3D shape and texture. Turn it off to use the full-body redraw as it is.</small></div><button type="button" class="tg on" id="fredraw" aria-pressed="true"></button></div>
         <div class="field"><span class="flabel">Your review</span>${seg("review", [["override", "Override"], ["manual", "Manual"], ["off", "Off"]], "override")}<div class="hint" id="reviewhint"></div></div>
         <div class="field" id="gracef"><span class="flabel">Review window</span><div class="range"><input type="range" id="grace" min="15" max="300" step="15" value="60"><output id="graceo">60 s</output></div></div>
         <div class="switch"><div><b>Mixamo zip</b><small>OBJ + texture to upload to mixamo.com for animations</small></div><button type="button" class="tg on" id="zip" aria-pressed="true"></button></div>
@@ -290,14 +297,17 @@ async function home(scrollTo) {
   if (scrollTo) requestAnimationFrame(() => document.getElementById(scrollTo)?.scrollIntoView({ behavior: "instant", block: "start" }));
 
   // ---- launcher
-  const F = { file: null, direct: false, look: "choose", rigger: "mia", outfit: "keep", review: "override", zip: true };
+  const F = { file: null, direct: false, look: "choose", rigger: "mia", face: "auto", faceRedraw: true, outfit: "keep", review: "override", zip: true };
   let known = [];
+  const FACE_HINT = { auto: "The planner checks whether a full-face helmet or mask hides the face.", off: "Skip every face step (close-up redraw, reshape, face fit). Use it for helmets, masks and visors so no face gets carved into them.", on: "Always fit a face, even if the planner thinks it is hidden." };
   const HINT = { keep: "Redraws the outfit from the picture.", shirtless: "Bare torso and arms; avoids sleeve cuffs tearing at the wrists.", nude: "Unclothed, anatomy kept. Only for generated or fictional adult characters.",
     override: "The judges decide; you can overrule them within the review window.", manual: "You are the judge: one redraw, one 3D shape at a time; use it or try another. No AI judges, no time limit.", off: "Fully automatic, no questions asked." };
   initSeg($('[data-seg="look"]'), (v) => { F.look = v; setHints(); });
-  const setHints = () => { $("#riggerhint").textContent = RIGGER_HINT[F.rigger]; $("#lookhint").textContent = LOOK_HINT[F.look]; $("#outfithint").textContent = HINT[F.outfit]; $("#reviewhint").textContent = HINT[F.review]; $("#gracef").style.display = F.review === "override" ? "" : "none"; };
+  const setHints = () => { $("#facehint").textContent = FACE_HINT[F.face]; $("#riggerhint").textContent = RIGGER_HINT[F.rigger]; $("#lookhint").textContent = LOOK_HINT[F.look]; $("#outfithint").textContent = HINT[F.outfit]; $("#reviewhint").textContent = HINT[F.review]; $("#gracef").style.display = F.review === "override" ? "" : "none"; };
   initSeg($('[data-seg="rigger"]'), (v) => { F.rigger = v; setHints(); });
   initSeg($('[data-seg="outfit"]'), (v) => { F.outfit = v; setHints(); });
+  initSeg($('[data-seg="face"]'), (v) => { F.face = v; setHints(); $("#fredrawf").style.display = v === "off" ? "none" : ""; });
+  $("#fredraw").onclick = (e) => { F.faceRedraw = !F.faceRedraw; e.currentTarget.classList.toggle("on", F.faceRedraw); e.currentTarget.setAttribute("aria-pressed", F.faceRedraw); };
   initSeg($('[data-seg="review"]'), (v) => { F.review = v; setHints(); });
   setHints(); presetPicker($("#anim"), $("#animpresets"));
   $("#grace").oninput = (e) => ($("#graceo").textContent = e.target.value + " s");
@@ -337,7 +347,7 @@ async function home(scrollTo) {
     if (!name) { msg.textContent = "Give the run a name."; return $("#name").focus(); }
     if (!/^[A-Za-z0-9_-]{1,40}$/.test(name)) { msg.textContent = "Letters, digits, - and _ only."; return; }
     if (!F.file && !known.some((r) => r.name === name)) { msg.textContent = "Choose an image first."; return; }
-    const q = new URLSearchParams({ name, fname: F.file ? F.file.name : "image.jpg", look: F.direct ? "asis" : F.look, direct: F.direct ? "1" : "0", rigger: F.rigger, anim: $("#anim").value.trim(), anim_reps: $("#animreps").value, outfit: F.outfit, review: F.review, grace: $("#grace").value,
+    const q = new URLSearchParams({ name, fname: F.file ? F.file.name : "image.jpg", look: F.direct ? "asis" : F.look, direct: F.direct ? "1" : "0", rigger: F.rigger, anim: $("#anim").value.trim(), anim_reps: $("#animreps").value, outfit: F.outfit, face: F.face, face_redraw: F.faceRedraw ? "1" : "0", review: F.review, grace: $("#grace").value,
       style: $("#style").value, frm: $("#frm").value, zip: F.zip ? "1" : "0" });
     const x = new XMLHttpRequest(); x.open("POST", "/api/upload?" + q);
     $("#go").disabled = true; $("#upbar").hidden = !F.file; msg.textContent = F.file ? "" : "Starting…";
