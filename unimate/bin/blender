@@ -1,0 +1,5 @@
+#!/bin/bash
+# Shim: the UniMate scripts call `blender -b --python-exit-code 1 -P script.py -- args`; run them with the bundled pip bpy instead
+# (the system Blender does not have the packages the scripts need).
+S=""; while [ $# -gt 0 ]; do case "$1" in -P) S="$2"; shift 2;; --) shift; break;; *) shift;; esac; done
+exec "$(cd "$(dirname "$0")/.." && pwd)/.venv/bin/python" "$S" "$@"

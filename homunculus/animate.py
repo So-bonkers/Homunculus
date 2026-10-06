@@ -1,0 +1,28 @@
+"""Generate animation clips for an existing run (queued from the web app).  python -m homunculus.animate <run> --prompt "walks forward" [--prompt ...] [--reps 2]
+Waits for the GPU pipeline lock, so it can be queued while a run is still going."""
+import argparse, fcntl, json, os
+from . import config as C, notify
+from .orchestrate import Run
+from .stages import animate
+
+
+def main():
+    ap = argparse.ArgumentParser(); ap.add_argument("run"); ap.add_argument("--prompt", action="append", required=True); ap.add_argument("--reps", type=int, default=2)
+    a = ap.parse_args()
+    S = json.load(open(C.RUNS / a.run / "state.json")); R = Run(S["input"], a.run)
+    M = animate._manifest(R); M["status"] = "queued"; animate._save(R, M)
+    lockf = open(C.RUNS / ".homunculus.lock", "a+")
+    try: fcntl.flock(lockf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        R.log("[animate] waiting for the GPU pipeline to finish its current run"); fcntl.flock(lockf, fcntl.LOCK_EX)
+    lockf.seek(0); lockf.truncate(); lockf.write(f"homunculus animation for '{a.run}' (pid {os.getpid()})"); lockf.flush()
+    R = Run(S["input"], a.run)         # re-read the state: the run that held the lock may have changed it
+    R.state["anim_prompts"] = (R.state.get("anim_prompts") or []) + [p for p in a.prompt if p not in (R.state.get("anim_prompts") or [])]; R.save()
+    try: new = animate.generate(R, a.prompt, a.reps)
+    except Exception as e:
+        notify.send(f"homunculus · {a.run}: animation failed", str(e)[:200], critical=True); raise
+    notify.send(f"homunculus · {a.run}", f"{len(new)} animation clip(s) ready. Open http://127.0.0.1:8765/#/run/{a.run}")
+
+
+if __name__ == "__main__":
+    main()
