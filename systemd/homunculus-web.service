@@ -1,0 +1,8 @@
+[Unit]
+Description=homunculus progress and review pages (http://127.0.0.1:8765)
+[Service]
+WorkingDirectory=%h/figure-pipeline
+ExecStart=%h/figure-pipeline/.venv/bin/python -m homunculus.web
+Restart=on-failure
+[Install]
+WantedBy=default.target
