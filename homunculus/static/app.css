@@ -377,3 +377,19 @@ pre.note{margin:10px 0 0;padding:14px 16px;border-radius:var(--r-sm);background:
 .pvbtns{display:flex;gap:8px;flex-wrap:wrap} .pvcredit{color:var(--muted);font-size:11px}
 
 .pvwho{display:flex;gap:6px;margin:6px 0}.pvcredit a{color:inherit;text-decoration:underline}.pvwho .pcat:disabled{opacity:.4;cursor:not-allowed}
+
+/* ---- tips + tour */
+.tips{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.tip{display:flex;gap:14px;padding:18px;border-radius:18px;background:var(--elev);border:1px solid var(--line)}
+.tip .ti{font-size:26px;line-height:1.1}.tip b{display:block;font-size:15px;margin-bottom:4px}.tip p{margin:0;color:var(--muted);font-size:13.5px;line-height:1.5}
+.nav-tour{background:none;border:1px solid var(--line);color:var(--ink);font:inherit;font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:99px;cursor:pointer;margin-right:10px}
+.nav-tour:hover{background:var(--elev2)}
+.tour{position:fixed;inset:0;z-index:1000}
+.tour-spot{position:fixed;border-radius:18px;box-shadow:0 0 0 9999px rgba(0,0,0,.62),0 0 0 2px var(--accent);transition:all .35s cubic-bezier(.2,.7,.2,1);pointer-events:none}
+.tour-card{position:fixed;width:min(360px,calc(100vw - 24px));background:var(--elev);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 20px 70px rgba(0,0,0,.45);transition:top .35s cubic-bezier(.2,.7,.2,1),left .35s cubic-bezier(.2,.7,.2,1)}
+.tour-n{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:6px}
+.tour-t{display:block;font-size:17px;margin-bottom:6px}.tour-p{margin:0 0 14px;color:var(--muted);font-size:14px;line-height:1.5}
+.tour-dots{display:flex;gap:5px;margin-bottom:14px}.tour-dots i{width:6px;height:6px;border-radius:50%;background:var(--line)}.tour-dots i.on{background:var(--accent);width:16px;border-radius:4px}
+.tour-act{display:flex;align-items:center;gap:8px}.tour-act span{flex:1}
+.tour-offer{position:fixed;right:20px;bottom:20px;z-index:900;max-width:320px;background:var(--elev);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.4);display:grid;gap:6px}
+.tour-offer span{color:var(--muted);font-size:13.5px}.tour-offer div{display:flex;gap:8px;margin-top:6px}

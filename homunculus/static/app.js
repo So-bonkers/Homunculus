@@ -1,5 +1,6 @@
 // homunculus web app: home (hero + launcher + runs) and live run pages. Talks to homunculus/server.py (/api/*).
 import { LIBRARY } from "/static/prompt_library.js";
+import { tipsHTML, startTour, stopTour, offerTour } from "/static/tour.js";
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -237,7 +238,7 @@ async function home(scrollTo) {
       <p class="lead">One image becomes a textured, animation-ready 3D character with a 52-bone skeleton. Redrawn, sculpted, rigged and judged by models running on this machine.</p>
       <div class="ctas"><a class="btn btn-glow" href="#/new">Start a run</a><a class="btn btn-ghost" href="#/runs">Browse runs</a></div>
       <div class="ticker"><span>Qwen-Image 2.1</span><span>Pixal3D</span><span>Make-It-Animatable</span><span>Qwen3.8 · Gemma 4 · Qwen3.6 judges</span><span>Blender</span></div>
-      <div class="stats"><div class="stat"><b>12</b><span>stages</span></div><div class="stat"><b>3</b><span>AI judges</span></div><div class="stat"><b>52</b><span>bones</span></div><div class="stat"><b id="st-runs">–</b><span>runs</span></div></div>
+      <div class="stats"><div class="stat"><b>14</b><span>stages</span></div><div class="stat"><b>3</b><span>AI judges</span></div><div class="stat"><b>52</b><span>bones</span></div><div class="stat"><b id="st-runs">–</b><span>runs</span></div></div>
     </div>
     <div class="stage3d reveal" id="hero3d"><div class="floor"></div><div class="loader3d"><div class="orb"></div><small>loading model</small></div><div class="cap" id="herocap"></div></div>
   </section>
@@ -245,7 +246,7 @@ async function home(scrollTo) {
   <section class="section" id="new"><div class="wrap">
     <div class="reveal"><span class="eyebrow">New run</span>
       <h2 class="h-sec">Drop an image.<br><span class="grad">Watch it come alive.</span></h2>
-      <p class="lead">Choose how it should be built. The run takes about 20 minutes and asks for your call at every judge decision.</p></div>
+      <p class="lead">Choose how it should be built. A run takes around 50 minutes and asks for your call at every judge decision.</p></div>
     <div class="launcher reveal">
       <label class="drop" id="drop"><input type="file" id="file" accept="image/png,image/jpeg,image/webp,.stl,.obj,.ply,.glb,.gltf,.fbx" hidden>
         <div class="ph" id="ph"><div class="ic">${ICON.upload}</div><b>Drop a picture or a 3D model</b><span>JPG, PNG, WebP · or STL, OBJ, PLY, GLB, FBX (it gets painted and textured)</span></div>
@@ -274,13 +275,18 @@ async function home(scrollTo) {
     </div>
   </div></section>
 
+  <section class="section" id="tips"><div class="wrap">
+    <div class="reveal"><span class="eyebrow">Tips</span><h2 class="h-sec">Get better results.</h2></div>
+    ${tipsHTML()}
+  </div></section>
+
   <section class="section" id="runs"><div class="wrap">
     <div class="runs-head reveal"><div><span class="eyebrow">Library</span><h2 class="h-sec" style="margin-bottom:0">Runs</h2></div>
       ${seg("filter", [["all", "All"], ["active", "Active"], ["finished", "Finished"]], "all").replace('class="seg"', 'class="seg filters"')}</div>
     <div class="runs" id="runlist"></div>
   </div></section>
   <footer class="foot">homunculus · everything runs on this machine</footer>`;
-  reveal();
+  reveal(); offerTour("home");
   if (scrollTo) requestAnimationFrame(() => document.getElementById(scrollTo)?.scrollIntoView({ behavior: "instant", block: "start" }));
 
   // ---- launcher
@@ -674,18 +680,19 @@ async function runPage(name) {
 /* ======================================================================= router */
 async function route() {
   const h0 = decodeURIComponent(location.hash.replace(/^#/, "")) || "/";
-  if (page.kind === "home" && ["/", "/new", "/runs"].includes(h0)) {      // same page: just scroll
-    $$(".nav-links a").forEach((a) => a.classList.toggle("on", (a.dataset.nav === "new" && h0 === "/new") || (a.dataset.nav === "runs" && h0 !== "/new")));
+  if (page.kind === "home" && ["/", "/new", "/runs", "/tips"].includes(h0)) {      // same page: just scroll
+    $$(".nav-links a").forEach((a) => a.classList.toggle("on", (a.dataset.nav === "new" && h0 === "/new") || (a.dataset.nav === "tips" && h0 === "/tips") || (a.dataset.nav === "runs" && h0 !== "/new" && h0 !== "/tips")));
     return h0 === "/" ? scrollTo({ top: 0, behavior: "smooth" }) : document.getElementById(h0.slice(1))?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   disposePresetViewers(); page.cleanup.forEach((f) => { try { f(); } catch {} }); page = { cleanup: [], kind: /^\/run\//.test(h0) ? "run" : "home" };
   $("#lightbox").hidden = true;
   const h = decodeURIComponent(location.hash.replace(/^#/, "")) || "/";
   const m = h.match(/^\/run\/(.+)$/);
-  $$(".nav-links a").forEach((a) => a.classList.toggle("on", (a.dataset.nav === "new" && h === "/new") || (a.dataset.nav === "runs" && (h === "/runs" || h === "/"))));
+  $$(".nav-links a").forEach((a) => a.classList.toggle("on", (a.dataset.nav === "new" && h === "/new") || (a.dataset.nav === "tips" && h === "/tips") || (a.dataset.nav === "runs" && (h === "/runs" || h === "/"))));
   scrollTo({ top: 0, behavior: "instant" });
   if (m) { document.title = `${m[1]} · homunculus`; await runPage(m[1]); }
-  else { document.title = "homunculus"; await home(h === "/new" ? "new" : h === "/runs" ? "runs" : null); }
+  else { document.title = "homunculus"; await home(h === "/new" ? "new" : h === "/runs" ? "runs" : h === "/tips" ? "tips" : null); }
 }
-addEventListener("hashchange", route);
+$("#tourbtn").onclick = () => startTour(page.kind === "run" ? "run" : "home");
+addEventListener("hashchange", () => { stopTour(); route(); });
 route();

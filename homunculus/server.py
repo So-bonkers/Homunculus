@@ -4,7 +4,7 @@ import json, os, threading, time
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from functools import partial
 from . import config as C
-PORT = 8765
+PORT = int(os.environ.get("HOMUNCULUS_PORT", "8765"))
 
 def _live_pids():
     out = {}
