@@ -471,7 +471,7 @@ async function runPage(name) {
     <div id="alert"></div>
     <div class="flow" id="flow"></div>
     <div id="review"></div>
-    <div class="rgrid"><div>${seg("tab", [["activity", "Activity"], ["looks", "Looks"], ["animate", "Animate"], ["model", "3D model"], ["log", "Log"]], "activity").replace('class="seg"', 'class="seg tabs"')}<div id="tab"></div></div><aside class="side" id="side"></aside></div>
+    <div class="rgrid"><div>${seg("tab", [["activity", "Activity"], ["looks", "Looks"], ["animate", "Animate"], ["model", "3D model"], ["repair", "Repair"], ["log", "Log"]], "activity").replace('class="seg"', 'class="seg tabs"')}<div id="tab"></div></div><aside class="side" id="side"></aside></div>
   </div>`;
   let d = null, sel = null, tab = "activity", sig = {}, offset = 0, viewer = null, sentFor = null;
   const edges = buildFlow($("#flow"), (s) => { sel = sel === s ? null : s; sig.tab = sig.side = ""; render(); });
@@ -573,8 +573,10 @@ async function runPage(name) {
 
   $("#side").addEventListener("click", (e) => { if (e.target.closest("#forkhere")) openFork(d, FORK_OF[sel]); });
 
+  let repairCtl = null;
   async function tabView() {
     const T = $("#tab");
+    if (tab !== "repair" && repairCtl) { repairCtl.dispose(); repairCtl = null; }
     if (tab === "activity") {
       const snaps = d.snapshots.filter((x) => !sel || x.stage === sel || (sel === "pick" && x.stage === "edit")).slice().reverse();
       const s = JSON.stringify(["a", sel, snaps.map((x) => [x.url, x.images.length])]); if (s === sig.tab) return; sig.tab = s;
@@ -643,6 +645,11 @@ async function runPage(name) {
           else if (o === "bones") { st.bones = !st.bones; b.classList.toggle("on", st.bones); viewer.set({ bones: st.bones }); } };
         show(A.clips.length - 1);      // the newest clip
       }
+    } else if (tab === "repair") {
+      const s = JSON.stringify(["p", (d.models.find((m) => m.key === "mesh_glb") || {}).url]); if (s === sig.tab && repairCtl) return; sig.tab = s;
+      if (viewer) { viewer.dispose(); viewer = null; } if (repairCtl) { repairCtl.dispose(); repairCtl = null; }
+      const { createViewer } = await import("/static/viewer.js"); const { mountRepair } = await import("/static/repair.js"); if (!document.body.contains(T)) return;
+      repairCtl = await mountRepair(T, d, { createViewer, toast });
     } else if (tab === "log") {
       const s = JSON.stringify(["l", d.log.length, d.log[d.log.length - 1]]); if (s === sig.tab) return; sig.tab = s;
       if (viewer) { viewer.dispose(); viewer = null; }
@@ -675,6 +682,7 @@ async function runPage(name) {
     el.innerHTML = a ? `<div class="alertbar"><b>${d.live ? "Needs your attention" : "Why it stopped"}</b><span>${esc(a.msg)}</span><time>${esc(a.time)}</time></div>` : ""; }
   function render() { if (!d) return; header(); alertBox(); updateFlow($("#flow"), edges, d, sel); review(); side(); tabView(); tick(); }
   let lastJSON = "";
+  onCleanup(() => { if (repairCtl) { repairCtl.dispose(); repairCtl = null; } });
   async function poll() {
     try {
       const j = await api("/api/run/" + encodeURIComponent(name));

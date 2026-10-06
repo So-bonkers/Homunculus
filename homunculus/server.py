@@ -29,10 +29,12 @@ class H(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(sorted(live_runs())).encode()); return
         if path == "/api/version":      # the open app reloads itself when its files change
             base = os.path.join(os.path.dirname(__file__), "static")
-            v = max(os.path.getmtime(os.path.join(base, f)) for f in ("app.html", "app.js", "app.css", "viewer.js"))
+            v = max(os.path.getmtime(os.path.join(base, f)) for f in ("app.html", "app.js", "app.css", "viewer.js", "repair.js", "tour.js"))
             return self._json(200, {"v": v})
         if path == "/api/runs":
             from . import api; return self._json(200, api.runs(live_runs()))
+        if path.startswith("/api/repair/"):
+            from . import api; return self._json(200, api.repairs(os.path.basename(path)))
         if path.startswith("/api/run/"):
             from . import api
             r = api.run(os.path.basename(path), live_runs())
@@ -78,6 +80,7 @@ class H(SimpleHTTPRequestHandler):
         if path == "/api/fork": return self.fork_run()
         if path == "/api/looks": return self.look_previews()
         if path == "/api/animate": return self.animate_job()
+        if path == "/api/repair": return self.repair_job()
         if self.path not in ("/api/pick", "/api/review"): self.send_error(404); return
         try:
             d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
@@ -154,6 +157,33 @@ class H(SimpleHTTPRequestHandler):
                                 sys.executable, "-m", "homunculus.look_preview", run], capture_output=True, text=True)
             if r.returncode: return self._json(409 if "already" in (r.stderr or "") else 500, {"error": "Previews are already queued for this run." if "already" in (r.stderr or "") else (r.stderr or r.stdout)[-300:]})
             self._json(200, {"ok": True})
+        except Exception as e:
+            self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
+    def repair_job(self):
+        """Start a repair of the painted region of a run's 3D model: {run, strokes: [[x, y, z, r], ...] (glTF coordinates), notes}. The job waits for the GPU
+        lock; its progress is runs/<run>/10_repair/<id>/status.json (GET /api/repair/<run>)."""
+        import re, subprocess, sys, time
+        try:
+            d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            run = os.path.basename(str(d.get("run", "")))
+            if not (C.RUNS / run / "state.json").exists(): return self._json(404, {"error": "No such run."})
+            S = json.load(open(C.RUNS / run / "state.json"))
+            if not (S.get("artifacts") or {}).get("mesh_glb"): return self._json(400, {"error": "This run has no 3D model yet."})
+            st = d.get("strokes") or []
+            if not (isinstance(st, list) and 1 <= len(st) <= 1500 and all(isinstance(s, list) and len(s) == 4 and all(isinstance(x, (int, float)) for x in s) for s in st)):
+                return self._json(400, {"error": "Paint the broken region on the model first."})
+            job = time.strftime("%Y%m%d_%H%M%S"); jd = C.RUNS / run / "10_repair" / job; jd.mkdir(parents=True, exist_ok=True)
+            json.dump({"strokes": st, "notes": str(d.get("notes", ""))[:400]}, open(jd / "request.json", "w"))
+            unit = f"homunculus-repair-{run}"
+            subprocess.run(["systemctl", "--user", "reset-failed", f"{unit}.service"], capture_output=True)
+            r = subprocess.run(["systemd-run", "--user", f"--unit={unit}", "--collect", f"--working-directory={C.ROOT}", "-p", "KillSignal=SIGINT",
+                                *[f"--setenv={k}={os.environ[k]}" for k in ("DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR") if os.environ.get(k)],
+                                sys.executable, "-m", "homunculus.repair", run, "--job", job], capture_output=True, text=True)
+            if r.returncode:
+                busy = "already" in (r.stderr or "")
+                return self._json(409 if busy else 500, {"error": "A repair is already running for this run." if busy else (r.stderr or r.stdout)[-300:]})
+            self._json(200, {"ok": True, "job": job})
         except Exception as e:
             self._json(500, {"error": f"{type(e).__name__}: {e}"})
 

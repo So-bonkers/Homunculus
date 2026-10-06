@@ -73,6 +73,21 @@ def runs(live):
     return out
 
 
+def repairs(name):
+    """The repair jobs of a run (newest first): the status files written by <pkg>.repair, with their image paths as URLs."""
+    out = []; base = C.RUNS / name / "10_repair"
+    if base.is_dir():
+        for d in sorted(os.listdir(base), reverse=True):
+            try: S = json.load(open(base / d / "status.json"))
+            except Exception: continue
+            u = lambda rel: _url(name, str(C.RUNS / rel)) if rel else None
+            regs = [{**{k: v for k, v in r.items() if k not in ("crop", "candidates", "chosen", "after")}, "crop": u(r.get("crop")), "chosen": u(r.get("chosen")), "after": u(r.get("after")),
+                     "candidates": [x for x in (u(c) for c in r.get("candidates", [])) if x]} for r in S.get("regions", [])]
+            out.append({"job": d, "status": S.get("status"), "step": S.get("step"), "error": S.get("error"), "log": S.get("log", [])[-8:], "notes": S.get("notes", ""),
+                        "seconds": S.get("seconds"), "regions": regs, "result": u(S.get("result"))})
+    return out
+
+
 def run(name, live):
     S = _load(name)
     if S is None: return None

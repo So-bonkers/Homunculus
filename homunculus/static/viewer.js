@@ -120,6 +120,7 @@ export function createViewer(host, { hero = false, onProgress, onInfo } = {}) {
       if ("speed" in opts && mixer) mixer.timeScale = opts.speed;
       applyMaterials();
     },
+    internals() { return { scene, camera, controls, renderer, root: () => root }; },      // for tools that paint or measure on the model (the Repair tab)
     reset() { if (root) { root.scale.setScalar(1); root.position.set(0, 0, 0); frame(root); } },
     dispose() {
       disposed = true; cancelAnimationFrame(raf); ro.disconnect(); io.disconnect(); controls.dispose();

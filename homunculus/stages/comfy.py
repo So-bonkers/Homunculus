@@ -26,11 +26,11 @@ def upscale(src, dst, model, log, long_side=2048):
     log(f"upscaled {W}x{H} -> {w}x{h} with {model}")
     return dst
 
-def mesh(src, out_dir, tag, seed, log):
+def mesh(src, out_dir, tag, seed, log, faces=None, tex=None):
     gpu.free_all(log, keep="comfy"); gpu.wait_for_headroom("pixal3d", log); gpu.comfy_start(log)
     name = _to_input(src, "mesh"); prefix = f"3d/homunculus_{tag}"
     t0 = time.time()
-    res = run_px.run(run_px.build_tex(name, prefix, seed, faces=C.MESH_FACES, tex=C.MESH_TEX), timeout=3300)
+    res = run_px.run(run_px.build_tex(name, prefix, seed, faces=faces or C.MESH_FACES, tex=tex or C.MESH_TEX), timeout=3300)
     if not res or res["status"]["status_str"] != "success": raise RuntimeError("Pixal3D failed (see comfy/server.log)")
     def newest(pat):
         fs = sorted(glob.glob(str(C.COMFY_UI / "output" / pat)), key=os.path.getmtime); return fs[-1] if fs else None
