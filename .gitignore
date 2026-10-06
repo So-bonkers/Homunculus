@@ -1,0 +1,24 @@
+__pycache__/
+*.pyc
+.venv/
+runs/
+uploads/
+exports/
+vram.log
+# third-party tools installed by setup.sh
+comfy/ComfyUI/
+comfy/.venv/
+comfy/*.log
+mia/repo/
+mia/.venv/
+mia/work/
+unimate/*
+!unimate/bin/
+unimate/bin/*
+!unimate/bin/blender
+riggers/
+# generated preset previews (3 GB, rebuilt with `python -m homunculus.preset_clips`)
+homunculus/static/presets/*
+!homunculus/static/presets/README.txt
+presets/*/asset/
+presets/*/rig/
