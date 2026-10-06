@@ -63,14 +63,29 @@ def runs(live):
         if not S: continue
         stages = S.get("stages", {}); done = sum(1 for s in STAGES if stages.get(s, {}).get("status") == "done")
         cur = next((s for s in STAGES if stages.get(s, {}).get("status") == "running"), None)
+        rep = _repairing(d)
         snaps = S.get("snapshots") or []
         out.append({"name": d, "status": _status(S, d in live), "live": d in live, "thumb": _thumb(d, S), "input": _url(d, S.get("artifacts", {}).get("input")),
-                    "file": os.path.basename(S.get("input", "")), "done": done, "total": len(STAGES), "current": LABEL.get(cur, cur) if cur else None,
-                    "last": snaps[-1]["title"] if snaps else "", "t_start": S.get("t_start"), "t_total": S.get("t_total"),
+                    "file": os.path.basename(S.get("input", "")), "done": done, "total": len(STAGES), "current": LABEL.get(cur, cur) if cur else (("Repair: " + REPAIR_STEP.get(rep.get("step"), "working")) if rep else None),
+                    "repair": rep, "last": snaps[-1]["title"] if snaps else "", "t_start": S.get("t_start"), "t_total": S.get("t_total"),
                     "updated": os.path.getmtime(C.RUNS / d / "state.json"), "outfit": S.get("outfit", "keep"),
                     "model": next((_url(d, S.get("artifacts", {}).get(k)) for k, _ in GLB_KEYS if _url(d, S.get("artifacts", {}).get(k))), None)})
     out.sort(key=lambda r: -r["updated"])
     return out
+
+
+def _repairing(name):
+    """The newest repair job of a run that is queued or running (its status file was touched in the last 20 minutes, so a crashed job does not count), else None."""
+    base = C.RUNS / name / "10_repair"
+    try:
+        for d in sorted(os.listdir(base), reverse=True)[:3]:
+            p = base / d / "status.json"; S = json.load(open(p))
+            if S.get("status") in ("queued", "running") and time.time() - os.path.getmtime(p) < 1200: return {"job": d, "status": S.get("status"), "step": S.get("step")}
+    except Exception: pass
+    return None
+
+
+REPAIR_STEP = {"queued": "waiting for the GPU", "regions": "redrawing", "merge": "joining", "bake": "baking the texture"}
 
 
 def repairs(name):
@@ -84,7 +99,7 @@ def repairs(name):
             regs = [{**{k: v for k, v in r.items() if k not in ("crop", "candidates", "chosen", "after")}, "crop": u(r.get("crop")), "chosen": u(r.get("chosen")), "after": u(r.get("after")),
                      "candidates": [x for x in (u(c) for c in r.get("candidates", [])) if x]} for r in S.get("regions", [])]
             out.append({"job": d, "status": S.get("status"), "step": S.get("step"), "error": S.get("error"), "log": S.get("log", [])[-8:], "notes": S.get("notes", ""),
-                        "seconds": S.get("seconds"), "regions": regs, "result": u(S.get("result"))})
+                        "seconds": S.get("seconds"), "regions": regs, "result": u(S.get("result")), "textured": u(S.get("result_textured")), "can_use": bool(S.get("result_textured"))})
     return out
 
 
@@ -135,7 +150,7 @@ def run(name, live):
     return {"name": name, "status": _status(S, is_live), "live": is_live, "file": os.path.basename(S.get("input", "")),
             "input": _url(name, A.get("input")), "thumb": _thumb(name, S), "chosen": _url(name, A.get("chosen_edit")),
             "t_start": S.get("t_start"), "t_total": S.get("t_total"), "now": time.time(),
-            "looks": looks, "animations": anims, "mode": S.get("mode", "image"), "options": {"face": S.get("face", "auto"), "face_redraw": S.get("face_redraw", True), "rigger": S.get("rigger", "mia"), "anim_prompts": S.get("anim_prompts", []), "anim_reps": S.get("anim_reps", 2), "direct": bool(S.get("direct")), "look": S.get("look", "asis"), "outfit": S.get("outfit", "keep"), "review": S.get("review_mode", "override"), "grace": S.get("review_grace", 60),
+            "repair": _repairing(name), "looks": looks, "animations": anims, "mode": S.get("mode", "image"), "options": {"face": S.get("face", "auto"), "face_redraw": S.get("face_redraw", True), "rigger": S.get("rigger", "mia"), "anim_prompts": S.get("anim_prompts", []), "anim_reps": S.get("anim_reps", 2), "direct": bool(S.get("direct")), "look": S.get("look", "asis"), "outfit": S.get("outfit", "keep"), "review": S.get("review_mode", "override"), "grace": S.get("review_grace", 60),
                         "style": S.get("style_override") or S.get("style_guess")},
             "stages": st, "review": review, "snapshots": snaps, "files": files, "models": models,
             "zip": f"/api/zip/{name}.zip" if A.get("mesh_glb") else None,

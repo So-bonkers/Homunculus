@@ -111,9 +111,21 @@ export async function mountRepair(host, d, { createViewer, toast }) {
           <small>${esc(r.status || "")}${r.five_fingers === false ? " · no redraw had five fingers: best effort" : ""}</small></div>`).join("")}
       ${j.status === "running" || j.status === "queued" ? `<div class="rp-log">${j.log.map((l) => `<div>${esc(l)}</div>`).join("")}</div>` : ""}
       ${j.result ? `<div class="rp-act"><button class="btn btn-primary btn-sm" data-show="${esc(j.result)}">View repaired model</button><button class="btn btn-ghost btn-sm" data-show="orig">View original</button>
-        <a class="btn btn-ghost btn-sm" href="${esc(j.result)}" download>Download .glb</a></div>` : ""}</div>`).join("") || `<div class="hint" style="margin-top:14px">No repairs yet.</div>`;
+        <a class="btn btn-ghost btn-sm" href="${esc(j.result)}" download>Download .glb</a>${j.can_use ? `<button class="btn btn-glow btn-sm" data-use="${esc(j.job)}">Use for this run</button>` : ""}</div>${j.can_use ? `<div class="rp-use" id="use_${esc(j.job)}" hidden></div>` : ""}` : ""}</div>`).join("") || `<div class="hint" style="margin-top:14px">No repairs yet.</div>`;
   }
-  $("#rpjobs").onclick = async (e) => { const b = e.target.closest("[data-show]"); if (!b) return; viewing = b.dataset.show === "orig" ? "original" : "repaired";
+  $("#rpjobs").onclick = async (e) => {
+    const u = e.target.closest("[data-use]");
+    if (u) { const job = u.dataset.use, box = $("#use_" + job); box.hidden = false;
+      box.innerHTML = `<div class="hint">One mesh with the original texture continues from the Colour stage (colour, rig, rig check, animation, texture). Needs the run to be stopped or finished.</div>
+        <div class="row2"><div class="field"><span class="flabel">Where</span><select class="input" id="uw_${esc(job)}"><option value="new">New run (keeps this one)</option><option value="same">Replace in this run</option></select></div>
+        <div class="field"><label class="flabel">Name</label><input class="input" id="un_${esc(job)}" value="${esc(d.name)}_repaired" maxlength="40" spellcheck="false"></div></div>
+        <button class="btn btn-glow btn-sm" id="ug_${esc(job)}">Continue the run with it</button> <span class="hint" id="um_${esc(job)}"></span>`;
+      $("#uw_" + job).onchange = (ev) => { $("#un_" + job).disabled = ev.target.value === "same"; };
+      $("#ug_" + job).onclick = async () => { const msg = $("#um_" + job); msg.textContent = "Starting…";
+        try { const r = await fetch("/api/repair_use", { method: "POST", body: JSON.stringify({ run: d.name, job, mode: $("#uw_" + job).value, name: $("#un_" + job).value.trim() }) }); const j = await r.json();
+          if (!r.ok) { msg.textContent = j.error || "Could not start."; return; } toast && toast("Continuing with the repaired mesh"); location.hash = "#/run/" + encodeURIComponent(j.run); } catch { msg.textContent = "Could not reach the server."; } };
+      return; }
+    const b = e.target.closest("[data-show]"); if (!b) return; viewing = b.dataset.show === "orig" ? "original" : "repaired";
     $("#rphint").textContent = viewing === "original" ? "Drag to paint the broken part · right-drag or scroll to move the view" : "The repaired model (original and new hand are separate parts joined at the wrist)";
     await show(viewing === "original" ? mesh.url : b.dataset.show); };
 

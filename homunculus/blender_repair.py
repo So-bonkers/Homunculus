@@ -5,6 +5,10 @@ blender -b --python blender_repair.py -- analyse base.glb strokes.json out_dir
     Writes out_dir/regionN.json + maskN.npy (vertex indices, one region per connected blob), regionN_crop.png (front close-up of the region,
     orthographic, 1024 px) and prints [repair] lines. The crop is what the image model redraws.
 
+blender -b --python blender_repair.py -- bake repaired.glb out.glb [size]
+    repaired.glb (the merge result: the original mesh with its texture plus the flat-coloured donors) becomes ONE mesh with a fresh UV atlas and a baked base-colour
+    texture (Cycles "selected to active", 1 sample, CPU), so the rest of the pipeline (colour projection, rig, texture) can use it like any Pixal3D mesh.
+
 blender -b --python blender_repair.py -- merge base.glb regions.json out.glb out_dir
     regions.json: [{"region": "region0.json", "donor": "donor0.glb", "silhouette": [u0, v0, u1, v1, W, H]}, ...]  (silhouette = bounding box of the
     redrawn crop's subject in pixels). Each donor (an image-to-3D mesh of the redrawn crop) is mapped back into the region with the same
@@ -70,8 +74,42 @@ def region_color(ob, idx):
         print(f"[repair] region colour not found ({type(e).__name__}); using grey"); return [0.35, 0.35, 0.36]
 
 
+# ---------------------------------------------------------------------------------------------------------------- bake
+if mode == "bake":
+    src_p, out_glb = argv[1:3]; size = int(argv[3]) if len(argv) > 3 else 4096
+    bpy.ops.wm.read_factory_settings(use_empty=True); bpy.ops.import_scene.gltf(filepath=src_p)
+    srcs = [o for o in bpy.data.objects if o.type == "MESH" and len(o.data.vertices) > 100]
+    for o in [o for o in bpy.data.objects if o.type != "MESH"]: bpy.data.objects.remove(o, do_unlink=True)
+    for o in srcs: o.hide_render = False
+    bpy.ops.object.select_all(action="DESELECT")
+    copies = []
+    for o in srcs:
+        c = o.copy(); c.data = o.data.copy(); bpy.context.scene.collection.objects.link(c); c.name = "target_part"; copies.append(c)
+    for c in copies: c.select_set(True)
+    bpy.context.view_layer.objects.active = copies[0]
+    if len(copies) > 1: bpy.ops.object.join()
+    tgt = bpy.context.view_layer.objects.active; tgt.name = "repaired"; tgt.data.name = "repaired"
+    me = tgt.data; me.materials.clear()
+    while me.uv_layers: me.uv_layers.remove(me.uv_layers[0])
+    bpy.ops.object.mode_set(mode="EDIT"); bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=0.002); bpy.ops.object.mode_set(mode="OBJECT")
+    img = bpy.data.images.new("repaired_basecolor", size, size, alpha=False); img.colorspace_settings.name = "sRGB"
+    mat = bpy.data.materials.new("repaired"); mat.use_nodes = True; nt = mat.node_tree; bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    tn = nt.nodes.new("ShaderNodeTexImage"); tn.image = img; nt.links.new(tn.outputs["Color"], bsdf.inputs["Base Color"]); bsdf.inputs["Roughness"].default_value = 0.6
+    me.materials.append(mat); nt.nodes.active = tn
+    sc = bpy.context.scene; sc.render.engine = "CYCLES"; sc.cycles.samples = 1; sc.cycles.device = "CPU"
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in srcs: o.select_set(True)
+    tgt.select_set(True); bpy.context.view_layer.objects.active = tgt
+    ext = 0.02 * (max(tgt.dimensions) if max(tgt.dimensions) > 0 else 1)
+    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, use_selected_to_active=True, cage_extrusion=ext, max_ray_distance=ext * 3, margin=8, use_clear=True)
+    print(f"[repair] baked {size}x{size} onto a fresh atlas ({len(me.polygons)} faces)")
+    for o in srcs: bpy.data.objects.remove(o, do_unlink=True)
+    bpy.ops.object.select_all(action="DESELECT"); tgt.select_set(True); bpy.context.view_layer.objects.active = tgt
+    img.pack(); bpy.ops.export_scene.gltf(filepath=out_glb, export_format="GLB", use_selection=True); print("[repair] wrote", out_glb)
+
 # ---------------------------------------------------------------------------------------------------------------- hands
-if mode == "hands":
+elif mode == "hands":
     """blender -b --python blender_repair.py -- hands base.glb strokes.json : brush strokes covering both hands of a T/A-posed figure (the outer ~10.5 % of the
     height at each side). The same rule as the web viewer's 'Select hands' button; used for tests and as the server-side fallback."""
     base, out_p = argv[1:3]; ob = load(base); V = verts(ob); lo, hi = V.min(0), V.max(0); cx = (lo[0] + hi[0]) / 2; height = hi[2] - lo[2]

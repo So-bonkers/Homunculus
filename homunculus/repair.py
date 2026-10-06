@@ -98,6 +98,15 @@ def _choose(J, k, cands, crop):
         except Exception: pass
 
 
+def bake_glb(J, merged):
+    """One mesh with a fresh UV atlas and the original texture baked onto it (CPU): what the rest of the pipeline can take. Returns the path or None."""
+    J.S["step"] = "bake"; J.log("baking one textured mesh (new UV atlas, the original texture carried over)")
+    out = str(J.dir / "repaired_textured.glb"); rc, lines, text = _bl(["bake", merged, out, 4096], timeout=1800)
+    for l in lines: J.log(l[9:])
+    if rc != 0 or not os.path.exists(out): J.log("bake failed: " + text[-300:]); return None
+    J.S["result_textured"] = J.rel(out); J.save(); return out
+
+
 def run_job(R, job, strokes, notes="", rounds=2, per_round=3):
     J = Job(R, job); S = J.S; S.update(status="running", step="regions", notes=notes, t0=time.time(), regions=[], result=None); J.save()
     base = R.A.get("mesh_glb")
@@ -137,14 +146,19 @@ def run_job(R, job, strokes, notes="", rounds=2, per_round=3):
     for reg in S["regions"]:
         p = str(J.dir / "after" / f"after_region{reg['index']}_crop.png")
         if os.path.exists(p): reg["after"] = J.rel(p); reg["after_fingers"] = _fingers(p)
+    bake_glb(J, out_glb)
     S.update(status="done", step="done", result=J.rel(out_glb), seconds=round(time.time() - S["t0"])); J.log(f"done in {S['seconds']} s: " + ", ".join(f"region {r['index']}: {r.get('after_fingers', '?')} fingers" for r in S["regions"]))
     return out_glb
 
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("run"); ap.add_argument("--job", default=None); ap.add_argument("--hands", action="store_true"); ap.add_argument("--notes", default="")
+    ap.add_argument("--bake", metavar="JOB", help="only bake the textured single mesh of an earlier job (CPU, no GPU lock)")
     ap.add_argument("--no-lock", action="store_true", help="do not wait for the GPU lock (only for tests that need no GPU)")
-    a = ap.parse_args(); S0 = json.load(open(C.RUNS / a.run / "state.json")); R = Run(S0["input"], a.run); job = a.job or time.strftime("%H%M%S")
+    a = ap.parse_args(); S0 = json.load(open(C.RUNS / a.run / "state.json")); R = Run(S0["input"], a.run)
+    if a.bake:
+        J = Job(R, a.bake); out = bake_glb(J, str(J.dir / "repaired.glb")); print("baked:", out); return
+    job = a.job or time.strftime("%H%M%S")
     jd = R.dir / "10_repair" / job; jd.mkdir(parents=True, exist_ok=True)
     J = Job(R, job); J.S.update(status="queued"); J.save()
     lockf = open(C.RUNS / ".homunculus.lock", "a+")

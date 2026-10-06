@@ -81,6 +81,7 @@ class H(SimpleHTTPRequestHandler):
         if path == "/api/looks": return self.look_previews()
         if path == "/api/animate": return self.animate_job()
         if path == "/api/repair": return self.repair_job()
+        if path == "/api/repair_use": return self.repair_use()
         if self.path not in ("/api/pick", "/api/review"): self.send_error(404); return
         try:
             d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
@@ -157,6 +158,42 @@ class H(SimpleHTTPRequestHandler):
                                 sys.executable, "-m", "homunculus.look_preview", run], capture_output=True, text=True)
             if r.returncode: return self._json(409 if "already" in (r.stderr or "") else 500, {"error": "Previews are already queued for this run." if "already" in (r.stderr or "") else (r.stderr or r.stdout)[-300:]})
             self._json(200, {"ok": True})
+        except Exception as e:
+            self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
+    def repair_use(self):
+        """Continue a run with a repaired mesh: {run, job, mode: "new" | "same", name}. The textured single mesh of the repair job replaces the run's 3D model and the run restarts
+        from the Colour stage (colour, rig, rig check, animation, texture); mode "new" forks a new run and leaves this one untouched."""
+        import re, shutil
+        from . import fork
+        try:
+            d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            src = os.path.basename(str(d.get("run", ""))); job = os.path.basename(str(d.get("job", ""))); mode = "same" if d.get("mode") == "same" else "new"
+            rg = C.RUNS / src / "10_repair" / job / "repaired_textured.glb"
+            if not rg.exists(): return self._json(404, {"error": "That repair has no textured mesh yet."})
+            dst = src if mode == "same" else str(d.get("name", "")).strip() or f"{src}_repaired"
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", dst): return self._json(400, {"error": "Run name: letters, digits, - and _ only (max 40)."})
+            live = _live_pids()
+            if src in live or dst in live: return self._json(409, {"error": "Stop the run first."})
+            import subprocess
+            if subprocess.run(["systemctl", "--user", "is-active", "--quiet", f"homunculus-repair-{src}.service"]).returncode == 0: return self._json(409, {"error": "A repair is still running for this run."})
+            S0 = json.load(open(C.RUNS / src / "state.json"))
+            img = fork.prepare(src, dst, "color", f"continued with the repaired mesh from {job}")
+            S = json.load(open(C.RUNS / dst / "state.json")); A = S.setdefault("artifacts", {})
+            old = A.get("mesh_glb") or ""; mdir = os.path.dirname(old) if old else str(C.RUNS / dst / "05_mesh" / "try1")
+            os.makedirs(mdir, exist_ok=True); new = os.path.join(mdir, "mesh_repaired.glb"); shutil.copy(rg, new)
+            A["mesh_before_repair"] = old; A["mesh_glb"] = new; A["mesh_hi_glb"] = new
+            for k in ("colored_glb", "textured_glb", "rig_fbx", "rig_glb", "final_fbx", "final_glb", "anim_asset"): A.pop(k, None)
+            S["repaired_from"] = {"run": src, "job": job}; json.dump(S, open(C.RUNS / dst / "state.json", "w"), indent=1)
+            q = {"frm": "color", "zip": "1" if S0.get("zip") else "0", "direct": "1" if S0.get("direct") else "0", "face_redraw": "1" if S0.get("face_redraw") is not False else "0"}
+            for k, sk in (("outfit", "outfit"), ("face", "face"), ("review", "review_mode"), ("grace", "review_grace"), ("look", "look"), ("rigger", "rigger"), ("anim_reps", "anim_reps")):
+                if S0.get(sk) not in (None, ""): q[k] = str(S0[sk])
+            q["anim"] = "\n".join(S0.get("anim_prompts") or [])
+            err = _launch(dst, img, q)
+            if err: return self._json(500, {"error": err})
+            self._json(200, {"ok": True, "run": dst})
+        except ValueError as e:
+            self._json(400, {"error": str(e)})
         except Exception as e:
             self._json(500, {"error": f"{type(e).__name__}: {e}"})
 

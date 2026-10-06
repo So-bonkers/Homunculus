@@ -9,6 +9,8 @@ Pixal3D sometimes returns fused, melted or cut-off fingers. The **Repair** tab o
 3. **Redraw** (Qwen-Image, GPU). The clay close-up is redrawn with complete anatomy. Clay on purpose: given a coloured render the image model turns a black glove into bare skin and even redraws the sleeve, and no instruction in the prompt stopped that. Three candidates per round, up to two rounds. A silhouette finger counter (`digits.py`) rejects any redraw without five digits; the VLM picks the most natural of the rest.
 4. **Shape** (Pixal3D, GPU). The chosen redraw becomes a small mesh (90k faces).
 5. **Merge** (`blender_repair.py merge`, CPU). The donor is mapped back with the same pixel-to-metre mapping as the close-up render, snapped to the wrist (lateral shift and size, measured the same way on both meshes), clipped to the hand side of the wrist plane plus a one-radius overlap into the forearm, and given a flat material of the original colour. The region's original vertices are deleted. The result is `10_repair/<job>/repaired.glb` plus before/after close-ups and a finger count of the "after" render.
+6. **Bake** (`blender_repair.py bake`, CPU, ~30 s). The merged parts (original mesh with its texture, flat-coloured donors) become **one mesh with a fresh UV atlas**; the original texture is carried over with a Cycles "selected to active" bake (1 sample, 4096²). Output: `repaired_textured.glb`.
+7. **Use for this run** (button on the finished job, or `POST /api/repair_use`). The textured mesh replaces the run's 3D model (the old path is kept as `mesh_before_repair`) and the run restarts from the **Colour** stage: colour projection, rig, rig check, animation, texture. *New run* keeps the original untouched; *Replace in this run* restarts it in place. The run must be stopped or finished.
 
 The job waits for the GPU lock like every other GPU job, runs as the unit `homunculus-repair-<run>`, and keeps the VRAM peak under the limit (768 px redraw with a 512 reference: 19.4 GB; at 1024 it reached 23.2 GB).
 
@@ -18,7 +20,8 @@ On the failed hands of a Max Verstappen run (cut-off glove fingers on both hands
 
 ## Known limits (Phase 1)
 
-- The repaired model is **geometry plus a flat colour**: the new hand has no texture detail (stitching, logos, a white wrist band) and the result is several parts (the original mesh, one donor per region), not one textured mesh. **It is not yet fed back into the run**: using it means rigging and texturing it yourself or re-running from the 3D stage with it. Next step: UV-unwrap and bake the original texture onto the joined mesh, then offer *Use for this run* (re-colour, rig, texture).
+- The new hand's colour is **one flat colour** sampled from the original (no stitching, logos or wrist band on the new part). After *Use for this run* the colour and texture stages project the reference picture onto the whole mesh again, which adds the detail where the picture shows it. The bake re-unwraps the whole mesh (Smart UV Project), so the UV layout differs from the original Pixal3D mesh and the texture is resampled once.
+- Not yet tested end to end: a full run (colour, rig, animation, texture) on a repaired mesh. The endpoint, the state change and the restart arguments were checked with a stand-in launcher.
 - The seam at the wrist is an overlap of two shells, not a welded surface; a tilted wrist plane can show it.
 - Only T/A-posed figures have a meaningful *Select hands*; for anything else paint the region by hand.
 - A region that covers a whole separate part (no boundary to the rest of the mesh) is skipped.
