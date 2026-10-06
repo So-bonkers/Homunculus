@@ -606,6 +606,7 @@ def st_texture(R):
         n = animate.retexture(R, png)
         if n: R.log(f"[texture] final texture put on {n} animation clip(s)")
     except Exception as e: R.log(f"[texture] clips not re-textured ({type(e).__name__}: {str(e)[:120]})")
+    os.makedirs(os.path.join(d, "faceproj"), exist_ok=True)      # absent when there is no visible face (the face fit never ran)
     ref = os.path.join(d, "faceproj", "reference_face.png"); im = Image.open(src).convert("RGB"); W, H = im.size
     im.crop((W // 2 - H // 12, int(H * 0.06), W // 2 + H // 12, int(H * 0.06) + H // 6)).save(ref)
     views = blender.mesh_views(out, os.path.join(d, "final_views"), tag="final"); R.A["final_views"] = views
