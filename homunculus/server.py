@@ -297,15 +297,16 @@ class H(SimpleHTTPRequestHandler):
         import re, subprocess, sys
         try:
             d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
-            run = os.path.basename(str(d.get("run", ""))); ps = [str(p).strip()[:200] for p in d.get("prompts", []) if str(p).strip()][:8]
+            run = os.path.basename(str(d.get("run", ""))); ps = [str(p).strip()[:200] for p in d.get("prompts", []) if str(p).strip()][:8]; hands = bool(d.get("hands"))
             if not (C.RUNS / run / "state.json").exists(): return self._json(404, {"error": "No such run."})
             S = json.load(open(C.RUNS / run / "state.json"))
             if not (S.get("artifacts") or {}).get("rig_fbx"): return self._json(400, {"error": "This run has no rig yet; animate after the Auto-rig stage."})
-            if not ps: return self._json(400, {"error": "Type at least one animation prompt."})
+            if not ps and not hands: return self._json(400, {"error": "Type at least one animation prompt."})
             reps = max(1, min(6, int(d.get("reps") or 2)))
             unit = f"homunculus-anim-{run}"
             subprocess.run(["systemctl", "--user", "reset-failed", f"{unit}.service"], capture_output=True)
             cmd = [sys.executable, "-m", "homunculus.animate", run, "--reps", str(reps)]
+            if hands: cmd += ["--hands"]
             for p in ps: cmd += ["--prompt", p]
             r = subprocess.run(["systemd-run", "--user", f"--unit={unit}", "--collect", f"--working-directory={C.ROOT}", "-p", "KillSignal=SIGINT",
                                 *[f"--setenv={k}={os.environ[k]}" for k in ("DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR") if os.environ.get(k)],

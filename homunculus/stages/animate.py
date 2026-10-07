@@ -52,6 +52,36 @@ def _asset(R, log):
     return str(d)
 
 
+def hand_layer(glb, prompt, log):
+    """Set the finger bones of one clip (GLB + FBX, rewritten in place) from the hand-pose library for this prompt. Returns True when it was applied."""
+    if not C.HAND_POSE_LAYER: return False
+    from .. import handpose
+    spec = {**handpose.poses_for(prompt), "lib": handpose.LIB, "ramp": 6}; p = str(glb) + ".handpose.json"; json.dump(spec, open(p, "w"))
+    try:
+        r = subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "img2rig" / "blender_handpose.py"), "--", str(glb), p], capture_output=True, text=True, timeout=600)
+        ok = r.returncode == 0 and "finger bones" in r.stdout
+        if ok: log(f"[animate] hands: {spec['left']} / {spec['right']} for '{prompt[:50]}'")
+        else: log("[animate] hand poses not applied: " + ((r.stdout + r.stderr).strip().splitlines() or ["?"])[-1][:100])
+        return ok
+    finally:
+        try: os.remove(p)
+        except OSError: pass
+
+
+def relayer(R, log=None):
+    """Apply the hand-pose layer to every clip of a run that already exists (and refresh thumbnails and the textured copies). Returns the number of clips changed."""
+    log = log or R.log; M = _manifest(R); n = 0
+    for c in M.get("clips", []):
+        src = R.dir / c["glb"]
+        if not src.exists(): continue
+        if hand_layer(src, c.get("prompt", ""), log):
+            n += 1; thumb = src.with_suffix(".png")
+            subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "img2rig" / "blender_clip_thumb.py"), "--", str(src), str(thumb)], capture_output=True, text=True, timeout=300)
+    png = (R.A.get("textured_glb") or "")[:-4] + "_basecolor.png"
+    if n and R.A.get("textured_glb") and os.path.exists(png): retexture(R, png)
+    return n
+
+
 def _slug(t): return re.sub(r"[^a-z0-9]+", "_", t.lower()).strip("_")[:36] or "clip"
 
 
@@ -79,6 +109,7 @@ def generate(R, prompts, reps=2, log=None):
             cid = f"{_slug(prompt)}_{stamp}_{rep + 1}"; dst = _dir(R) / "clips" / f"{cid}.glb"
             shutil.move(str(f), dst)
             if f.with_suffix(".fbx").exists(): shutil.move(str(f.with_suffix(".fbx")), dst.with_suffix(".fbx"))
+            hand_layer(dst, prompt, log)
             thumb = dst.with_suffix(".png")
             subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "blender_clip_thumb.py"), "--", str(dst), str(thumb)], capture_output=True, text=True, timeout=300)
             rel = lambda p: os.path.relpath(p, R.dir)

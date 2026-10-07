@@ -56,6 +56,7 @@ FACE_FIT = "auto"          # face texture fit: auto (landmark warp if both faces
 FACE_REFINE_EARLY = True   # redraw the face close-up before the 3D step (better face geometry), not only for the texture
 FACE_RESHAPE = True        # move the mesh's face features to where the reference has them (before rigging)
 FACE_SOURCE = "original"      # the face texture is fitted from: original = your own picture, upscaled (the face as it really is; falls back to the redraw when its landmarks are not readable) | redraw
+HAND_POSE_LAYER = True       # set the fingers of every animation clip from a hand-pose library chosen from the prompt (fist, open, grip, point, thumbs up): the motion models do not drive fingers
 TEXTURE_MODE = "simple"      # simple: texture from the upscaled picture / chosen redraw only (front projection + landmark face fit, no extra generated images); full: also the face close-up redraw as a reference and Qwen-cleaned side/back views
 TEXTURE_VIEWS = True       # texture: project the redraw onto the body front, then clean the head sides, body sides and back from extra views
 HAND_REFINE_EARLY = False  # (off) redraw each hand as a close-up before the 3D step

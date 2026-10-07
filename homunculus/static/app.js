@@ -653,6 +653,7 @@ async function runPage(name) {
         <textarea class="notes" id="aprompts" rows="3" placeholder="walks forward&#10;waves with the right hand&#10;jumps in place" ${rigged ? "" : "disabled"}></textarea><div id="apresets" class="presetbox"></div>
         <div class="rv-act"><label class="inl">Clips per prompt <select class="input" id="areps" style="width:70px;height:36px"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></label>
           <button class="btn btn-glow" id="agen" ${rigged && !busy ? "" : "disabled"}>${busy ? (A.status === "queued" ? "Queued: waits for the GPU" : "Generating…") : "Generate clips"}</button>
+          ${A && A.clips.length ? `<button class="btn btn-ghost" id="ahands" title="Set the fingers of every clip from the prompt: fists for a punch, an open hand for a wave, a grip for a sword. No GPU needed.">Set hand poses</button>` : ""}
           <span class="rv-msg" id="amsg">${rigged ? "" : "Available once the rig is built."}${A?.status === "failed" ? " Last attempt failed: " + esc(A.error || "see the log") : ""}</span></div></div>
         ${A && A.clips.length ? `<div class="viewer anim-view" id="avw"><div class="vload" id="avl"><div style="text-align:center">Loading clip<div class="p"><i></i></div></div></div>
             <div class="vbar"><button data-o="play" class="on">Pause</button><button data-o="slow">0.5×</button><button data-o="norm" class="on">1×</button><button data-o="bones">Bones</button></div></div>
@@ -660,6 +661,7 @@ async function runPage(name) {
           <div class="clipdl" id="clipdl"></div>`
           : `<div class="empty" style="margin-top:20px">${busy ? "Generating the first clips…" : "No clips yet. Type a prompt above."}</div>`}`;
       $("#aprompts").value = typed; presetPicker($("#aprompts"), $("#apresets"));
+      $("#ahands") && ($("#ahands").onclick = async () => { $("#ahands").disabled = true; try { const r = await fetch("/api/animate", { method: "POST", body: JSON.stringify({ run: name, hands: true }) }); const jj = await r.json(); toast(r.ok ? "Setting hand poses on the clips…" : jj.error || "Could not start", !r.ok); } catch { toast("Could not reach the server", true); } setTimeout(() => { const b = $("#ahands"); b && (b.disabled = false); }, 4000); });
       $("#agen").onclick = async () => {
         const ps = $("#aprompts").value.split("\n").map((x) => x.trim()).filter(Boolean); if (!ps.length) { $("#amsg").textContent = "Type at least one prompt."; return; }
         $("#agen").disabled = true;
