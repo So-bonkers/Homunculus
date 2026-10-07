@@ -562,7 +562,7 @@ def _full_mesh(R, tdir, tag, seed, t0):
     R.A["mesh_glb"] = glb; hi = os.path.join(os.path.dirname(glb), "mesh_hi.glb"); R.A["mesh_hi_glb"] = hi if os.path.exists(hi) else None
     src_copy = os.path.join(os.path.dirname(glb), "source.png"); shutil.copy(R.A["edit_upscaled"], src_copy); R.A["mesh_source"] = src_copy
     R.mark("mesh", "running", seconds=round(time.time() - t0), peak_vram=round(wd["peak"], 1), note=f"{os.path.basename(tdir)} textured")
-    return f"{os.path.basename(tdir)} textured mesh built"
+    return f"{os.path.basename(tdir)} textured mesh built" + hand_gate(R)
 
 def st_color(R):
     """A quick base colour before rigging (CPU only, ~20 s): the redraw's front is projected onto the mesh, so the rig is built and
@@ -653,6 +653,56 @@ def st_animate(R):
     progress.snap(R, "animate", f"{len(clips)} animation clip(s) generated", thumbs, [c["prompt"][:40] for c in clips if c.get("thumb")][:8])
     return f"{len(clips)} clip(s) for {len(ps)} prompt(s)"
 
+def hand_gate(R):
+    """After the 3D mesh is final: do the hands look broken? Cut-off or torn fingers leave open edges (blender_handcheck.py, CPU). --auto-repair alert (default): warn and point to the
+    Repair tab; auto: run the repair here, before rigging, with the GPU the run already holds, and continue with the repaired mesh; off: skip. Returns a note for the stage."""
+    mode = R.state.get("auto_repair", C.AUTO_REPAIR)
+    if mode == "off" or mesh_mode(R) or not R.A.get("mesh_glb"): return ""
+    try:
+        out = R.p("05_mesh", "hand_check.json")
+        subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "blender_handcheck.py"), "--", R.A["mesh_glb"], out], capture_output=True, text=True, timeout=300)
+        res = json.load(open(out)); R.state["hand_check"] = res; R.save()
+    except Exception as e:
+        R.log(f"[hands] check skipped ({type(e).__name__}: {str(e)[:80]})"); return ""
+    bad = [s for s in ("left", "right") if (res.get(s) or {}).get("broken")]
+    if not bad: R.log("[hands] the hands look intact"); return ""
+    why = " and ".join(f"{s} ({res[s]['open_per_1000']} open edges per 1000 vertices)" for s in bad)
+    if mode != "auto":
+        msg = f"the {why} hand look broken (torn or cut-off fingers): repair them in the Repair tab before or after rigging"
+        R.log("[hands] " + msg); R.state["alert"] = {"msg": msg, "time": time.strftime("%H:%M:%S")}; R.save(); notify.send(f"homunculus · {R.state['name']}: hands look broken", msg)
+        return " - the hands look broken (see the Repair tab)"
+    R.log(f"[hands] the {why} hand look broken: repairing them now")
+    try:
+        from . import repair
+        job = "auto_" + time.strftime("%H%M%S"); jd = R.dir / "10_repair" / job; jd.mkdir(parents=True, exist_ok=True)
+        rc, lines, _ = repair._bl(["hands", R.A["mesh_glb"], jd / "hands.json"]); strokes = json.load(open(jd / "hands.json"))["strokes"]
+        xs = [s_[0] for s_ in strokes]; mid = (min(xs) + max(xs)) / 2
+        strokes = [s_ for s_ in strokes if ("left" in bad and s_[0] > mid) or ("right" in bad and s_[0] < mid)]      # only the broken side(s); the character's left is +X
+        old = R.A["mesh_glb"]; repair.run_job(R, job, strokes, "")
+        tex = jd / "repaired_textured.glb"
+        if not tex.exists(): raise RuntimeError("the repair produced no textured mesh")
+        new = os.path.join(os.path.dirname(old), "mesh_repaired.glb"); shutil.copy(tex, new)
+        R.A["mesh_before_repair"] = R.A.get("mesh_before_repair") or old; R.A["mesh_glb"] = new; R.A["mesh_hi_glb"] = new; R.save()
+        R.log("[hands] repaired: the run continues with the repaired mesh"); return " - broken hands repaired automatically"
+    except Exception as e:
+        msg = f"automatic hand repair failed ({type(e).__name__}: {str(e)[:100]}); continuing with the original mesh: repair it in the Repair tab"
+        R.log("[hands] " + msg); R.state["alert"] = {"msg": msg, "time": time.strftime("%H:%M:%S")}; R.save(); return " - hand repair failed"
+
+
+def wrist_check(R, fbx):
+    """Bend each wrist of the rigged model and measure whether the hand stays attached to the forearm (blender_wristcheck.py, CPU). Returns [(side, result)] for the hands that are NOT ok."""
+    try:
+        out = R.p("08_rig_check", "wrist.json")
+        subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "blender_wristcheck.py"), "--", fbx, out], capture_output=True, text=True, timeout=300)
+        res = json.load(open(out)); R.state["wrist_check"] = res; R.save()
+        bad = [(side, r) for side, r in res.items() if isinstance(r, dict) and not r.get("ok", True)]
+        for side, r in res.items():
+            if isinstance(r, dict): R.log(f"[wrist] {side} hand: " + ("one mesh with the forearm" if not r.get("separate") else f"separate piece, gap {r['gap_rest_cm']} cm at rest / {r['gap_bent_cm']} cm bent") + (" - DETACHED" if not r.get("ok", True) else " - ok"))
+        return bad
+    except Exception as e:
+        R.log(f"[wrist] check skipped ({type(e).__name__}: {str(e)[:80]})"); return []
+
+
 def rig_once(R, variant, extra):
     t0 = time.time()
     with gpu.watchdog(R.log) as wd:
@@ -666,6 +716,8 @@ def rig_once(R, variant, extra):
     open_review(R, "rig_check", f"rig ({variant}) test poses", [views[k] for k in keys], RIG_CAPS[:len(keys)])
     v = {"pass": True, "score": 0, "tally": "your call", "problems": [], "votes": {}} if manual(R) else vlm.majority_pass(vlm.panel(fp(R, prompts.RIG_CHECK if C.HAND_VIEWS else prompts.RIG_CHECK_NOHANDS), [views[k] for k in keys], required=("pass",), log=R.log, cancel=decided(R), human_notes=R.state.get("human_notes", "")), R.log)
     R.state["vlm"][f"rig_check_{variant}"] = v; R.save()
+    for side, r_ in wrist_check(R, fbx): v.setdefault("problems", []).append(f"the {side} hand is detached from the forearm (gap {r_['gap_bent_cm']} cm when the wrist bends): repair it in the Repair tab")
+    R.state["needs_repair"] = [side for side in ("left", "right") if side in (R.state.get("wrist_check") or {}) and not R.state["wrist_check"][side].get("ok", True)]; R.save()
     progress.snap(R, "rig_check", f"rig ({variant}) test poses: your call" if manual(R) else
                   f"rig ({variant}): judges {v['tally']} -> {'PASS' if v.get('pass') else 'FAIL'} (mean {v.get('score')}/10) - test poses, not the final pose",
                   [views[k] for k in keys], RIG_CAPS[:len(keys)],
@@ -729,6 +781,7 @@ def main():
     ap.add_argument("--review-grace", type=int, default=None, help="seconds to respond in override mode (default 60)")
     ap.add_argument("--texture", choices=["simple", "full"], help="simple (default): texture from the upscaled picture / chosen redraw only; full: also the face close-up redraw and Qwen-cleaned side/back views")
     ap.add_argument("--face-source", dest="face_source", choices=["original", "redraw"], help="original (default): fit the face texture from your own picture, upscaled (falls back to the redraw if its landmarks cannot be matched); redraw: from the redrawn picture")
+    ap.add_argument("--auto-repair", dest="auto_repair", choices=["alert", "auto", "off"], help="broken hands (torn or cut-off fingers) in the finished 3D model: alert (default) warns and points to the Repair tab; auto repairs them before rigging; off")
     ap.add_argument("--face", choices=["auto", "on", "off"], help="auto (default): the planner decides whether a full-face helmet or mask hides the face; off: no face work at all (no face close-up, reshape or fit); on: always work on the face")
     ap.add_argument("--face-redraw", dest="face_redraw", choices=["on", "off"], help="on (default): redraw the face as a full-resolution close-up before the 3D step (a sharper face in the mesh and texture); off: use the full-body redraw as it is")
     ap.add_argument("--outfit", choices=["keep", "shirtless", "nude"], help="keep: outfit from the image (default); shirtless: bare torso and arms (avoids sleeve/cuff layers at the wrists); nude: unclothed, anatomy preserved")
@@ -745,6 +798,7 @@ def main():
     R = Run(os.path.abspath(a.image), a.name, a.style)
     if a.outfit: R.state["outfit"] = a.outfit; R.save()
     if a.face: R.state["face"] = a.face; R.save()
+    if a.auto_repair: R.state["auto_repair"] = a.auto_repair; R.save()
     if a.face_source: R.state["face_source"] = a.face_source; R.save()
     if a.texture: R.state["texture_mode"] = a.texture; R.save()
     if a.face_redraw: R.state["face_redraw"] = a.face_redraw == "on"; R.save()
