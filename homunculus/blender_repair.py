@@ -178,6 +178,9 @@ elif mode == "merge":
     # 1) every region's donor, mapped, snapped to the wrist, clipped; collected before anything is deleted
     donors = []; delete = np.zeros(len(V), bool); boxes = []
     for j in jobs:
+        _i = json.load(open(j["region"])); delete[np.load(os.path.join(os.path.dirname(j["region"]), _i["mask"]))] = True
+    Vk = V[~delete]                                                          # what stays of the original mesh: the donors must meet it
+    for j in jobs:
         info = json.load(open(j["region"])); idx = np.load(os.path.join(os.path.dirname(j["region"]), info["mask"])); delete[idx] = True
         cx, cz, half = info["box"]; ppm = CROP / (2 * half); u0, v0, u1, v1, W, H = j["silhouette"]
         bpy.ops.object.select_all(action="DESELECT"); before = set(bpy.data.objects)
@@ -199,18 +202,25 @@ elif mode == "merge":
         ymean = (dlo[1] + dhi[1]) / 2; Yo = ((np.array(info["bbox"][0][1]) + np.array(info["bbox"][1][1])) / 2) - f * ymean
         D2 = np.stack([f * D[:, 0] + Xo, f * D[:, 1] + Yo, f * D[:, 2] + Zo], 1)
         rc = np.array(info["ring"]["center"]); n = np.array(info["ring"]["normal"]); rr = info["ring"]["radius"]
-        # snap: the donor's limb cross-section at the wrist plane must sit on the original limb's (lateral shift) and have its size (scale);
-        # both are measured the same way: the vertices within a slab around the plane and within a few radii of the wrist
-        def slab_of(P):
-            tt = (P - rc) @ n; lat = P - rc - np.outer(tt, n); sel = (np.abs(tt) < 0.3 * rr) & (np.linalg.norm(lat, axis=1) < 3 * rr); return P[sel]
-        sb, sd = slab_of(V), slab_of(D2)
-        if len(sb) > 30 and len(sd) > 30:
-            cb, cd = sb.mean(0), sd.mean(0); cb -= ((cb - rc) @ n) * n; cd -= ((cd - rc) @ n) * n; D2 = D2 + (cb - cd)
-            sd = slab_of(D2); cd = sd.mean(0); cd -= ((cd - rc) @ n) * n
-            perp = lambda P, c: np.linalg.norm(P - c - np.outer((P - c) @ n, n), axis=1).mean()
-            g = min(1.3, max(0.77, perp(sb, cb) / max(perp(sd, cd), 1e-6))); D2 = cb + (D2 - cb) * g
-            print(f"[repair] region {info['index']}: donor scale x{f:.3f}, snapped to the wrist (x{g:.2f} size correction, {np.linalg.norm(cb - cd) * 100:.1f} cm shift)")
-        t = (D2 - rc) @ n; keep = t >= -1.0 * rr                                  # hand side of the wrist plane plus a one-radius stub that overlaps the forearm
+        # contact: the picture fixes the hand's size and position only roughly, so measure where the remaining arm REALLY ends along the arm axis and slide the donor's
+        # stub over that end (an overlap of about one wrist radius), centred on the arm and with the arm's size. Nothing is left floating.
+        ax = lambda P: P - rc - np.outer((P - rc) @ n, n)                    # offsets from the arm axis (the line through the wrist ring along n)
+        tb = (Vk - rc) @ n; lb = np.linalg.norm(ax(Vk), axis=1); arm = (lb < 2.5 * rr) & (tb < 3 * rr) & (tb > -6 * rr)
+        td = (D2 - rc) @ n; ld = np.linalg.norm(ax(D2), axis=1); tube = ld < 2.5 * rr
+        if arm.sum() > 30 and tube.sum() > 30:
+            t_end = float(np.percentile(tb[arm], 98)); t_start = float(np.percentile(td[tube], 2)); stub = max(0.0, 2.0 * rr)
+            overlap = min(1.0 * rr, 0.6 * max(float(np.percentile(td[tube], 50)) - t_start, 0.01))
+            D2 = D2 + n * ((t_end - overlap) - t_start)                       # along the arm: the stub starts one overlap inside the arm
+            td = (D2 - rc) @ n
+            za = arm & (tb > t_end - 0.6 * rr); zd = (td < td[tube].min() + 0.6 * rr) & (np.linalg.norm(ax(D2), axis=1) < 2.5 * rr)
+            if za.sum() > 10 and zd.sum() > 10:
+                cb, cd = Vk[za].mean(0), D2[zd].mean(0); cb = cb - ((cb - rc) @ n) * n; cd = cd - ((cd - rc) @ n) * n
+                D2 = D2 + (cb - cd)                                           # across the arm: centred on it
+                perp = lambda P, c: np.linalg.norm(P - c - np.outer((P - c) @ n, n), axis=1).mean()
+                g = min(1.3, max(0.77, perp(Vk[za], cb) / max(perp(D2[zd], cb), 1e-6))); D2 = cb + (D2 - cb) * g
+                print(f"[repair] region {info['index']}: donor scale x{f:.3f}; arm ends {abs(t_end) * 100:.1f} cm from the wrist ring, stub slid {overlap * 100:.1f} cm over it, "
+                      f"centred ({np.linalg.norm(cb - cd) * 100:.1f} cm shift, x{g:.2f} size)")
+        t = (D2 - rc) @ n; keep = np.ones(len(D2), bool)                      # the donor starts inside the arm by construction: nothing to clip
         for i, v in enumerate(do.data.vertices): v.co = Vector(D2[i].tolist())
         bm = bmesh.new(); bm.from_mesh(do.data); bm.verts.ensure_lookup_table()
         bmesh.ops.delete(bm, geom=[bm.verts[i] for i in np.nonzero(~keep)[0]], context="VERTS"); bm.to_mesh(do.data); bm.free(); do.name = f"repair_donor_{info['index']}"

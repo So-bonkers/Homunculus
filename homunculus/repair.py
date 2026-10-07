@@ -107,11 +107,27 @@ def bake_glb(J, merged):
     J.S["result_textured"] = J.rel(out); J.save(); return out
 
 
+def remerge(R, job, base=None):
+    """Join the donors of an earlier job again (CPU, no GPU lock): after a change to the merge, or onto another base mesh. Keeps the old result as repaired_old.glb."""
+    J = Job(R, job); base = base or J.S.get("base") or R.A.get("mesh_glb")
+    if not os.path.exists(J.dir / "merge.json"): raise RuntimeError("that job has no merge.json (it did not get as far as the merge)")
+    out = J.dir / "repaired.glb"
+    if out.exists(): shutil.copy(out, J.dir / "repaired_old.glb")
+    J.log(f"joining the hands again onto {os.path.basename(str(base))}")
+    rc, lines, text = _bl(["merge", base, J.dir / "merge.json", out, J.dir / "after"])
+    for l in lines: J.log(l[9:])
+    if rc != 0 or not out.exists(): raise RuntimeError("merge failed: " + text[-400:])
+    for reg in J.S.get("regions", []):
+        p = str(J.dir / "after" / f"after_region{reg['index']}_crop.png")
+        if os.path.exists(p): reg["after"] = J.rel(p); reg["after_fingers"] = _fingers(p)
+    J.S["base"] = str(base); J.S["result"] = J.rel(str(out)); bake_glb(J, str(out)); J.save(); return str(out)
+
+
 def run_job(R, job, strokes, notes="", rounds=2, per_round=3):
     J = Job(R, job); S = J.S; S.update(status="running", step="regions", notes=notes, t0=time.time(), regions=[], result=None); J.save()
     base = R.A.get("mesh_glb")
     if not base or not os.path.exists(base): raise RuntimeError("this run has no 3D model yet (the repair works on the model before rigging)")
-    json.dump({"strokes": strokes}, open(J.dir / "strokes.json", "w"))
+    S["base"] = base; json.dump({"strokes": strokes}, open(J.dir / "strokes.json", "w"))
     J.log("finding the region and rendering its close-up")
     rc, lines, out = _bl(["analyse", base, J.dir / "strokes.json", J.dir / "an"])
     for l in lines: J.log(l[9:])
@@ -153,9 +169,12 @@ def run_job(R, job, strokes, notes="", rounds=2, per_round=3):
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("run"); ap.add_argument("--job", default=None); ap.add_argument("--hands", action="store_true"); ap.add_argument("--notes", default="")
+    ap.add_argument("--remerge", metavar="JOB", help="join the donors of an earlier job again and bake (CPU, no GPU lock); --base PATH names the mesh the job was made on")
+    ap.add_argument("--base", default=None)
     ap.add_argument("--bake", metavar="JOB", help="only bake the textured single mesh of an earlier job (CPU, no GPU lock)")
     ap.add_argument("--no-lock", action="store_true", help="do not wait for the GPU lock (only for tests that need no GPU)")
     a = ap.parse_args(); S0 = json.load(open(C.RUNS / a.run / "state.json")); R = Run(S0["input"], a.run)
+    if a.remerge: print("remerged:", remerge(R, a.remerge, a.base)); return
     if a.bake:
         J = Job(R, a.bake); out = bake_glb(J, str(J.dir / "repaired.glb")); print("baked:", out); return
     job = a.job or time.strftime("%H%M%S")

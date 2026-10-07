@@ -182,7 +182,8 @@ class H(SimpleHTTPRequestHandler):
             S = json.load(open(C.RUNS / dst / "state.json")); A = S.setdefault("artifacts", {})
             old = A.get("mesh_glb") or ""; mdir = os.path.dirname(old) if old else str(C.RUNS / dst / "05_mesh" / "try1")
             os.makedirs(mdir, exist_ok=True); new = os.path.join(mdir, "mesh_repaired.glb"); shutil.copy(rg, new)
-            A["mesh_before_repair"] = old; A["mesh_glb"] = new; A["mesh_hi_glb"] = new
+            if not A.get("mesh_before_repair"): A["mesh_before_repair"] = old          # keep the ORIGINAL mesh path through repeated repairs
+            A["mesh_glb"] = new; A["mesh_hi_glb"] = new
             for k in ("colored_glb", "textured_glb", "rig_fbx", "rig_glb", "final_fbx", "final_glb", "anim_asset"): A.pop(k, None)
             S["repaired_from"] = {"run": src, "job": job}; json.dump(S, open(C.RUNS / dst / "state.json", "w"), indent=1)
             q = {"frm": "color", "zip": "1" if S0.get("zip") else "0", "direct": "1" if S0.get("direct") else "0", "face_redraw": "1" if S0.get("face_redraw") is not False else "0"}
