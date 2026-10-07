@@ -18,7 +18,7 @@ MESH_MODEL = {"ingest": "weld · base · decimate · UVs", "upscale": "not neede
               "mesh": "kept as is (no Pixal3D)", "mesh_check": "not needed (your geometry)", "color": "front painting projected"}
 MESH_SKIPPED = {"upscale", "mesh_check"}
 GLB_KEYS = [("final_glb", "Final"), ("rig_glb", "Rigged"), ("mesh_glb", "Textured mesh")]
-FILE_KEYS = [("final_fbx", "Final rig · FBX"), ("final_glb", "Final rig · GLB"), ("rig_fbx", "Rig · FBX"), ("mesh_glb", "Mesh · GLB"), ("report", "Report")]
+FILE_KEYS = [("final_glb", "Final rig · GLB"), ("final_fbx", "Final rig · FBX"), ("mesh_glb", "Mesh · GLB"), ("report", "Report")]      # GLB only unless an older run kept FBX; more formats are made on demand (Accept)
 
 
 def _url(run, p):

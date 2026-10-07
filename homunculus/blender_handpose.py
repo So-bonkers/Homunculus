@@ -52,5 +52,5 @@ for f in range(f0, f1 + 1):
         pb.keyframe_insert("rotation_quaternion", frame=f)
 fbx = glb[:-4] + ".fbx"
 bpy.ops.export_scene.gltf(filepath=glb, export_format="GLB", export_animations=True)
-bpy.ops.export_scene.fbx(filepath=fbx, add_leaf_bones=False, bake_anim=True, path_mode="COPY", embed_textures=True)
+if spec.get("fbx", True): bpy.ops.export_scene.fbx(filepath=fbx, add_leaf_bones=False, bake_anim=True, path_mode="COPY", embed_textures=True)
 print(f"[handpose] {spec['left']} / {spec['right']}: {len(plan)} finger bones over {f1 - f0 + 1} frames")

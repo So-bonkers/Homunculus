@@ -102,9 +102,9 @@ def do_apply(J, req):
             f = final[:-4] + ext
             if os.path.exists(f) and not os.path.exists(final[:-4] + "_before_retex" + ext): shutil.copy(f, final[:-4] + "_before_retex" + ext)
         J.log("putting the texture on the rig")
-        r = subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "tex_swap.py"), "--", A["rig_fbx"], str(png), final], capture_output=True, text=True)
-        if not os.path.exists(final): raise RuntimeError("texture swap failed: " + (r.stdout + r.stderr)[-500:])
-        A["final_fbx"] = final; A["final_glb"] = final[:-4] + ".glb"
+        r = subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "tex_swap.py"), "--", A["rig_fbx"], str(png), final] + ([] if C.KEEP_FBX else ["--no-fbx"]), capture_output=True, text=True)
+        if not os.path.exists(final[:-4] + ".glb"): raise RuntimeError("texture swap failed: " + (r.stdout + r.stderr)[-500:])
+        A["final_fbx"] = final if os.path.exists(final) else None; A["final_glb"] = final[:-4] + ".glb"
     A["textured_glb"] = str(res); R.save()
     try:
         from .stages import animate

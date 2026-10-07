@@ -5,6 +5,7 @@ motions are sampled from text on the GPU (fast: a 74M-parameter model), and driv
 GLB + FBX per clip (in UniMate's canonical frame: facing +Z, normalised size). Everything runs in unimate/.venv (python 3.10, bpy 4.0).
 """
 import json, os, re, shutil, subprocess, time
+from pathlib import Path
 from .. import config as C, gpu
 
 UM = C.ROOT / "unimate"; UM_PY = UM / ".venv" / "bin" / "python"
@@ -56,7 +57,7 @@ def hand_layer(glb, prompt, log):
     """Set the finger bones of one clip (GLB + FBX, rewritten in place) from the hand-pose library for this prompt. Returns True when it was applied."""
     if not C.HAND_POSE_LAYER: return False
     from .. import handpose
-    spec = {**handpose.poses_for(prompt), "lib": handpose.LIB, "ramp": 6}; p = str(glb) + ".handpose.json"; json.dump(spec, open(p, "w"))
+    spec = {**handpose.poses_for(prompt), "lib": handpose.LIB, "ramp": 6, "fbx": bool(C.KEEP_FBX) and Path(str(glb)[:-4] + ".fbx").exists()}; p = str(glb) + ".handpose.json"; json.dump(spec, open(p, "w"))
     try:
         r = subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "blender_handpose.py"), "--", str(glb), p], capture_output=True, text=True, timeout=600)
         ok = r.returncode == 0 and "finger bones" in r.stdout
@@ -108,7 +109,9 @@ def generate(R, prompts, reps=2, log=None):
             prompt = ps[idx] if idx < len(ps) else slug.replace("_", " ")
             cid = f"{_slug(prompt)}_{stamp}_{rep + 1}"; dst = _dir(R) / "clips" / f"{cid}.glb"
             shutil.move(str(f), dst)
-            if f.with_suffix(".fbx").exists(): shutil.move(str(f.with_suffix(".fbx")), dst.with_suffix(".fbx"))
+            if f.with_suffix(".fbx").exists():
+                if C.KEEP_FBX: shutil.move(str(f.with_suffix(".fbx")), dst.with_suffix(".fbx"))
+                else: f.with_suffix(".fbx").unlink()          # GLB only: other formats are made on demand when a run is accepted
             hand_layer(dst, prompt, log)
             thumb = dst.with_suffix(".png")
             subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "blender_clip_thumb.py"), "--", str(dst), str(thumb)], capture_output=True, text=True, timeout=300)
@@ -134,7 +137,7 @@ def retexture(R, png):
         src = R.dir / c["glb"]
         if not src.exists(): continue
         out_g = src.with_name(src.stem + "_tex.glb"); out_f = src.with_name(src.stem + "_tex.fbx")
-        r = subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "anim_tex_swap.py"), "--", str(src), png, str(out_g), str(out_f)], capture_output=True, text=True, timeout=600)
+        r = subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "anim_tex_swap.py"), "--", str(src), png, str(out_g), str(out_f) if C.KEEP_FBX else "-"], capture_output=True, text=True, timeout=600)
         if out_g.exists():
             c["textured"] = os.path.relpath(out_g, R.dir); c["textured_fbx"] = os.path.relpath(out_f, R.dir) if out_f.exists() else None; n += 1
     if n: _save(R, M)

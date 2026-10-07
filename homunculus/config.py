@@ -56,6 +56,7 @@ FACE_FIT = "auto"          # face texture fit: auto (landmark warp if both faces
 FACE_REFINE_EARLY = True   # redraw the face close-up before the 3D step (better face geometry), not only for the texture
 FACE_RESHAPE = True        # move the mesh's face features to where the reference has them (before rigging)
 FACE_SOURCE = "original"      # the face texture is fitted from: original = your own picture, upscaled (the face as it really is; falls back to the redraw when its landmarks are not readable) | redraw
+KEEP_FBX = False             # False: the pipeline writes GLB only; other formats (FBX, OBJ, STL, USD) are made on demand when you accept a run (Accept button), so no disk is spent on duplicates
 AUTO_REPAIR = "alert"        # broken hands (torn or cut-off fingers leave open edges) found in the finished 3D model: alert = warn and point to the Repair tab | auto = run the repair before rigging | off
 HAND_POSE_LAYER = True       # set the fingers of every animation clip from a hand-pose library chosen from the prompt (fist, open, grip, point, thumbs up): the motion models do not drive fingers
 TEXTURE_MODE = "simple"      # simple: texture from the upscaled picture / chosen redraw only (front projection + landmark face fit, no extra generated images); full: also the face close-up redraw as a reference and Qwen-cleaned side/back views

@@ -21,8 +21,9 @@ def plan(run):
     """(archive name, source path) pairs for a run."""
     rd = C.RUNS / run; S = json.load(open(rd / "state.json")); A = S.get("artifacts") or {}; out = []
     add = lambda arc, p: out.append((arc, Path(p))) if p and Path(p).exists() else None
-    add(f"character/{run}_final.fbx", A.get("final_fbx")); add(f"character/{run}_final.glb", A.get("final_glb"))
-    if not A.get("final_fbx"): add(f"character/{run}_rigged.fbx", A.get("rig_fbx")); add(f"character/{run}_rigged.glb", A.get("rig_glb"))
+    add(f"character/{run}_final.glb", A.get("final_glb"))
+    if not (C.ROOT / "exports" / run / "fbx").is_dir(): add(f"character/{run}_final.fbx", A.get("final_fbx"))
+    if not A.get("final_glb"): add(f"character/{run}_rigged.glb", A.get("rig_glb"))
     tg = A.get("textured_glb") or A.get("colored_glb") or A.get("mesh_glb")
     if tg: add(f"character/{run}_mesh_before_rigging.glb", tg); add(f"character/{run}_basecolor.png", tg[:-4] + "_basecolor.png")
     try: M = json.load(open(rd / "09_animate" / "animations.json"))
@@ -30,7 +31,12 @@ def plan(run):
     seen = {}
     for c in M.get("clips", []):
         base = f"animations/{_slug(c.get('prompt', ''))}_take{int(c.get('rep', 0)) + 1}"; seen[base] = seen.get(base, 0) + 1; base += (f"_{seen[base]}" if seen[base] > 1 else "")
-        add(base + ".glb", rd / (c.get("textured") or c.get("glb") or "")); add(base + ".fbx", rd / (c.get("textured_fbx") or c.get("fbx") or ""))
+        add(base + ".glb", rd / (c.get("textured") or c.get("glb") or ""))
+        if not (C.ROOT / "exports" / run / "fbx").is_dir(): add(base + ".fbx", rd / (c.get("textured_fbx") or c.get("fbx") or ""))      # older runs kept an FBX per clip; new runs make FBX only on request (formats/fbx)
+    ex = C.ROOT / "exports" / run      # formats made on demand when the run was accepted (export_formats.py): shared textures sit next to the files
+    if ex.is_dir():
+        for f in sorted(ex.rglob("*")):
+            if f.is_file(): out.append((f"formats/{f.relative_to(ex)}", f))
     add("docs/contact_sheet.png", rd / "contact_sheet.png"); add("docs/report.md", rd / "report.md")
     return out, S, M
 

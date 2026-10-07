@@ -627,9 +627,9 @@ def st_texture(R):
     R.A["textured_glb"] = out; png = out[:-4] + "_basecolor.png"
     if R.A.get("rig_fbx") and os.path.exists(R.A["rig_fbx"]):
         final = os.path.join(str(R.dir / "07_rig"), f"{R.state['name']}_final.fbx")
-        r_ = subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "tex_swap.py"), "--", R.A["rig_fbx"], png, final], capture_output=True, text=True)
-        if not os.path.exists(final): raise RuntimeError("texture swap failed: " + (r_.stdout + r_.stderr)[-600:])
-        R.A["final_fbx"] = final; R.A["final_glb"] = final[:-4] + ".glb"
+        r_ = subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "tex_swap.py"), "--", R.A["rig_fbx"], png, final] + ([] if C.KEEP_FBX else ["--no-fbx"]), capture_output=True, text=True)
+        if not os.path.exists(final[:-4] + ".glb"): raise RuntimeError("texture swap failed: " + (r_.stdout + r_.stderr)[-600:])
+        R.A["final_fbx"] = final if os.path.exists(final) else None; R.A["final_glb"] = final[:-4] + ".glb"
     try:
         from .stages import animate
         n = animate.retexture(R, png)
@@ -708,7 +708,7 @@ def rig_once(R, variant, extra):
     with gpu.watchdog(R.log) as wd:
         fbx = rig.run(R.A.get("colored_glb") or R.A["mesh_glb"], str(R.dir / "07_rig"), R.state["name"], R.log, extra)
     R.A["rig_fbx"] = fbx; g = fbx.replace(".fbx", ".glb"); R.A["rig_glb"] = g if os.path.exists(g) else None
-    R.A["final_fbx"] = fbx; R.A["final_glb"] = R.A["rig_glb"]      # coloured rig for now; the texture stage replaces these with the finished texture
+    R.A["final_fbx"] = fbx if C.KEEP_FBX else None; R.A["final_glb"] = R.A["rig_glb"]      # coloured rig for now; the texture stage replaces these with the finished texture
     R.A.pop("anim_asset", None)                                  # a new rig needs a new animation asset
     R.log(f"rig ({variant}) built in {time.time()-t0:.0f}s, peak {wd['peak']:.1f} GB")
     views = blender.pose_views(fbx, str(R.dir / "08_rig_check" / variant)); R.A["pose_views"] = views
