@@ -35,6 +35,18 @@ const FORK_HINT = { upscale: "Everything is redone from the upscaled input.", pl
   texture: "Keeps the rig and the clips; redoes the final texture and puts it on all of them.", report: "Only rebuilds the report and downloads." };
 
 const fmtBytes = (n) => (n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : n >= 1e6 ? Math.round(n / 1e6) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB");
+async function openDoctor() {
+  const box = document.createElement("div"); box.className = "sheet-bg";
+  box.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" style="width:min(640px,100%)"><div class="sh-head"><div><div class="eb">System</div><h2>Is everything there?</h2></div><button class="x" data-x>✕</button></div><div id="dr" class="hint">Checking…</div></div>`;
+  document.body.appendChild(box); document.body.style.overflow = "hidden";
+  const close = () => { box.remove(); document.body.style.overflow = ""; removeEventListener("keydown", onKey); }; const onKey = (e) => e.key === "Escape" && close(); addEventListener("keydown", onKey);
+  box.addEventListener("click", (e) => { if (e.target === box || e.target.closest("[data-x]")) close(); });
+  try { const R = await api("/api/doctor"); const bad = R.filter((r) => r.status === "fail").length, warn = R.filter((r) => r.status === "warn").length;
+    $("#dr", box).outerHTML = `<div class="pill ${bad ? "failed" : "finished"}" style="align-self:flex-start"><i></i>${bad ? bad + " need attention" : warn ? "ready, " + warn + " optional parts missing" : "all good"}</div>
+      <dl class="kv">${R.map((r) => `<dt>${r.status === "ok" ? "✓" : r.status === "warn" ? "!" : "✕"} ${esc(r.name)}</dt><dd>${esc(r.detail)}${r.status !== "ok" && r.fix ? `<br><small>fix: ${esc(r.fix)}</small>` : ""}</dd>`).join("")}</dl>`; }
+  catch { $("#dr", box).textContent = "Could not reach the server."; }
+}
+
 async function openDelete(name, onDone) {
   let P; try { P = await api("/api/purge/" + encodeURIComponent(name)); } catch { return toast("Could not load that run", true); }
   const box = document.createElement("div"); box.className = "sheet-bg";
@@ -514,6 +526,7 @@ async function runPage(name) {
     $("#meta").innerHTML = `${pill(d.status)}${d.repair ? `<span class="pill running"><i></i>Repairing · ${esc(({ queued: "waiting for the GPU", regions: "redrawing", merge: "joining", bake: "baking" })[d.repair.step] || "working")}</span>` : ""}<span>${esc(d.file)}</span><span class="dotsep">•</span><span>${d.mode === "mesh" ? "3D model input" : d.options.direct ? "picture as is" : esc(o.outfit)}</span><span class="dotsep">•</span><span>review ${esc(o.review)}</span><span class="dotsep">•</span><span class="clock" id="clock"></span>${d.forked_from ? `<span class="dotsep">•</span><span>forked from <a class="btn-link" href="#/run/${encodeURIComponent(d.forked_from.run)}">${esc(d.forked_from.run)}</a> at ${esc(d.forked_from.stage)}</span>` : ""}`;
     $("#act").innerHTML = (d.live ? `<button class="btn btn-danger btn-sm" id="stop">Stop run</button>` : `<button class="btn btn-ghost btn-sm" id="forkbtn" title="Restart from any stage with new instructions or options">${ICON.fork} Fork</button>`)
       + (d.zip ? `<a class="btn btn-ghost btn-sm" href="${d.zip}" download>Mixamo zip</a>` : "")
+      + (d.package ? `<a class="btn btn-ghost btn-sm" href="${d.package}" download title="The rigged model, textures and every animation clip in one zip">Package</a>` : "")
       + (d.live ? "" : `<button class="btn btn-ghost btn-sm" id="delbtn" title="Delete this run and all its files">Delete</button>`)
       + (d.models.length ? `<button class="btn btn-primary btn-sm" id="view3d">View in 3D</button>` : "");
     $("#stop") && ($("#stop").onclick = () => stopRun(name));
@@ -752,6 +765,7 @@ async function route() {
   if (m) { document.title = `${m[1]} · homunculus`; await runPage(m[1]); }
   else { document.title = "homunculus"; await home(h === "/new" ? "new" : h === "/runs" ? "runs" : h === "/tips" ? "tips" : null); }
 }
+$("#doctorbtn").onclick = () => openDoctor();
 $("#tourbtn").onclick = () => startTour(page.kind === "run" ? "run" : "home");
 addEventListener("hashchange", () => { stopTour(); route(); });
 route();

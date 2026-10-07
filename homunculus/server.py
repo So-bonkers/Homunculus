@@ -38,6 +38,8 @@ class H(SimpleHTTPRequestHandler):
             try:
                 P = purge.plan(os.path.basename(path)); return self._json(200, {**P, "items": [{"label": i["label"], "bytes": i["bytes"]} for i in P["items"]]})
             except ValueError as e: return self._json(404, {"error": str(e)})
+        if path == "/api/doctor":
+            from . import doctor; return self._json(200, doctor.checks())
         if path.startswith("/api/retex/"):
             from . import api; return self._json(200, api.retex(os.path.basename(path)))
         if path.startswith("/api/repair/"):
@@ -50,6 +52,20 @@ class H(SimpleHTTPRequestHandler):
         if path.startswith("/static/"): return self._static(path[len("/static/"):])
         if self.path.startswith("/api/zip/"):
             self.send_zip(os.path.basename(self.path.split("?")[0])[:-4]); return
+        if self.path.startswith("/api/package/"):
+            run = os.path.basename(self.path.split("?")[0])[:-4]
+            try:
+                from . import package; z = package.build(run)
+                self.send_response(200); self.send_header("Content-Type", "application/zip"); self.send_header("Content-Length", str(z.stat().st_size))
+                self.send_header("Content-Disposition", f'attachment; filename="{run}_package.zip"'); self.end_headers()
+                with open(z, "rb") as f:      # packages are hundreds of MB: stream them
+                    while True:
+                        b = f.read(1 << 20)
+                        if not b: break
+                        self.wfile.write(b)
+                return
+            except Exception as e:
+                self.send_response(500); self.end_headers(); self.wfile.write(f"package failed: {e}".encode()); return
         super().do_GET()
     def send_zip(self, run):
         """Build (once) and serve the Mixamo upload zip for a run."""
