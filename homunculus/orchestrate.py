@@ -70,6 +70,18 @@ def face_on(R):
     return (R.state.get("vlm", {}).get("plan") or {}).get("face_visible", True) is not False
 
 
+def face_fit(R, glb_in, src, glb_out, preview_dir, log, **kw):
+    """Fit the face texture. With face_source "original" (the default) the face of the user's own picture (upscaled) is first pasted into a copy of the redraw (the two pictures'
+    landmarks are matched against each other, which works even when the mesh render has no readable face yet), and that picture is what gets fitted to the model. If either picture
+    has no readable face the redraw's own face is used as before."""
+    ref = R.A.get("upscaled")
+    if R.state.get("face_source", C.FACE_SOURCE) == "original" and ref and os.path.exists(ref) and os.path.abspath(ref) != os.path.abspath(src):
+        try:
+            hy = os.path.join(os.path.dirname(glb_out), "face_from_original_" + os.path.basename(glb_out)[:-4] + ".png"); faceproj.hybrid_face(src, ref, hy, log); src = hy
+        except Exception as e: log(f"[texture] your picture's face could not be used ({type(e).__name__}: {str(e)[:100]}); using the redraw's face")
+    return faceproj.run(glb_in, src, glb_out, preview_dir, log, **kw)
+
+
 def texture_simple(R):
     """Texture from the upscaled picture / chosen redraw alone (the default): no face close-up as the reference, no Qwen-cleaned side and back views, no Qwen face repaint.
     "full" (--texture full) adds those extra generated images, which can make the model look worse than the picture it came from."""
@@ -589,7 +601,7 @@ def st_texture(R):
     out = raw.replace(".glb", "_faceproj.glb")
     before = after = None
     if face_on(R):
-        glb, before, after = faceproj.run(base, src, out, os.path.join(d, "faceproj"), R.log, style=prompts.style_text(R.state["vlm"]["plan"], R.state.get("look", "asis")),
+        glb, before, after = face_fit(R, base, src, out, os.path.join(d, "faceproj"), R.log, style=prompts.style_text(R.state["vlm"]["plan"], R.state.get("look", "asis")),
                                           method="landmarks" if texture_simple(R) else C.FACE_FIT, face_desc=str(R.state["vlm"]["plan"].get("face", "")))
     else:      # a helmet or mask: no face to fit, the body projection covers the head too
         R.log("[texture] no visible face: face fit skipped")
@@ -603,7 +615,7 @@ def st_texture(R):
                 # the extra views may have repainted the edges of the fitted face: fit the face once more so it has the final say
                 try:
                     if not face_on(R): raise RuntimeError("no visible face")
-                    out2, before, after = faceproj.run(mv, src, raw.replace(".glb", "_final_tex.glb"), os.path.join(d, "faceproj2"), R.log, style=sty,
+                    out2, before, after = face_fit(R, mv, src, raw.replace(".glb", "_final_tex.glb"), os.path.join(d, "faceproj2"), R.log, style=sty,
                                                        method=C.FACE_FIT, face_desc=str(plan.get("face", "")))
                     mv = out2
                 except Exception as e: R.log(f"[texture] final face pass skipped ({type(e).__name__}: {str(e)[:100]})")
@@ -716,6 +728,7 @@ def main():
     ap.add_argument("--zip", action="store_true", help="also write exports/mixamo_<name>.zip (OBJ+MTL+texture) for uploading to Mixamo")
     ap.add_argument("--review-grace", type=int, default=None, help="seconds to respond in override mode (default 60)")
     ap.add_argument("--texture", choices=["simple", "full"], help="simple (default): texture from the upscaled picture / chosen redraw only; full: also the face close-up redraw and Qwen-cleaned side/back views")
+    ap.add_argument("--face-source", dest="face_source", choices=["original", "redraw"], help="original (default): fit the face texture from your own picture, upscaled (falls back to the redraw if its landmarks cannot be matched); redraw: from the redrawn picture")
     ap.add_argument("--face", choices=["auto", "on", "off"], help="auto (default): the planner decides whether a full-face helmet or mask hides the face; off: no face work at all (no face close-up, reshape or fit); on: always work on the face")
     ap.add_argument("--face-redraw", dest="face_redraw", choices=["on", "off"], help="on (default): redraw the face as a full-resolution close-up before the 3D step (a sharper face in the mesh and texture); off: use the full-body redraw as it is")
     ap.add_argument("--outfit", choices=["keep", "shirtless", "nude"], help="keep: outfit from the image (default); shirtless: bare torso and arms (avoids sleeve/cuff layers at the wrists); nude: unclothed, anatomy preserved")
@@ -732,6 +745,7 @@ def main():
     R = Run(os.path.abspath(a.image), a.name, a.style)
     if a.outfit: R.state["outfit"] = a.outfit; R.save()
     if a.face: R.state["face"] = a.face; R.save()
+    if a.face_source: R.state["face_source"] = a.face_source; R.save()
     if a.texture: R.state["texture_mode"] = a.texture; R.save()
     if a.face_redraw: R.state["face_redraw"] = a.face_redraw == "on"; R.save()
     if a.review: R.state["review_mode"] = a.review

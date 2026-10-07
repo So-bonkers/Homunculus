@@ -169,6 +169,28 @@ def _landmarks(rgb, fg):
     if not r.face_landmarks: return None
     return np.array([[l.x * big.shape[1] / k + x0, l.y * big.shape[0] / k + y0] for l in r.face_landmarks[0]], np.float64)
 
+def hybrid_face(redraw_png, original_png, out_png, log):
+    """The redraw picture with the face of the ORIGINAL picture pasted in. Both pictures show a face, so the match is made between the two pictures (their 478 landmarks, a thin-plate
+    warp), not against the model: the original face is warped into the redraw's face geometry and blended in (Poisson, feathered), the rest of the redraw is untouched.
+    Raises when a face is not found in either picture."""
+    import cv2
+    A = np.asarray(Image.open(redraw_png).convert("RGB")); O = np.asarray(Image.open(original_png).convert("RGB"))
+    La = _landmarks(A, _fgmask(redraw_png)); Lo = _landmarks(O, _fgmask(original_png))
+    if La is None or Lo is None: raise RuntimeError("a face was not found in " + ("both pictures" if La is None and Lo is None else "the redraw" if La is None else "the original picture"))
+    f = _tps(La, Lo)                                                                              # a pixel of the redraw -> where it lies in the original
+    hull = cv2.convexHull(La.astype(np.float32)).reshape(-1, 2); x0, y0 = np.floor(hull.min(0) - 6).astype(int); x1, y1 = np.ceil(hull.max(0) + 6).astype(int)
+    x0, y0 = max(0, x0), max(0, y0); x1, y1 = min(A.shape[1], x1), min(A.shape[0], y1)
+    yy, xx = np.mgrid[y0:y1, x0:x1]; src = f(np.stack([xx.ravel(), yy.ravel()], 1).astype(np.float64)).reshape(yy.shape + (2,)).astype(np.float32)
+    patch = cv2.remap(O, src[..., 0], src[..., 1], cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    m = np.zeros(A.shape[:2], np.uint8); cv2.fillConvexPoly(m, np.round(hull).astype(np.int32), 255)
+    m = cv2.erode(m, np.ones((5, 5), np.uint8), iterations=2)[y0:y1, x0:x1]
+    full = A.copy(); full[y0:y1, x0:x1] = patch; mm = np.zeros(A.shape[:2], np.uint8); mm[y0:y1, x0:x1] = m
+    try: out = cv2.seamlessClone(full, A, mm, (int((x0 + x1) / 2), int((y0 + y1) / 2)), cv2.NORMAL_CLONE)
+    except cv2.error as e:
+        log(f"[faceproj] Poisson blend failed ({str(e)[:60]}); feathered paste instead"); w = (cv2.GaussianBlur(mm, (0, 0), 6).astype(np.float32) / 255)[..., None]; out = (full * w + A * (1 - w)).astype(np.uint8)
+    Image.fromarray(out).save(out_png); log(f"[faceproj] the face of your own picture pasted into the redraw ({x1 - x0}x{y1 - y0}px, {len(La)} landmarks matched)"); return out_png
+
+
 def _tps(P, Q, lam=1e-4):
     """Thin-plate spline P -> Q (n x 2 each). Returns f(points m x 2)."""
     c = P.mean(0); sc = np.abs(P - c).max() or 1.0; Pn = (P - c) / sc
@@ -386,7 +408,7 @@ def multiview(glb_in, img_path, glb_out, preview_dir, log, style="", desc="", vi
     shutil.copy(cur, glb_out); shutil.copy(cur[:-4] + "_basecolor.png", glb_out[:-4] + "_basecolor.png")
     return glb_out
 
-def run(glb_in, img_path, glb_out, preview_dir, log, style="", method="auto", face_desc=""):
+def run(glb_in, img_path, glb_out, preview_dir, log, style="", method="auto", face_desc="", strict=False):
     os.makedirs(preview_dir, exist_ok=True); npy = os.path.join(preview_dir, "fgdist.npy"); mnpy = os.path.join(preview_dir, "fgmask.npy")
     fg = _distmap(img_path, npy, mnpy)
     bl = _bl
@@ -397,6 +419,7 @@ def run(glb_in, img_path, glb_out, preview_dir, log, style="", method="auto", fa
     if method in ("auto", "landmarks"):
         try: fit = _landmark_fit(render, img_path, preview_dir, log, fg)
         except Exception as e: log(f"[faceproj] landmark fit failed ({type(e).__name__}: {str(e)[:120]})")
+    if not fit and strict: raise RuntimeError("the face landmarks could not be matched between the picture and the model")
     if not fit and method in ("auto", "repaint"):
         try: fit = _repaint_fit(render, img_path, preview_dir, log, style, face_desc, fg)
         except Exception as e: log(f"[faceproj] repaint fit failed ({type(e).__name__}: {str(e)[:120]}); using the silhouette fit")
