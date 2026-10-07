@@ -5,7 +5,7 @@ from pathlib import Path
 from . import config as C
 
 PKG = __package__.split(".")[0]                       # ComfyUI output files carry the package name: <pkg>_<run>_<try>...
-UNITS = ("run", "repair", "retex", "anim", "looks")
+UNITS = ("run", "repair", "retex", "export", "anim", "looks")
 
 
 def _size(p):

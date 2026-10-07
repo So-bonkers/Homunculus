@@ -38,6 +38,15 @@ class H(SimpleHTTPRequestHandler):
             try:
                 P = purge.plan(os.path.basename(path)); return self._json(200, {**P, "items": [{"label": i["label"], "bytes": i["bytes"]} for i in P["items"]]})
             except ValueError as e: return self._json(404, {"error": str(e)})
+        if path.startswith("/api/accept/"):
+            from . import export_formats as X
+            run = os.path.basename(path)
+            if not (C.RUNS / run / "state.json").exists(): return self._json(404, {"error": "no such run"})
+            cp = X.cleanup_plan(run); S = json.load(open(C.RUNS / run / "state.json"))
+            try: st = json.load(open(C.RUNS / run / "export" / "status.json"))
+            except Exception: st = None
+            return self._json(200, {"formats": {k: {"label": v, "available": X.available(run)[k]} for k, v in X.FORMATS.items()}, "cleanup": {"items": cp["items"], "total": cp["total"]},
+                                    "accepted": S.get("accepted"), "status": st})
         if path == "/api/doctor":
             from . import doctor; return self._json(200, doctor.checks())
         if path.startswith("/api/retex/"):
@@ -106,6 +115,7 @@ class H(SimpleHTTPRequestHandler):
         if path == "/api/repair": return self.repair_job()
         if path == "/api/repair_use": return self.repair_use()
         if path == "/api/retex": return self.retex_job()
+        if path == "/api/accept": return self.accept_run()
         if path == "/api/delete": return self.delete_run()
         if self.path not in ("/api/pick", "/api/review"): self.send_error(404); return
         try:
@@ -195,6 +205,23 @@ class H(SimpleHTTPRequestHandler):
             freed = purge.delete(name); self._json(200, {"ok": True, "freed": freed})
         except ValueError as e: self._json(404, {"error": str(e)})
         except RuntimeError as e: self._json(409, {"error": str(e)})
+        except Exception as e: self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
+    def accept_run(self):
+        """The user is satisfied with a run: {run, formats: ["fbx", "obj", ...], cleanup: bool}. The extra formats are made from the GLBs (background unit); cleanup also deletes heavy intermediates."""
+        import subprocess, sys
+        from . import export_formats as X
+        try:
+            d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}"); run = os.path.basename(str(d.get("run", "")))
+            if not (C.RUNS / run / "state.json").exists(): return self._json(404, {"error": "No such run."})
+            if run in live_runs(): return self._json(409, {"error": "Stop the run first, or wait until it has finished."})
+            fm = [f for f in (d.get("formats") or []) if f in X.FORMATS and X.available(run).get(f)]
+            unit = f"homunculus-export-{run}"; subprocess.run(["systemctl", "--user", "reset-failed", f"{unit}.service"], capture_output=True)
+            cmd = [sys.executable, "-m", "homunculus.export_formats", run, "--formats", ",".join(fm)] + (["--cleanup"] if d.get("cleanup") else [])
+            r = subprocess.run(["systemd-run", "--user", f"--unit={unit}", "--collect", f"--working-directory={C.ROOT}", "-p", "KillSignal=SIGINT", *cmd], capture_output=True, text=True)
+            if r.returncode:
+                busy = "already" in (r.stderr or ""); return self._json(409 if busy else 500, {"error": "An export is already running." if busy else (r.stderr or r.stdout)[-300:]})
+            self._json(200, {"ok": True})
         except Exception as e: self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
     def retex_job(self):

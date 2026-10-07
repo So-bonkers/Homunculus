@@ -415,3 +415,5 @@ pre.note{margin:10px 0 0;padding:14px 16px;border-radius:var(--r-sm);background:
 .rt-ref,.rt-mask{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.rt-ref{object-fit:fill;opacity:.55;z-index:2}.rt-mask{z-index:3}
 .rt-views{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.rt-drop{display:grid;gap:4px;padding:18px;border:1.5px dashed var(--line);border-radius:14px;cursor:pointer;text-align:center;margin-bottom:10px}.rt-drop span{font-size:12.5px;color:var(--muted)}
 .rp-size output{min-width:36px;font-variant-numeric:tabular-nums}
+
+.fmts{display:grid;gap:8px;margin:4px 0}.fmts .inl{display:flex;gap:10px;align-items:center}.fmts small{color:var(--muted)}

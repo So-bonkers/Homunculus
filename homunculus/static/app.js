@@ -35,6 +35,28 @@ const FORK_HINT = { upscale: "Everything is redone from the upscaled input.", pl
   texture: "Keeps the rig and the clips; redoes the final texture and puts it on all of them.", report: "Only rebuilds the report and downloads." };
 
 const fmtBytes = (n) => (n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : n >= 1e6 ? Math.round(n / 1e6) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB");
+async function openAccept(name, done) {
+  let P; try { P = await api("/api/accept/" + encodeURIComponent(name)); } catch { return toast("Could not load that run", true); }
+  const box = document.createElement("div"); box.className = "sheet-bg";
+  box.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" style="width:min(560px,100%)"><div class="sh-head"><div><div class="eb">Accept</div><h2>${esc(name)}: happy with it?</h2></div><button class="x" data-x>✕</button></div>
+    <p class="hint" style="margin:0">The pipeline keeps GLB only. Pick the other formats you want; they are made from the GLBs now and added to the package. Nothing else is written, so no disk is wasted on copies you do not use.</p>
+    <div class="fmts"><label class="inl"><input type="checkbox" checked disabled> <b>GLB</b> <small>rigged character and every clip (always)</small></label>
+      ${Object.entries(P.formats).map(([k, v]) => `<label class="inl" ${v.available ? "" : 'style="opacity:.45"'}><input type="checkbox" data-f="${k}" ${v.available ? "" : "disabled"}> <b>${k.toUpperCase()}</b> <small>${esc(v.label.replace(/^[A-Z]+: /, ""))}</small></label>`).join("")}</div>
+    ${P.cleanup.total > 5e7 ? `<label class="inl" style="align-items:flex-start"><input type="checkbox" id="acl"> <span><b>Free ${fmtBytes(P.cleanup.total)}</b> <small>by deleting files only needed to fork from an early stage or to repair: ${P.cleanup.items.map((i) => esc(i.label) + " (" + fmtBytes(i.bytes) + ")").join("; ")}. Not undoable.</small></span></label>` : ""}
+    <div id="ast" class="hint"></div><div class="sh-foot"><span class="hint" id="amsg2" style="margin:0"></span><button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-glow" id="ago">Accept &amp; export</button></div></div>`;
+  document.body.appendChild(box); document.body.style.overflow = "hidden";
+  let timer = 0; const close = () => { clearTimeout(timer); box.remove(); document.body.style.overflow = ""; removeEventListener("keydown", onKey); }; const onKey = (e) => e.key === "Escape" && close(); addEventListener("keydown", onKey);
+  box.addEventListener("click", (e) => { if (e.target === box || e.target.closest("[data-x]")) close(); });
+  const poll = async () => { try { const Q = await api("/api/accept/" + encodeURIComponent(name)), st = Q.status;
+      if (st && st.status === "running") { $("#ast", box).textContent = (st.log || []).slice(-1)[0] || "Working…"; timer = setTimeout(poll, 2000); }
+      else if (st && st.status === "done") { $("#ast", box).innerHTML = `Done: ${(st.formats || []).map((f) => f.toUpperCase()).join(", ")}${st.freed ? " · freed " + fmtBytes(st.freed) : ""}. <a href="/api/package/${encodeURIComponent(name)}.zip" download>Download the package</a>`; $("#ago", box).textContent = "Export more"; $("#ago", box).disabled = false; done && done(); }
+      else if (st && st.status === "failed") { $("#ast", box).textContent = "Failed: " + (st.error || "see the log"); $("#ago", box).disabled = false; } } catch {} };
+  $("#ago", box).onclick = async () => { const fm = $$("[data-f]:checked", box).map((x) => x.dataset.f); $("#ago", box).disabled = true; $("#amsg2", box).textContent = "Starting…";
+    try { const r = await fetch("/api/accept", { method: "POST", body: JSON.stringify({ run: name, formats: fm, cleanup: !!($("#acl", box) && $("#acl", box).checked) }) }); const j = await r.json();
+      if (!r.ok) { $("#amsg2", box).textContent = j.error || "Could not start."; $("#ago", box).disabled = false; return; } $("#amsg2", box).textContent = ""; setTimeout(poll, 1200); } catch { $("#amsg2", box).textContent = "Could not reach the server."; $("#ago", box).disabled = false; } };
+  if (P.status && P.status.status === "running") { $("#ago", box).disabled = true; poll(); } else if (P.accepted) $("#ast", box).innerHTML = `Accepted ${esc(P.accepted.time)} · ${(P.accepted.formats || []).map((f) => f.toUpperCase()).join(", ")}. <a href="/api/package/${encodeURIComponent(name)}.zip" download>Download the package</a>`;
+}
+
 async function openDoctor() {
   const box = document.createElement("div"); box.className = "sheet-bg";
   box.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" style="width:min(640px,100%)"><div class="sh-head"><div><div class="eb">System</div><h2>Is everything there?</h2></div><button class="x" data-x>✕</button></div><div id="dr" class="hint">Checking…</div></div>`;
@@ -529,11 +551,13 @@ async function runPage(name) {
     $("#meta").innerHTML = `${pill(d.status)}${d.repair ? `<span class="pill running"><i></i>Repairing · ${esc(({ queued: "waiting for the GPU", regions: "redrawing", merge: "joining", bake: "baking" })[d.repair.step] || "working")}</span>` : ""}<span>${esc(d.file)}</span><span class="dotsep">•</span><span>${d.mode === "mesh" ? "3D model input" : d.options.direct ? "picture as is" : esc(o.outfit)}</span><span class="dotsep">•</span><span>review ${esc(o.review)}</span><span class="dotsep">•</span><span class="clock" id="clock"></span>${d.forked_from ? `<span class="dotsep">•</span><span>forked from <a class="btn-link" href="#/run/${encodeURIComponent(d.forked_from.run)}">${esc(d.forked_from.run)}</a> at ${esc(d.forked_from.stage)}</span>` : ""}`;
     $("#act").innerHTML = (d.live ? `<button class="btn btn-danger btn-sm" id="stop">Stop run</button>` : `<button class="btn btn-ghost btn-sm" id="forkbtn" title="Restart from any stage with new instructions or options">${ICON.fork} Fork</button>`)
       + (d.zip ? `<a class="btn btn-ghost btn-sm" href="${d.zip}" download>Mixamo zip</a>` : "")
+      + (d.live || !(d.package) ? "" : `<button class="btn ${d.accepted ? "btn-ghost" : "btn-primary"} btn-sm" id="acceptbtn" title="Happy with the result? Choose the file formats you want">${d.accepted ? "Accepted · formats" : "Accept"}</button>`)
       + (d.package ? `<a class="btn btn-ghost btn-sm" href="${d.package}" download title="The rigged model, textures and every animation clip in one zip">Package</a>` : "")
       + (d.live ? "" : `<button class="btn btn-ghost btn-sm" id="delbtn" title="Delete this run and all its files">Delete</button>`)
       + (d.models.length ? `<button class="btn btn-primary btn-sm" id="view3d">View in 3D</button>` : "");
     $("#stop") && ($("#stop").onclick = () => stopRun(name));
     $("#forkbtn") && ($("#forkbtn").onclick = () => openFork(d, sel));
+    $("#acceptbtn") && ($("#acceptbtn").onclick = () => openAccept(name, () => poll()));
     $("#delbtn") && ($("#delbtn").onclick = () => openDelete(name, () => { location.hash = "#/runs"; }));
     $("#view3d") && ($("#view3d").onclick = () => { $('[data-seg="tab"] [data-v="model"]').click(); $("#tab").scrollIntoView({ behavior: "smooth", block: "start" }); });
   }

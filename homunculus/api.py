@@ -199,4 +199,4 @@ def run(name, live):
             "package": f"/api/package/{name}.zip" if (A.get("final_glb") or A.get("rig_glb") or A.get("mesh_glb")) else None,
             "plan": {k: plan.get(k) for k in ("style", "subject", "clothing", "remove") if plan.get(k)},
             "human_reviews": S.get("human_reviews", [])[-10:], "log": log, "forked_from": S.get("forked_from"),
-            "zip_on": bool(S.get("zip")), "alert": S.get("alert") if (is_live or "failed" in [x.get("status") for x in stages.values()]) else None, "human_notes": S.get("human_notes", "")}
+            "accepted": S.get("accepted"), "zip_on": bool(S.get("zip")), "alert": S.get("alert") if (is_live or "failed" in [x.get("status") for x in stages.values()]) else None, "human_notes": S.get("human_notes", "")}
