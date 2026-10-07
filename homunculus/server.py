@@ -38,6 +38,8 @@ class H(SimpleHTTPRequestHandler):
             try:
                 P = purge.plan(os.path.basename(path)); return self._json(200, {**P, "items": [{"label": i["label"], "bytes": i["bytes"]} for i in P["items"]]})
             except ValueError as e: return self._json(404, {"error": str(e)})
+        if path.startswith("/api/retex/"):
+            from . import api; return self._json(200, api.retex(os.path.basename(path)))
         if path.startswith("/api/repair/"):
             from . import api; return self._json(200, api.repairs(os.path.basename(path)))
         if path.startswith("/api/run/"):
@@ -87,6 +89,7 @@ class H(SimpleHTTPRequestHandler):
         if path == "/api/animate": return self.animate_job()
         if path == "/api/repair": return self.repair_job()
         if path == "/api/repair_use": return self.repair_use()
+        if path == "/api/retex": return self.retex_job()
         if path == "/api/delete": return self.delete_run()
         if self.path not in ("/api/pick", "/api/review"): self.send_error(404); return
         try:
@@ -176,6 +179,52 @@ class H(SimpleHTTPRequestHandler):
             freed = purge.delete(name); self._json(200, {"ok": True, "freed": freed})
         except ValueError as e: self._json(404, {"error": str(e)})
         except RuntimeError as e: self._json(409, {"error": str(e)})
+        except Exception as e: self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
+    def retex_job(self):
+        """Targeted re-texturing: {run, mode: "project" | "generate" | "apply", camera, strokes, notes, ref (data URL) | ref_job + ref_name, mask (data URL), from_job}.
+        project is CPU only; generate needs the GPU (it queues behind a running run). Progress: runs/<run>/10_retex/<id>/status.json (GET /api/retex/<run>)."""
+        import base64, re, subprocess, sys, time, shutil
+        try:
+            d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            run = os.path.basename(str(d.get("run", ""))); mode = d.get("mode")
+            if not (C.RUNS / run / "state.json").exists(): return self._json(404, {"error": "No such run."})
+            if mode not in ("project", "generate", "apply"): return self._json(400, {"error": "Unknown mode."})
+            S = json.load(open(C.RUNS / run / "state.json")); A = S.get("artifacts") or {}
+            if not any(A.get(k) for k in ("textured_glb", "colored_glb", "mesh_glb")): return self._json(400, {"error": "This run has no textured 3D model yet."})
+            cam = d.get("camera")
+            if mode in ("project", "generate") and not (isinstance(cam, dict) and len(cam.get("elements", [])) == 16 and all(isinstance(x, (int, float)) for x in cam["elements"])
+                                                       and isinstance(cam.get("fov"), (int, float)) and isinstance(cam.get("aspect"), (int, float))): return self._json(400, {"error": "No camera."})
+            job = time.strftime("%Y%m%d_%H%M%S"); jd = C.RUNS / run / "10_retex" / job; jd.mkdir(parents=True, exist_ok=True)
+            def save_url(u, name):
+                m = re.match(r"data:image/(?:png|jpeg|jpg|webp);base64,(.+)$", u or "", re.S)
+                if not m: return None
+                raw = base64.b64decode(m.group(1))
+                if len(raw) > 25_000_000: raise ValueError("image too large")
+                from PIL import Image
+                import io; Image.open(io.BytesIO(raw)).convert("RGB").save(jd / name); return name
+            req = {"mode": mode, "camera": cam, "strokes": d.get("strokes") or [], "notes": str(d.get("notes", ""))[:600]}
+            if mode == "project":
+                if d.get("ref"): req["ref"] = save_url(d["ref"], "ref.png")
+                elif d.get("ref_job") and d.get("ref_name"):
+                    src = C.RUNS / run / "10_retex" / os.path.basename(str(d["ref_job"])) / os.path.basename(str(d["ref_name"]))
+                    if not src.exists(): return self._json(404, {"error": "That generated picture is gone."})
+                    shutil.copy(src, jd / "ref.png"); req["ref"] = "ref.png"
+                if not req.get("ref"): return self._json(400, {"error": "Choose or generate a picture first."})
+                if d.get("mask"): req["mask"] = save_url(d["mask"], "mask.png")
+            if mode == "apply":
+                req["from_job"] = os.path.basename(str(d.get("from_job", "")))
+                if not (C.RUNS / run / "10_retex" / req["from_job"] / "result.glb").exists(): return self._json(404, {"error": "That retexture has no result yet."})
+            json.dump(req, open(jd / "request.json", "w"))
+            unit = f"homunculus-retex-{run}"; subprocess.run(["systemctl", "--user", "reset-failed", f"{unit}.service"], capture_output=True)
+            r = subprocess.run(["systemd-run", "--user", f"--unit={unit}", "--collect", f"--working-directory={C.ROOT}", "-p", "KillSignal=SIGINT",
+                                *[f"--setenv={k}={os.environ[k]}" for k in ("DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR") if os.environ.get(k)],
+                                sys.executable, "-m", "homunculus.retex", run, "--job", job], capture_output=True, text=True)
+            if r.returncode:
+                busy = "already" in (r.stderr or ""); shutil.rmtree(jd, ignore_errors=True)
+                return self._json(409 if busy else 500, {"error": "A retexture job is already running for this run." if busy else (r.stderr or r.stdout)[-300:]})
+            self._json(200, {"ok": True, "job": job})
+        except ValueError as e: self._json(400, {"error": str(e)})
         except Exception as e: self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
     def repair_use(self):

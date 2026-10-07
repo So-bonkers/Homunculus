@@ -18,7 +18,7 @@ export async function mountRepair(host, d, { createViewer, toast }) {
     <div class="rp-left"><div class="viewer rp-view" id="rpv"><div class="vload" id="rpl"><div style="text-align:center">Loading model<div class="p"><i></i></div></div></div>
         <div class="rp-hint" id="rphint">Drag to paint the broken part · right-drag or scroll to move the view</div>
         <div class="vbar rp-bar"><button data-t="paint" class="on">Paint</button><button data-t="erase">Erase</button>
-          <label class="rp-size">Brush <input type="range" id="rpsize" min="1" max="9" step="0.5" value="3"></label><span class="sep"></span>
+          <label class="rp-size" title="[ and ] change it, or Alt + scroll">Brush <input type="range" id="rpsize" min="0.3" max="25" step="0.1" value="3"><output id="rpsizeo">3%</output></label><span class="sep"></span>
           <button data-t="hands">Select hands</button><button data-t="clear">Clear</button></div></div></div>
     <div class="rp-right"><h3>Repair a region</h3>
       <p class="hint">Paint over what is broken, a little of the arm included (fingers cut off, fused or melted). The image model redraws that part with complete anatomy, Pixal3D turns it into a mesh and it is joined at the wrist. Works on the model before rigging.</p>
@@ -85,7 +85,10 @@ export async function mountRepair(host, d, { createViewer, toast }) {
     if (t === "paint" || t === "erase") { tool = t; host.querySelectorAll('.rp-bar [data-t="paint"],.rp-bar [data-t="erase"]').forEach((x) => x.classList.toggle("on", x === b)); }
     else if (t === "clear") { strokes = []; update(); $("#rpmsg").textContent = ""; }
     else if (t === "hands" && root && viewing === "original") selectHands(); };
-  $("#rpsize").oninput = () => { cursor.scale.setScalar(brushWorld()); };
+  const setSize = (v) => { const el = $("#rpsize"); el.value = Math.max(+el.min, Math.min(+el.max, v)); $("#rpsizeo").textContent = (+el.value).toFixed(+el.value < 10 ? 1 : 0) + "%"; cursor.scale.setScalar(brushWorld()); };
+  $("#rpsize").oninput = () => setSize(+$("#rpsize").value); setSize(3);
+  const keySize = (e) => { if (e.target.closest && e.target.closest("input,textarea,select")) return; if (e.key === "[") setSize(+$("#rpsize").value * 0.85); else if (e.key === "]") setSize(+$("#rpsize").value * 1.18); };
+  addEventListener("keydown", keySize); renderer.domElement.addEventListener("wheel", (e) => { if (!e.altKey) return; e.preventDefault(); e.stopPropagation(); setSize(+$("#rpsize").value * (e.deltaY < 0 ? 1.12 : 0.89)); }, { passive: false, capture: true });
 
   $("#rpgo").onclick = async () => {
     const b = $("#rpgo"), msg = $("#rpmsg"); b.disabled = true; msg.textContent = "Starting…";
@@ -131,5 +134,5 @@ export async function mountRepair(host, d, { createViewer, toast }) {
     await show(viewing === "original" ? mesh.url : b.dataset.show); };
 
   await show(mesh.url); poll();
-  return { dispose() { disposed = true; clearTimeout(timer); try { viewer.dispose(); } catch {} } };
+  return { dispose() { disposed = true; clearTimeout(timer); removeEventListener("keydown", keySize); try { viewer.dispose(); } catch {} } };
 }

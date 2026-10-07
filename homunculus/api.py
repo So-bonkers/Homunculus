@@ -88,13 +88,45 @@ def _repairing(name):
 REPAIR_STEP = {"queued": "waiting for the GPU", "regions": "redrawing", "merge": "joining", "bake": "baking the texture"}
 
 
+def retex(name):
+    """The model a retexture starts from and the retexture jobs of a run (newest first), with their pictures as URLs."""
+    S = _load(name) or {}; A = S.get("artifacts") or {}
+    base = next((_url(name, A.get(k)) for k in ("textured_glb", "colored_glb", "mesh_glb") if _url(name, A.get(k))), None); out = []; d0 = C.RUNS / name / "10_retex"
+    if d0.is_dir():
+        for d in sorted(os.listdir(d0), reverse=True):
+            try:
+                req = json.load(open(d0 / d / "request.json"))
+                try: S2 = json.load(open(d0 / d / "status.json"))
+                except Exception: S2 = {"status": "queued", "mode": req.get("mode")}        # just started: the job has not written its status yet
+            except Exception: continue
+            u = lambda rel: _url(name, str(C.RUNS / rel)) if rel else None
+            out.append({"job": d, "mode": S2.get("mode") or req.get("mode"), "status": S2.get("status"), "error": S2.get("error"), "notes": S2.get("notes", ""), "log": S2.get("log", [])[-6:],
+                        "result": u(S2.get("result")), "before": u(S2.get("before")), "after": u(S2.get("after")), "camera": req.get("camera") if req.get("mode") == "generate" else None,
+                        "generated": [{"name": os.path.basename(g), "url": u(g)} for g in S2.get("generated", []) if u(g)], "applied": any((x.get("applied_from") == d) for x in _retex_applied(name))})
+    return {"base": base, "jobs": out}
+
+
+def _retex_applied(name):
+    d0 = C.RUNS / name / "10_retex"; res = []
+    try:
+        for d in os.listdir(d0):
+            try:
+                S2 = json.load(open(d0 / d / "status.json"))
+                if S2.get("step") == "applied": res.append(S2)
+            except Exception: pass
+    except Exception: pass
+    return res
+
+
 def repairs(name):
     """The repair jobs of a run (newest first): the status files written by <pkg>.repair, with their image paths as URLs."""
     out = []; base = C.RUNS / name / "10_repair"
     if base.is_dir():
         for d in sorted(os.listdir(base), reverse=True):
             try: S = json.load(open(base / d / "status.json"))
-            except Exception: continue
+            except Exception:
+                if not (base / d / "request.json").exists(): continue
+                S = {"status": "queued", "step": "queued", "regions": [], "log": []}        # just started: the job has not written its status yet
             u = lambda rel: _url(name, str(C.RUNS / rel)) if rel else None
             regs = [{**{k: v for k, v in r.items() if k not in ("crop", "candidates", "chosen", "after")}, "crop": u(r.get("crop")), "chosen": u(r.get("chosen")), "after": u(r.get("after")),
                      "candidates": [x for x in (u(c) for c in r.get("candidates", [])) if x]} for r in S.get("regions", [])]
