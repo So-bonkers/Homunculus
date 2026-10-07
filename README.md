@@ -78,6 +78,7 @@ Snapshots the app saves at each important moment of one real run (*knight_full*,
 - **Starting from a 3D model** (STL, OBJ, PLY, GLB, FBX): no picture needed; the model is oriented, painted from its own renders and rigged. A model that isn't in a T-pose is put into one first (SkinTokens + a Blender bake).
 - **Text-to-animation** with a typed prompt box and a **preset library** of 190 prompts in 10 categories, each with a 3D **preview** on a male and a female character.
 - **Rigger choice** (Make-It-Animatable default or normal-aware weights) with automatic fallback.
+- **Delete runs:** the *Delete* button on a run card or run page removes the run and everything made for it (the run folder, the uploaded input, the Mixamo export and ComfyUI's Pixal3D outputs) after showing exactly what goes and how big it is. Runs that are running are protected; files are matched by exact names so another run's files are never touched.
 - **Repair a broken region:** paint over fused or cut-off fingers (or press *Select hands*) in the 3D viewer and the pipeline redraws that part, rebuilds it in 3D and joins it at the wrist. Tested on real failed hands; see [docs/REPAIR.md](docs/REPAIR.md) for how it works and what it cannot do yet.
 - **Face fidelity:** early face close-up, face reshape, landmark fit, multi-view texture clean-up.
 - **Safe on one GPU:** a lock file allows one GPU job at a time, a VRAM watchdog cancels at 22.5 GB, and the pipeline unloads every other model before a stage; Studio unloads are verified.

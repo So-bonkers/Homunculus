@@ -33,6 +33,11 @@ class H(SimpleHTTPRequestHandler):
             return self._json(200, {"v": v})
         if path == "/api/runs":
             from . import api; return self._json(200, api.runs(live_runs()))
+        if path.startswith("/api/purge/"):
+            from . import purge
+            try:
+                P = purge.plan(os.path.basename(path)); return self._json(200, {**P, "items": [{"label": i["label"], "bytes": i["bytes"]} for i in P["items"]]})
+            except ValueError as e: return self._json(404, {"error": str(e)})
         if path.startswith("/api/repair/"):
             from . import api; return self._json(200, api.repairs(os.path.basename(path)))
         if path.startswith("/api/run/"):
@@ -82,6 +87,7 @@ class H(SimpleHTTPRequestHandler):
         if path == "/api/animate": return self.animate_job()
         if path == "/api/repair": return self.repair_job()
         if path == "/api/repair_use": return self.repair_use()
+        if path == "/api/delete": return self.delete_run()
         if self.path not in ("/api/pick", "/api/review"): self.send_error(404); return
         try:
             d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
@@ -160,6 +166,17 @@ class H(SimpleHTTPRequestHandler):
             self._json(200, {"ok": True})
         except Exception as e:
             self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
+    def delete_run(self):
+        """Delete a run and all its files (run folder, uploaded input, Mixamo export, ComfyUI's Pixal3D outputs): {run}. Refused while anything of the run is running."""
+        from . import purge
+        try:
+            d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}"); name = os.path.basename(str(d.get("run", "")))
+            if name in live_runs(): return self._json(409, {"error": "This run is running. Stop it first."})
+            freed = purge.delete(name); self._json(200, {"ok": True, "freed": freed})
+        except ValueError as e: self._json(404, {"error": str(e)})
+        except RuntimeError as e: self._json(409, {"error": str(e)})
+        except Exception as e: self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
     def repair_use(self):
         """Continue a run with a repaired mesh: {run, job, mode: "new" | "same", name}. The textured single mesh of the repair job replaces the run's 3D model and the run restarts

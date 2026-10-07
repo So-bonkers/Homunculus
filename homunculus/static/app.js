@@ -34,6 +34,25 @@ const FORK_HINT = { upscale: "Everything is redone from the upscaled input.", pl
   rig: "Keeps the coloured model; rigs it again (pick another rigger in the dialog).", animate: "Keeps the rig; generates the animation clips again from the prompts you give.",
   texture: "Keeps the rig and the clips; redoes the final texture and puts it on all of them.", report: "Only rebuilds the report and downloads." };
 
+const fmtBytes = (n) => (n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : n >= 1e6 ? Math.round(n / 1e6) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB");
+async function openDelete(name, onDone) {
+  let P; try { P = await api("/api/purge/" + encodeURIComponent(name)); } catch { return toast("Could not load that run", true); }
+  const box = document.createElement("div"); box.className = "sheet-bg";
+  box.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" style="width:min(520px,100%)">
+    <div class="sh-head"><div><div class="eb">Delete</div><h2>Delete ${esc(name)}?</h2></div><button class="x" data-x>✕</button></div>
+    <p class="hint" style="margin:0">This permanently removes the run and everything made for it. It cannot be undone.</p>
+    <dl class="kv">${P.items.map((i) => `<dt>${esc(i.label)}</dt><dd>${fmtBytes(i.bytes)}</dd>`).join("")}<dt><b>Total</b></dt><dd><b>${fmtBytes(P.total)}</b></dd></dl>
+    ${P.busy.length ? `<div class="alertbar"><span>Still running: ${esc(P.busy.join(", "))}. Stop it first.</span></div>` : ""}
+    <div class="sh-foot"><span class="hint" id="dmsg" style="margin:0"></span><button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-danger" id="dgo" ${P.busy.length ? "disabled" : ""}>Delete permanently</button></div></div>`;
+  document.body.appendChild(box); document.body.style.overflow = "hidden";
+  const close = () => { box.remove(); document.body.style.overflow = ""; removeEventListener("keydown", onKey); }; const onKey = (e) => e.key === "Escape" && close(); addEventListener("keydown", onKey);
+  box.addEventListener("click", (e) => { if (e.target === box || e.target.closest("[data-x]")) close(); });
+  $("#dgo", box).onclick = async () => { $("#dgo", box).disabled = true; $("#dmsg", box).textContent = "Deleting…";
+    try { const r = await fetch("/api/delete", { method: "POST", body: JSON.stringify({ run: name }) }); const j = await r.json();
+      if (!r.ok) { $("#dmsg", box).textContent = j.error || "Could not delete."; $("#dgo", box).disabled = false; return; }
+      close(); toast(`Deleted ${name} · freed ${fmtBytes(j.freed)}`); onDone && onDone(); } catch { $("#dmsg", box).textContent = "Could not reach the server."; $("#dgo", box).disabled = false; } };
+}
+
 async function openFork(d, stage, preset = {}) {
   let runs = []; try { runs = await api("/api/runs"); } catch {}
   const names = new Set(runs.map((r) => r.name)); let n = 1; while (names.has(`${d.name}_f${n}`)) n++;
@@ -364,7 +383,7 @@ async function home(scrollTo) {
   initSeg($('[data-seg="filter"]'), (v) => { filter = v; lastSig = ""; drawRuns(); });
   const card = (r) => `<a class="rc" href="#/run/${encodeURIComponent(r.name)}">
       <div class="im">${r.thumb ? `<img src="${esc(r.thumb)}" loading="lazy" alt="">` : ""}</div>
-      <div class="top">${pill(r.status)}${r.live ? `<button class="btn stop" data-stop="${esc(r.name)}">Stop</button>` : `<button class="btn stop" data-fork="${esc(r.name)}">${ICON.fork} Fork</button>`}</div>
+      <div class="top">${pill(r.status)}${r.live ? `<button class="btn stop" data-stop="${esc(r.name)}">Stop</button>` : `<button class="btn stop" data-fork="${esc(r.name)}">${ICON.fork} Fork</button><button class="btn stop del" data-del="${esc(r.name)}" title="Delete this run and its files">Delete</button>`}</div>
       <div class="ov"><div class="nm">${esc(r.name)}</div><div class="sub">${esc(r.current ? (r.live ? "Now: " : "Stopped at ") + r.current : r.last || r.file)}</div>
       <div class="prog"><i style="width:${(100 * r.done) / r.total}%"></i></div></div></a>`;
   function drawRuns() {
@@ -375,6 +394,7 @@ async function home(scrollTo) {
   }
   $("#runlist").addEventListener("click", async (e) => {
     const b = e.target.closest("[data-stop]"); if (b) { e.preventDefault(); return stopRun(b.dataset.stop); }
+    const dl = e.target.closest("[data-del]"); if (dl) { e.preventDefault(); return openDelete(dl.dataset.del, loadRuns); }
     const f = e.target.closest("[data-fork]"); if (f) { e.preventDefault(); try { openFork(await api("/api/run/" + encodeURIComponent(f.dataset.fork)), null); } catch { toast("Could not load that run", true); } }
   });
   const loadRuns = async () => { try { known = await api("/api/runs"); $("#st-runs").textContent = known.length; drawRuns(); nameHint(); } catch {} };
@@ -484,9 +504,11 @@ async function runPage(name) {
     $("#meta").innerHTML = `${pill(d.status)}${d.repair ? `<span class="pill running"><i></i>Repairing · ${esc(({ queued: "waiting for the GPU", regions: "redrawing", merge: "joining", bake: "baking" })[d.repair.step] || "working")}</span>` : ""}<span>${esc(d.file)}</span><span class="dotsep">•</span><span>${d.mode === "mesh" ? "3D model input" : d.options.direct ? "picture as is" : esc(o.outfit)}</span><span class="dotsep">•</span><span>review ${esc(o.review)}</span><span class="dotsep">•</span><span class="clock" id="clock"></span>${d.forked_from ? `<span class="dotsep">•</span><span>forked from <a class="btn-link" href="#/run/${encodeURIComponent(d.forked_from.run)}">${esc(d.forked_from.run)}</a> at ${esc(d.forked_from.stage)}</span>` : ""}`;
     $("#act").innerHTML = (d.live ? `<button class="btn btn-danger btn-sm" id="stop">Stop run</button>` : `<button class="btn btn-ghost btn-sm" id="forkbtn" title="Restart from any stage with new instructions or options">${ICON.fork} Fork</button>`)
       + (d.zip ? `<a class="btn btn-ghost btn-sm" href="${d.zip}" download>Mixamo zip</a>` : "")
+      + (d.live ? "" : `<button class="btn btn-ghost btn-sm" id="delbtn" title="Delete this run and all its files">Delete</button>`)
       + (d.models.length ? `<button class="btn btn-primary btn-sm" id="view3d">View in 3D</button>` : "");
     $("#stop") && ($("#stop").onclick = () => stopRun(name));
     $("#forkbtn") && ($("#forkbtn").onclick = () => openFork(d, sel));
+    $("#delbtn") && ($("#delbtn").onclick = () => openDelete(name, () => { location.hash = "#/runs"; }));
     $("#view3d") && ($("#view3d").onclick = () => { $('[data-seg="tab"] [data-v="model"]').click(); $("#tab").scrollIntoView({ behavior: "smooth", block: "start" }); });
   }
   function tick() {
