@@ -224,7 +224,7 @@ class H(SimpleHTTPRequestHandler):
             run = os.path.basename(str(d.get("run", "")))
             if not (C.RUNS / run / "state.json").exists(): return self._json(404, {"error": "No such run."})
             S = json.load(open(C.RUNS / run / "state.json"))
-            if not (S.get("artifacts") or {}).get("mesh_glb"): return self._json(400, {"error": "This run has no 3D model yet."})
+            if not (S.get("artifacts") or {}).get("mesh_glb") or (S.get("stages", {}).get("mesh") or {}).get("status") != "done": return self._json(400, {"error": "The 3D shape stage has not finished yet."})
             st = d.get("strokes") or []
             if not (isinstance(st, list) and 1 <= len(st) <= 1500 and all(isinstance(s, list) and len(s) == 4 and all(isinstance(x, (int, float)) for x in s) for s in st)):
                 return self._json(400, {"error": "Paint the broken region on the model first."})

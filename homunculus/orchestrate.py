@@ -476,6 +476,7 @@ def st_mesh_and_check(R):
             ok = [c for c in shapes if c["digits"]["right"] <= 5 and c["digits"]["left"] <= 5]
             for c in shapes:
                 if c not in ok: c["verdict"] = {"pass": False, "score": 0, "tally": "digit gate", "problems": [f"extra finger (R{c['digits']['right']}/L{c['digits']['left']})"]}
+            R.A["shape_candidates"] = [{"label": f"Shape #{i + 1} (try {c['try']}, grey)", "glb": c["glb"]} for i, c in enumerate(shapes)]; R.save()      # viewable in 3D while you judge them
             open_review(R, "mesh_check", f"3D shape candidates, round {rnd + 1}", [c["sheet"] for c in shapes],
                         [f"#{i+1} (try {c['try']}){fing(c)}" for i, c in enumerate(shapes)], choose=True)
             if manual(R):        # you are the judge; the finger count is still shown on each candidate
@@ -528,10 +529,12 @@ def carve(R, glb):
 def _full_mesh(R, tdir, tag, seed, t0):
     with gpu.watchdog(R.log) as wd:
         glb = comfy.mesh(R.A["edit_upscaled"], tdir, tag, seed, R.log)
+    R.A["mesh_glb"] = glb; R.save()          # the textured mesh is viewable as soon as Pixal3D has made it; the steps below refine it
     glb = carve(R, glb)
+    R.A["mesh_glb"] = glb; R.save()
     clean = glb.replace(".glb", "_clean.glb")
     r_ = subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "clean_mesh.py"), "--", glb, clean], capture_output=True, text=True)
-    if os.path.exists(clean): R.log(next((l for l in r_.stdout.splitlines() if l.startswith("[clean]")), "[clean] done")); glb = clean
+    if os.path.exists(clean): R.log(next((l for l in r_.stdout.splitlines() if l.startswith("[clean]")), "[clean] done")); glb = clean; R.A["mesh_glb"] = glb; R.save()
     if C.FACE_RESHAPE and face_on(R):      # move the mesh's eyes/nose/mouth to where the reference has them, before rigging
         try:
             fit = faceproj.reshape(glb, R.A["edit_upscaled"], glb.replace(".glb", "_facefit.glb"), os.path.join(os.path.dirname(glb), "facefit"), R.log,

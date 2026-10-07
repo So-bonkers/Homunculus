@@ -127,7 +127,10 @@ def run(name, live):
               "images": [{"url": _url(name, i), "caption": (x.get("captions") or [""] * 99)[k] if k < len(x.get("captions") or []) else ""}
                          for k, i in enumerate(x.get("images") or []) if _url(name, i)]} for x in (S.get("snapshots") or [])]
     files = [{"label": lbl, "url": _url(name, A.get(k)), "name": os.path.basename(A.get(k) or "")} for k, lbl in FILE_KEYS if _url(name, A.get(k))]
-    models = [{"key": k, "label": lbl, "url": _url(name, A.get(k))} for k, lbl in GLB_KEYS if _url(name, A.get(k))]
+    mesh_done = stages.get("mesh", {}).get("status") == "done"
+    models = [{"key": k, "label": (lbl + " (still being refined)") if (k == "mesh_glb" and not mesh_done) else lbl, "url": _url(name, A.get(k))} for k, lbl in GLB_KEYS if _url(name, A.get(k))]
+    if not mesh_done:      # the grey shape candidates you are judging (and the textured mesh above, once Pixal3D has made it) can be inspected right away
+        models += [{"key": f"shape{i + 1}", "label": c.get("label", f"Shape #{i + 1}"), "url": _url(name, c.get("glb"))} for i, c in enumerate(A.get("shape_candidates") or []) if _url(name, c.get("glb"))]
     plan = (S.get("vlm") or {}).get("plan") or {}
     anims = None
     try:

@@ -11,8 +11,9 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const STEP = { queued: "Waiting for the GPU", regions: "Finding the region", running: "Working", merge: "Joining the new hand", done: "Done" };
 
 export async function mountRepair(host, d, { createViewer, toast }) {
-  const mesh = d.models.find((m) => m.key === "mesh_glb") || d.models.find((m) => m.key === "final_glb");
-  if (!mesh) { host.innerHTML = `<div class="empty">No 3D model yet. The Repair tab works on the model before rigging, once the 3D shape stage has finished.</div>`; return { dispose() {} }; }
+  const meshDone = (d.stages.find((s) => s.key === "mesh") || {}).status === "done";
+  const mesh = meshDone ? (d.models.find((m) => m.key === "mesh_glb") || d.models.find((m) => m.key === "final_glb")) : null;
+  if (!mesh) { host.innerHTML = `<div class="empty">No finished 3D model yet. The Repair tab works on the model before rigging, once the 3D shape stage has finished (you can already inspect the model in the 3D model tab).</div>`; return { dispose() {} }; }
   host.innerHTML = `<div class="repair">
     <div class="rp-left"><div class="viewer rp-view" id="rpv"><div class="vload" id="rpl"><div style="text-align:center">Loading model<div class="p"><i></i></div></div></div>
         <div class="rp-hint" id="rphint">Drag to paint the broken part · right-drag or scroll to move the view</div>

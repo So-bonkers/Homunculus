@@ -552,12 +552,13 @@ async function runPage(name) {
         ${r.choose && jb === i + 1 ? `<span class="jp">Judges' pick</span>` : ""}<button class="zm" data-zoom="${i}" title="Enlarge">${ICON.zoom}</button>
         <div class="cp">${esc(r.captions[i] || "")}</div></div>`).join("")}</div>
       <textarea class="notes" id="notes" autocomplete="off" placeholder="Your observations (optional): added to the next redraw prompt and shown to the judges"></textarea>
-      <div class="rv-act">${acts}<span class="rv-msg" id="rvmsg"></span></div></section>`;
+      <div class="rv-act">${acts}${r.gate === "mesh_check" && d.models.length ? `<button type="button" class="btn btn-ghost" data-v3d="1">Inspect in 3D</button>` : ""}<span class="rv-msg" id="rvmsg"></span></div></section>`;
     $("#notes").value = notes;
     let chosen = 0;
     const list = r.images.map((u, i) => ({ url: u, title: `#${i + 1} · ${r.captions[i] || ""}` }));
     box.onclick = async (e) => {
       const z = e.target.closest("[data-zoom]"); if (z) { e.stopPropagation(); return openLB(list, +z.dataset.zoom); }
+      if (e.target.closest("[data-v3d]")) { $('[data-seg="tab"] [data-v="model"]').click(); return $("#tab").scrollIntoView({ behavior: "smooth", block: "start" }); }
       const c = e.target.closest(".cand");
       if (c && r.choose) { $$(".cand", box).forEach((x) => x.classList.toggle("sel", x === c)); chosen = +c.dataset.k; const b = $("#usesel"); b.disabled = false; b.textContent = r.kind === "look" ? `Use ${r.captions[chosen - 1] || "#" + chosen}` : `Use #${chosen}`; return; }
       if (c) return openLB(list, +c.dataset.k - 1);
@@ -682,7 +683,7 @@ async function runPage(name) {
     } else {
       const s = JSON.stringify(["m", d.models]); if (s === sig.tab) return; sig.tab = s;
       if (viewer) { viewer.dispose(); viewer = null; }
-      if (!d.models.length) { T.innerHTML = `<div class="empty">No 3D model yet. It appears after the 3D shape stage.</div>`; return; }
+      if (!d.models.length) { T.innerHTML = `<div class="empty">No 3D model yet. The shape candidates appear here while you judge them, and the textured model as soon as it is built.</div>`; return; }
       T.innerHTML = `<div class="viewer" id="vw"><div class="vload" id="vl"><div style="text-align:center">Loading model<div class="p"><i></i></div></div></div><div class="vinfo" id="vi"></div>
         <div class="vbar">${d.models.map((m, i) => `<button data-m="${i}" class="${i === 0 ? "on" : ""}">${esc(m.label)}</button>`).join("")}<span class="sep"></span>
         <button data-o="clay">Clay</button><button data-o="wire">Wireframe</button><button data-o="bones" hidden>Bones</button><button data-o="rotate" class="on">Turntable</button><button data-o="reset">Reset</button></div></div>`;
