@@ -58,7 +58,7 @@ def hand_layer(glb, prompt, log):
     from .. import handpose
     spec = {**handpose.poses_for(prompt), "lib": handpose.LIB, "ramp": 6}; p = str(glb) + ".handpose.json"; json.dump(spec, open(p, "w"))
     try:
-        r = subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "img2rig" / "blender_handpose.py"), "--", str(glb), p], capture_output=True, text=True, timeout=600)
+        r = subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "blender_handpose.py"), "--", str(glb), p], capture_output=True, text=True, timeout=600)
         ok = r.returncode == 0 and "finger bones" in r.stdout
         if ok: log(f"[animate] hands: {spec['left']} / {spec['right']} for '{prompt[:50]}'")
         else: log("[animate] hand poses not applied: " + ((r.stdout + r.stderr).strip().splitlines() or ["?"])[-1][:100])
@@ -76,7 +76,7 @@ def relayer(R, log=None):
         if not src.exists(): continue
         if hand_layer(src, c.get("prompt", ""), log):
             n += 1; thumb = src.with_suffix(".png")
-            subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "img2rig" / "blender_clip_thumb.py"), "--", str(src), str(thumb)], capture_output=True, text=True, timeout=300)
+            subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "blender_clip_thumb.py"), "--", str(src), str(thumb)], capture_output=True, text=True, timeout=300)
     png = (R.A.get("textured_glb") or "")[:-4] + "_basecolor.png"
     if n and R.A.get("textured_glb") and os.path.exists(png): retexture(R, png)
     return n
