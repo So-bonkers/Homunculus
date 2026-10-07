@@ -70,11 +70,17 @@ def face_on(R):
     return (R.state.get("vlm", {}).get("plan") or {}).get("face_visible", True) is not False
 
 
+def texture_simple(R):
+    """Texture from the upscaled picture / chosen redraw alone (the default): no face close-up as the reference, no Qwen-cleaned side and back views, no Qwen face repaint.
+    "full" (--texture full) adds those extra generated images, which can make the model look worse than the picture it came from."""
+    return R.state.get("texture_mode", C.TEXTURE_MODE) == "simple" or bool(R.state.get("direct"))
+
+
 def texture_source(R):
     """The picture the colour and texture projections read. A run set to use the picture as is (--direct) textures from that picture, upscaled but not redrawn:
     the face close-up redraw only serves the 3D shape (it is in the Pixal3D input), its pixels are not used for the texture. Otherwise the redraw / mesh source."""
     raw = R.A.get("edit_upscaled_raw")
-    if R.state.get("direct") and raw and os.path.exists(raw): return raw
+    if texture_simple(R) and raw and os.path.exists(raw): return raw
     return R.A.get("mesh_source") or R.A["edit_upscaled"]
 
 
@@ -569,7 +575,7 @@ def st_texture(R):
     plan = R.state["vlm"]["plan"]; sty = prompts.style_text(plan, R.state.get("look", "asis"))
     # video tip: redraw a close-up of the face at full resolution and use it as the texture reference for the head
     # (already done before the 3D step in new runs: mesh_source is that sharpened image)
-    if not R.state.get("face_refined_early") and face_redraw_on(R) and not R.state.get("direct"):      # as-is runs keep the picture's own face pixels
+    if not R.state.get("face_refined_early") and face_redraw_on(R) and not texture_simple(R):      # as-is runs keep the picture's own face pixels
       try:
         style = R.state["vlm"]["plan"].get("style", "photo")
         src, (fb, fa) = edit.refine_face(src, os.path.join(d, "source_face_refined.png"), prompts.FACE_REFINE.format(style=prompts.style_text(R.state["vlm"]["plan"], R.state.get("look", "asis"))), R.log)
@@ -584,12 +590,12 @@ def st_texture(R):
     before = after = None
     if face_on(R):
         glb, before, after = faceproj.run(base, src, out, os.path.join(d, "faceproj"), R.log, style=prompts.style_text(R.state["vlm"]["plan"], R.state.get("look", "asis")),
-                                          method=C.FACE_FIT, face_desc=str(R.state["vlm"]["plan"].get("face", "")))
+                                          method="landmarks" if texture_simple(R) else C.FACE_FIT, face_desc=str(R.state["vlm"]["plan"].get("face", "")))
     else:      # a helmet or mask: no face to fit, the body projection covers the head too
         R.log("[texture] no visible face: face fit skipped")
         shutil.copy(base, out); bp = base[:-4] + "_basecolor.png"
         if os.path.exists(bp): shutil.copy(bp, out[:-4] + "_basecolor.png")
-    if C.TEXTURE_VIEWS:      # turn the model; the image model cleans each view; project back where that view sees best
+    if C.TEXTURE_VIEWS and not texture_simple(R):      # turn the model; the image model cleans each view; project back where that view sees best
         try:
             desc = "; ".join(str(plan.get(k)) for k in ("hair", "clothing", "footwear", "accessories") if plan.get(k) and plan.get(k) != "none")[:500]
             mv = faceproj.multiview(out, src, raw.replace(".glb", "_textured.glb"), os.path.join(d, "texviews"), R.log, style=sty, desc=desc, paint_grey=mesh_mode(R))
@@ -621,7 +627,7 @@ def st_texture(R):
     ref = os.path.join(d, "faceproj", "reference_face.png"); im = Image.open(src).convert("RGB"); W, H = im.size
     im.crop((W // 2 - H // 12, int(H * 0.06), W // 2 + H // 12, int(H * 0.06) + H // 6)).save(ref)
     views = blender.mesh_views(out, os.path.join(d, "final_views"), tag="final"); R.A["final_views"] = views
-    progress.snap(R, "texture", "final texture: body front from the redraw, fitted face, cleaned side and back views" if C.TEXTURE_VIEWS else "final texture (face projected from the redraw)", ([before, after] if before else []) + [ref, views["front"], views["side"]],
+    progress.snap(R, "texture", "final texture: body front from the redraw, fitted face, cleaned side and back views" if (C.TEXTURE_VIEWS and not texture_simple(R)) else "final texture: the picture projected, face fitted (no extra generated images)", ([before, after] if before else []) + [ref, views["front"], views["side"]],
                   (["Pixal3D face", "after projection"] if before else []) + ["redraw", "final front", "final side"])
     return os.path.basename(out)
 
@@ -709,6 +715,7 @@ def main():
     ap.add_argument("--anim-reps", type=int, default=None, help="clips per prompt (default 2)")
     ap.add_argument("--zip", action="store_true", help="also write exports/mixamo_<name>.zip (OBJ+MTL+texture) for uploading to Mixamo")
     ap.add_argument("--review-grace", type=int, default=None, help="seconds to respond in override mode (default 60)")
+    ap.add_argument("--texture", choices=["simple", "full"], help="simple (default): texture from the upscaled picture / chosen redraw only; full: also the face close-up redraw and Qwen-cleaned side/back views")
     ap.add_argument("--face", choices=["auto", "on", "off"], help="auto (default): the planner decides whether a full-face helmet or mask hides the face; off: no face work at all (no face close-up, reshape or fit); on: always work on the face")
     ap.add_argument("--face-redraw", dest="face_redraw", choices=["on", "off"], help="on (default): redraw the face as a full-resolution close-up before the 3D step (a sharper face in the mesh and texture); off: use the full-body redraw as it is")
     ap.add_argument("--outfit", choices=["keep", "shirtless", "nude"], help="keep: outfit from the image (default); shirtless: bare torso and arms (avoids sleeve/cuff layers at the wrists); nude: unclothed, anatomy preserved")
@@ -725,6 +732,7 @@ def main():
     R = Run(os.path.abspath(a.image), a.name, a.style)
     if a.outfit: R.state["outfit"] = a.outfit; R.save()
     if a.face: R.state["face"] = a.face; R.save()
+    if a.texture: R.state["texture_mode"] = a.texture; R.save()
     if a.face_redraw: R.state["face_redraw"] = a.face_redraw == "on"; R.save()
     if a.review: R.state["review_mode"] = a.review
     if a.review_grace is not None: R.state["review_grace"] = a.review_grace

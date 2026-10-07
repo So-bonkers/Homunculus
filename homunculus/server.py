@@ -143,7 +143,7 @@ class H(SimpleHTTPRequestHandler):
             if name in live: return self._json(409, {"error": f"'{name}' is running."})
             stage = str(d.get("stage", ""))
             img = fork.prepare(src, name, stage, str(d.get("notes", ""))[:1500])
-            q = {k: str(d[k]) for k in ("outfit", "face", "face_redraw", "review", "grace", "style", "look", "rigger", "anim", "anim_reps") if d.get(k) not in (None, "")}
+            q = {k: str(d[k]) for k in ("outfit", "face", "face_redraw", "texture", "review", "grace", "style", "look", "rigger", "anim", "anim_reps") if d.get(k) not in (None, "")}
             q["frm"] = stage; q["zip"] = "1" if d.get("zip") else "0"; q["direct"] = "1" if d.get("direct") else "0"
             err = _launch(name, img, q)
             if err: return self._json(500, {"error": err})
@@ -336,6 +336,7 @@ def _launch(name, img, q):
     cmd = [sys.executable, "-m", "homunculus.orchestrate", str(img), "--name", name, "--no-open"]
     if q.get("outfit") in ("keep", "shirtless", "nude"): cmd += ["--outfit", q["outfit"]]
     if q.get("face") in ("auto", "on", "off"): cmd += ["--face", q["face"]]
+    if q.get("texture") in ("simple", "full"): cmd += ["--texture", q["texture"]]
     if q.get("face_redraw") in ("1", "0", "on", "off"): cmd += ["--face-redraw", "on" if q["face_redraw"] in ("1", "on") else "off"]
     if q.get("style") in C.UPSCALERS: cmd += ["--style", q["style"]]
     if q.get("review") in ("off", "override", "manual"): cmd += ["--review", q["review"]]

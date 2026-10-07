@@ -72,6 +72,7 @@ Snapshots the app saves at each important moment of one real run (*knight_full*,
 
 - **One local web app** (http://127.0.0.1:8765): upload a picture or 3D model, choose every option, start, watch and review. Live node graph of the 14 stages, snapshots at every important moment, 3D viewer (textured / rigged / clay / wireframe / bones), activity timeline, log, downloads (FBX, GLB, Mixamo zip).
 - **You or the judges decide:** Auto (judges only), Override (a 60 s window to overrule them), Manual (you are the judge: candidates come one at a time with *Use this / Try another*). Your call stops the remaining judges.
+- **Simple texture (default):** the texture comes from your upscaled picture / the chosen redraw alone: projected onto the model with the face fitted by landmarks. The extra generated images of the older *Full* mode (a face close-up redraw as the reference, Qwen-cleaned side and back views) can make a model look worse than the picture it came from, so they are opt-in (`--texture full`, or Texture: Full in the launcher and the Fork dialog).
 - **Your picture as is:** with *Use my picture as is* the redraw is skipped and the texture is projected from your own picture (upscaled, never redrawn); the face close-up redraw only helps the 3D shape.
 - **Looks:** keep the picture's style or restyle (3D film, Game, Anime 3D, Clay, Chibi); *All · I pick* makes one candidate per look.
 - **Fork** any stopped run from any stage with new instructions or settings, keeping the original untouched.
