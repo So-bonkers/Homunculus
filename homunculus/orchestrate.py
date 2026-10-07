@@ -495,6 +495,8 @@ def st_mesh_and_check(R):
             for c in shapes:
                 if c not in ok: c["verdict"] = {"pass": False, "score": 0, "tally": "digit gate", "problems": [f"extra finger (R{c['digits']['right']}/L{c['digits']['left']})"]}
             R.A["shape_candidates"] = [{"label": f"Shape #{i + 1} (try {c['try']}, grey)", "glb": c["glb"]} for i, c in enumerate(shapes)]; R.save()      # viewable in 3D while you judge them
+            from . import preview
+            for c in shapes: preview.ensure(c["glb"])          # start the browser-sized previews now (raw shapes are hundreds of MB), so they are ready while you judge
             open_review(R, "mesh_check", f"3D shape candidates, round {rnd + 1}", [c["sheet"] for c in shapes],
                         [f"#{i+1} (try {c['try']}){fing(c)}" for i, c in enumerate(shapes)], choose=True)
             if manual(R):        # you are the judge; the finger count is still shown on each candidate

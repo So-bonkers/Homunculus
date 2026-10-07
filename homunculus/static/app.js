@@ -717,7 +717,7 @@ async function runPage(name) {
     } else {
       const s = JSON.stringify(["m", d.models]); if (s === sig.tab) return; sig.tab = s;
       if (viewer) { viewer.dispose(); viewer = null; }
-      if (!d.models.length) { T.innerHTML = `<div class="empty">No 3D model yet. The shape candidates appear here while you judge them, and the textured model as soon as it is built.</div>`; return; }
+      if (!d.models.length) { T.innerHTML = `<div class="empty">${d.models_pending ? "A light preview of the shape is being prepared (about a minute). This panel updates by itself." : "No 3D model yet. The shape candidates appear here while you judge them, and the textured model as soon as it is built."}</div>`; return; }
       T.innerHTML = `<div class="viewer" id="vw"><div class="vload" id="vl"><div style="text-align:center">Loading model<div class="p"><i></i></div></div></div><div class="vinfo" id="vi"></div>
         <div class="vbar">${d.models.map((m, i) => `<button data-m="${i}" class="${i === 0 ? "on" : ""}">${esc(m.label)}</button>`).join("")}<span class="sep"></span>
         <button data-o="clay">Clay</button><button data-o="wire">Wireframe</button><button data-o="bones" hidden>Bones</button><button data-o="rotate" class="on">Turntable</button><button data-o="reset">Reset</button></div></div>`;

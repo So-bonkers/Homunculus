@@ -160,9 +160,16 @@ def run(name, live):
                          for k, i in enumerate(x.get("images") or []) if _url(name, i)]} for x in (S.get("snapshots") or [])]
     files = [{"label": lbl, "url": _url(name, A.get(k)), "name": os.path.basename(A.get(k) or "")} for k, lbl in FILE_KEYS if _url(name, A.get(k))]
     mesh_done = stages.get("mesh", {}).get("status") == "done"
+    models_pending = 0
     models = [{"key": k, "label": (lbl + " (still being refined)") if (k == "mesh_glb" and not mesh_done) else lbl, "url": _url(name, A.get(k))} for k, lbl in GLB_KEYS if _url(name, A.get(k))]
     if not mesh_done:      # the grey shape candidates you are judging (and the textured mesh above, once Pixal3D has made it) can be inspected right away
-        models += [{"key": f"shape{i + 1}", "label": c.get("label", f"Shape #{i + 1}"), "url": _url(name, c.get("glb"))} for i, c in enumerate(A.get("shape_candidates") or []) if _url(name, c.get("glb"))]
+        from . import preview      # raw shapes are hundreds of MB: the viewer gets a decimated copy (made in the background the first time)
+        cands = A.get("shape_candidates") or []; pending = 0
+        for i, c in enumerate(cands):
+            g = preview.ensure(c.get("glb"))
+            if g and _url(name, g): models.append({"key": f"shape{i + 1}", "label": c.get("label", f"Shape #{i + 1}"), "url": _url(name, g)})
+            elif c.get("glb") and os.path.exists(c["glb"]): pending += 1
+        models_pending = pending
     plan = (S.get("vlm") or {}).get("plan") or {}
     anims = None
     try:
@@ -185,7 +192,7 @@ def run(name, live):
     return {"name": name, "status": _status(S, is_live), "live": is_live, "file": os.path.basename(S.get("input", "")),
             "input": _url(name, A.get("input")), "thumb": _thumb(name, S), "chosen": _url(name, A.get("chosen_edit")),
             "t_start": S.get("t_start"), "t_total": S.get("t_total"), "now": time.time(),
-            "repair": _repairing(name), "looks": looks, "animations": anims, "mode": S.get("mode", "image"), "options": {"auto_repair": S.get("auto_repair", C.AUTO_REPAIR), "face_source": S.get("face_source", C.FACE_SOURCE), "texture": S.get("texture_mode", C.TEXTURE_MODE), "face": S.get("face", "auto"), "face_redraw": S.get("face_redraw", True), "rigger": S.get("rigger", "mia"), "anim_prompts": S.get("anim_prompts", []), "anim_reps": S.get("anim_reps", 2), "direct": bool(S.get("direct")), "look": S.get("look", "asis"), "outfit": S.get("outfit", "keep"), "review": S.get("review_mode", "override"), "grace": S.get("review_grace", 60),
+            "models_pending": models_pending, "repair": _repairing(name), "looks": looks, "animations": anims, "mode": S.get("mode", "image"), "options": {"auto_repair": S.get("auto_repair", C.AUTO_REPAIR), "face_source": S.get("face_source", C.FACE_SOURCE), "texture": S.get("texture_mode", C.TEXTURE_MODE), "face": S.get("face", "auto"), "face_redraw": S.get("face_redraw", True), "rigger": S.get("rigger", "mia"), "anim_prompts": S.get("anim_prompts", []), "anim_reps": S.get("anim_reps", 2), "direct": bool(S.get("direct")), "look": S.get("look", "asis"), "outfit": S.get("outfit", "keep"), "review": S.get("review_mode", "override"), "grace": S.get("review_grace", 60),
                         "style": S.get("style_override") or S.get("style_guess")},
             "stages": st, "review": review, "snapshots": snaps, "files": files, "models": models,
             "zip": f"/api/zip/{name}.zip" if A.get("mesh_glb") else None,
