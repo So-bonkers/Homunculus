@@ -13,9 +13,10 @@ export async function mountRetex(host, d, { createViewer, toast }) {
   host.innerHTML = `<div class="repair retex">
     <div class="rp-left"><div class="rt-stage" id="rts"><div class="viewer rp-view" id="rtv" style="height:100%"><div class="vload" id="rtl"><div style="text-align:center">Loading model<div class="p"><i></i></div></div></div>
         <img class="rt-ref" id="rtref" alt="" hidden><canvas class="rt-mask" id="rtmask"></canvas><div class="rp-hint" id="rthint">Brush the part to change</div>
-        <div class="vbar rp-bar"><button data-t="model" class="on">Brush model</button><button data-t="mask" id="rtmaskbtn" disabled>Mask picture</button><button data-t="orbit">Orbit</button><button data-t="erase">Erase</button>
+</div></div>
+      <div class="vbar rp-bar"><button data-t="model" class="on">Brush model</button><button data-t="mask" id="rtmaskbtn" disabled>Mask picture</button><button data-t="orbit">Orbit</button><button data-t="erase">Erase</button>
           <label class="rp-size" title="[ and ] change it, or Alt + scroll">Size <input type="range" id="rtsize" min="0.3" max="25" step="0.1" value="3"><output id="rtsizeo">3%</output></label><span class="sep"></span>
-          <button data-t="clear">Clear brush</button><button data-t="clearmask" disabled id="rtclearmask">Clear mask</button></div></div></div>
+          <button data-t="clear">Clear brush</button><button data-t="clearmask" disabled id="rtclearmask">Clear mask</button></div>
       <div class="rt-views"><span class="hint" style="margin:0">Quick views</span><button class="btn btn-ghost btn-sm" data-az="0">Front</button><button class="btn btn-ghost btn-sm" data-az="90">Right</button>
         <button class="btn btn-ghost btn-sm" data-az="180">Back</button><button class="btn btn-ghost btn-sm" data-az="270">Left</button>
         <label class="rp-size" id="rtopwrap" hidden>Picture <input type="range" id="rtop" min="0" max="100" value="55"></label></div></div>
@@ -25,7 +26,7 @@ export async function mountRetex(host, d, { createViewer, toast }) {
       <div id="rtsrc_gen"><textarea class="notes" id="rtnotes" rows="3" placeholder="Describe what this part should look like: e.g. a worn brown leather jacket with white stitching and a small red patch on the shoulder"></textarea>
         <div class="rp-go"><button class="btn btn-glow" id="rtgen">Generate this view</button><span class="hint" id="rtgenmsg" style="margin:0"></span></div>
         <div class="hint">The image model redraws what you see in the viewer; the result is aligned with it and appears here (needs the GPU, about a minute).</div></div>
-      <div id="rtsrc_ref" hidden><label class="drop rt-drop"><input type="file" id="rtfile" accept="image/*" hidden><b>Choose a reference picture</b><span>seen from any angle; then orbit until the model matches it (use the Picture slider), and paint on it which pixels to use</span></label></div>
+      <div id="rtsrc_ref" hidden>${info.original ? `<div class="rp-go" style="margin:0 0 10px"><button class="btn btn-glow btn-sm" id="rtorig">Use the original picture</button><span class="hint" style="margin:0">for logos, engravings and text the redraw changed: the model is set to the picture's front view; brush that part on the model, then Apply</span></div>` : ""}<label class="drop rt-drop"><input type="file" id="rtfile" accept="image/*" hidden><b>Choose a reference picture</b><span>seen from any angle; then orbit until the model matches it (use the Picture slider), and paint on it which pixels to use</span></label></div>
       <div id="rtgenerated"></div>
       <div class="rp-go" style="margin-top:12px"><button class="btn btn-primary" id="rtapply" disabled>Apply to the brushed area</button><span class="hint" id="rtmsg" style="margin:0"></span></div>
       <div id="rtjobs"></div></div></div>`;
@@ -102,6 +103,27 @@ export async function mountRetex(host, d, { createViewer, toast }) {
   $("#rtop").oninput = (e) => { $("#rtref").style.opacity = e.target.value / 100; };
   $("#rtfile").onchange = async (e) => { const f = e.target.files[0]; if (!f) return; const url = await readFile(f), im = new Image(); im.onload = () => { refFile = url; refGen = null; mstrokes = []; setRef(url, im.naturalWidth / im.naturalHeight); check(); }; im.src = url; };
 
+  async function useOriginal() {      // the user's own picture as the reference, with the model's front view matched to it
+    const b = $("#rtorig"); b.disabled = true; b.textContent = "Loading…";
+    try {
+      const blob = await (await fetch(info.original)).blob(), url = await readFile(blob), im = new Image(); await new Promise((res, rej) => { im.onload = res; im.onerror = rej; im.src = url; });
+      const W = 256, H = Math.max(8, Math.round(256 * im.naturalHeight / im.naturalWidth)), c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(im, 0, 0, W, H);
+      const px = g.getImageData(0, 0, W, H).data, at = (x, y) => [px[(y * W + x) * 4], px[(y * W + x) * 4 + 1], px[(y * W + x) * 4 + 2]], edge = [];
+      for (let x = 0; x < W; x += 4) { edge.push(at(x, 0), at(x, H - 1)); } for (let y = 0; y < H; y += 4) { edge.push(at(0, y), at(W - 1, y)); }
+      const bg = [0, 1, 2].map((k) => edge.map((e) => e[k]).sort((p, q) => p - q)[edge.length >> 1]); let x0 = W, x1 = 0, y0 = H, y1 = 0;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const p = at(x, y); if (Math.abs(p[0] - bg[0]) + Math.abs(p[1] - bg[1]) + Math.abs(p[2] - bg[2]) > 60) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } }
+      if (x1 <= x0 || y1 <= y0) throw new Error("no subject found in the picture");
+      refFile = url; refGen = null; mstrokes = []; setRef(url, im.naturalWidth / im.naturalHeight); src = "ref"; check();
+      await new Promise((r) => setTimeout(r, 400));         // let the stage take the picture's shape before the camera is set
+      const box = new THREE.Box3().setFromObject(root), hm = box.max.y - box.min.y, f = (y1 - y0) / H, cxi = (x0 + x1) / 2 / W, cyi = (y0 + y1) / 2 / H, fov = 30, t = Math.tan(THREE.MathUtils.degToRad(fov / 2));
+      const D = hm / (f * 2 * t), V = 2 * D * t, asp = im.naturalWidth / im.naturalHeight, cx = (box.min.x + box.max.x) / 2, cy = (box.min.y + box.max.y) / 2;
+      camera.fov = fov; camera.aspect = asp; camera.updateProjectionMatrix(); camera.quaternion.identity();
+      const px_ = cx - (cxi - 0.5) * V * asp, py_ = cy - (0.5 - cyi) * V; camera.position.set(px_, py_, box.max.z + D); controls.target.set(px_, py_, box.max.z); controls.update();
+      $("#rtop").value = 45; $("#rtref").style.opacity = 0.45; $("#rthint").textContent = "Matched to the picture's front view. Brush the part to restore, then Apply. Fine-tune with the Picture slider and Orbit if needed.";
+      toast && toast("Front view matched to your picture");
+    } catch (e) { toast && toast("Could not use the original picture: " + e.message, true); } finally { b.disabled = false; b.textContent = "Use the original picture"; }
+  }
+  $("#rtorig") && ($("#rtorig").onclick = useOriginal);
   host.querySelectorAll(".rt-views [data-az]").forEach((b) => (b.onclick = () => { const az = +b.dataset.az * Math.PI / 180, t = controls.target, d = camera.position.distanceTo(t) || 3;
     camera.position.set(t.x + Math.sin(az) * d, t.y, t.z + Math.cos(az) * d); controls.update(); }));
   $(".rp-bar").onclick = (e) => { const b = e.target.closest("button"); if (!b || b.disabled) return; const t = b.dataset.t;

@@ -103,7 +103,8 @@ def retex(name):
             out.append({"job": d, "mode": S2.get("mode") or req.get("mode"), "status": S2.get("status"), "error": S2.get("error"), "notes": S2.get("notes", ""), "log": S2.get("log", [])[-6:],
                         "result": u(S2.get("result")), "before": u(S2.get("before")), "after": u(S2.get("after")), "camera": req.get("camera") if req.get("mode") == "generate" else None,
                         "generated": [{"name": os.path.basename(g), "url": u(g)} for g in S2.get("generated", []) if u(g)], "applied": any((x.get("applied_from") == d) for x in _retex_applied(name))})
-    return {"base": base, "jobs": out}
+    orig = next((_url(name, A.get(k)) for k in ("upscaled", "input") if _url(name, A.get(k))), None)
+    return {"base": base, "original": orig, "jobs": out}
 
 
 def _retex_applied(name):

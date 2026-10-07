@@ -417,3 +417,5 @@ pre.note{margin:10px 0 0;padding:14px 16px;border-radius:var(--r-sm);background:
 .rp-size output{min-width:36px;font-variant-numeric:tabular-nums}
 
 .fmts{display:grid;gap:8px;margin:4px 0}.fmts .inl{display:flex;gap:10px;align-items:center}.fmts small{color:var(--muted)}
+
+.retex .rp-bar{position:static;transform:none;margin:10px auto 0;flex-wrap:wrap;justify-content:center;max-width:100%}
