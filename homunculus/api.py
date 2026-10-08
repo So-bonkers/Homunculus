@@ -17,7 +17,7 @@ MESH_MODEL = {"ingest": "weld · base · decimate · UVs", "upscale": "not neede
               "edit": "Qwen-Image paints the grey render", "pick": "outline check · you / judges", "upscale_edit": "RealESRGAN · face close-up",
               "mesh": "kept as is (no Pixal3D)", "mesh_check": "not needed (your geometry)", "color": "front painting projected"}
 MESH_SKIPPED = {"upscale", "mesh_check"}
-GLB_KEYS = [("final_glb", "Final"), ("rig_glb", "Rigged"), ("mesh_glb", "Textured mesh")]
+GLB_KEYS = [("final_glb", "Final"), ("rig_glb", "Rigged"), ("colored_glb", "Coloured mesh"), ("mesh_glb", "Textured mesh")]   # colored_glb: the mesh with the picture projected onto it (what the rig is built on); mesh_glb is still Pixal3D's own, garbled colours until the final texture is made
 FILE_KEYS = [("final_glb", "Final rig · GLB"), ("final_fbx", "Final rig · FBX"), ("mesh_glb", "Mesh · GLB"), ("report", "Report")]      # GLB only unless an older run kept FBX; more formats are made on demand (Accept)
 
 

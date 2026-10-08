@@ -22,3 +22,9 @@ homunculus/static/presets/*
 !homunculus/static/presets/README.txt
 presets/*/asset/
 presets/*/rig/
+/trials
+# generated or copied material that is not source
+presets/*/source/
+presets/*/textures/
+presets/*/*_rigged.fbx
+comfy/object_info.json
