@@ -7,5 +7,6 @@ dl $B/vae/trellis_2_shape_vae_bf16.safetensors vae/trellis_2_shape_vae_bf16.safe
 dl $B/vae/trellis_2_texture_vae_bf16.safetensors vae/trellis_2_texture_vae_bf16.safetensors
 dl $B/diffusion_models/pixal3d_bf16.safetensors diffusion_models/pixal3d_bf16.safetensors
 dl $B/diffusion_models/pixal3d_int8_convrot.safetensors diffusion_models/pixal3d_int8_convrot.safetensors
+dl $B/diffusion_models/pixal3d_multiview_bf16.safetensors diffusion_models/pixal3d_multiview_bf16.safetensors     # turnaround-sheet runs (11 GB)
 dl $B/diffusion_models/pixal3d_multiview_int8_convrot.safetensors diffusion_models/pixal3d_multiview_int8_convrot.safetensors
 echo DL_DONE

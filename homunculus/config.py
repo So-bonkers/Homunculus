@@ -50,6 +50,8 @@ EDIT_SEEDS = 4
 EDIT_ROUNDS = 3               # first round + up to 2 VLM-guided retries
 MESH_ATTEMPTS = 2             # rounds of shape candidates per chosen redraw
 SHAPE_SEEDS = 3               # shape candidates generated per round (best of N)
+SHEET_SHAPE_SEEDS = 1         # turnaround-sheet runs: one shape per round (the four real views already pin the shape down); a defect is fixed afterwards with Repair
+SHEET_JUDGES = JUDGES[:1]     # turnaround-sheet runs: Qwen3.8 alone judges (it replaces the three-judge panel: about 4 minutes less in the shape check alone)
 MESH_FACES, MESH_TEX = 250000, 4096
 
 FACE_FIT = "auto"          # face texture fit: auto (landmark warp if both faces are readable, else repaint) | landmarks | repaint

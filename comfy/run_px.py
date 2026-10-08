@@ -41,8 +41,9 @@ def run(graph, timeout=3600, limit=22.5):
 if __name__=="__main__":
     g=build_single(sys.argv[1], sys.argv[2], int(sys.argv[3]) if len(sys.argv)>3 else 42); run(g)
 
-def build_tex(image, prefix, seed=42, remesh=1024, faces=200000, tex=4096):
+def build_tex(image, prefix, seed=42, remesh=1024, faces=200000, tex=4096, texture=True, base_color=0x808080, upres=None):
     g=build_single(image, prefix, seed); a=json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "api_single.json")))
+    if upres: g["94"]["inputs"]["target_resolution"]=int(upres)      # voxel resolution of the upsampled shape (1024..2048): lower = less VRAM, for parts that fill their whole picture
     del g["900"]
     for k in ("98","12","93","118","147","288","233","224","210","260","238","196","241","186"): g[k]=json.loads(json.dumps(a[k]))
     g["98"]["inputs"].update({"positive":["94",0],"negative":["94",1],"shape_latent":["23",0]})
@@ -58,6 +59,25 @@ def build_tex(image, prefix, seed=42, remesh=1024, faces=200000, tex=4096):
     g["224"]["inputs"]={"low_poly":["196",0],"high_poly":["241",0],"resolution":2048,"cage_distance":0.05,"ignore_backfaces":True}
     g["210"]["inputs"]={"mesh":["196",0],"base_color":["147",0],"metallic":["147",1],"roughness":["147",2],"occlusion":["233",0],"normal_map":["224",0]}
     g["260"]["inputs"]={"mesh":["210",0],"crease_angle":180.0}
+    if not texture:      # no texture sampling and no colour bake: the mesh gets a flat base colour (the colours come from projected pictures later). Saves the 12-step texture sampler and the bake
+        for k in ("98","12","93","118","147"): g.pop(k,None)
+        g["291"]={"class_type":"EmptyImage","inputs":{"width":256,"height":256,"batch_size":1,"color":int(base_color)}}
+        g["292"]={"class_type":"EmptyImage","inputs":{"width":256,"height":256,"batch_size":1,"color":0x000000}}      # metallic: none
+        g["293"]={"class_type":"EmptyImage","inputs":{"width":256,"height":256,"batch_size":1,"color":0x999999}}      # roughness: 0.6
+        g["210"]["inputs"].update({"base_color":["291",0],"metallic":["292",0],"roughness":["293",0]})
     g["901"]={"class_type":"SaveGLB","inputs":{"mesh":["260",0],"filename_prefix":prefix}}
     g["902"]={"class_type":"SaveGLB","inputs":{"mesh":["241",0],"filename_prefix":prefix+"_hi"}}
     return g
+
+
+PIXAL_MV_MODEL = "pixal3d_multiview_bf16.safetensors"   # the multiview checkpoint; int8 variant: pixal3d_multiview_int8_convrot.safetensors
+def to_multiview(g, files, model=None):
+    """Turn a single-image graph (build_single / build_tex) into a multiview one: files = {"front": name, "left": ..., "back": ..., "right": ...} (1024 px squares in ComfyUI's input folder,
+    object on black, one shared scale). The multiview conditioning replaces the background removal, crop and MoGe fov of the single-image path."""
+    for k in ("122", "193", "192", "248", "303", "312", "55", "56", "242"): g.pop(k, None)
+    for i, n in enumerate(files): g[f"mv{i}"] = {"class_type": "LoadImage", "inputs": {"image": files[n]}}
+    g["298"] = {"class_type": "Pixal3DMultiViewConditioning", "inputs": {"clip_vision_model": ["15", 0], "fov": 20.0, **{n: [f"mv{i}", 0] for i, n in enumerate(files)}}}
+    g["319"]["inputs"]["unet_name"] = model or PIXAL_MV_MODEL
+    return g
+def build_single_mv(files, prefix, seed=42, model=None): return to_multiview(build_single("x.png", prefix, seed), files, model)
+def build_tex_mv(files, prefix, seed=42, model=None, **kw): return to_multiview(build_tex("x.png", prefix, seed, **kw), files, model)

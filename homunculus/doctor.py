@@ -47,6 +47,8 @@ def checks():
     for label, rel, big in (("Pixal3D weights (bf16)", "diffusion_models/pixal3d_bf16.safetensors", 5e9), ("DINOv3 encoder", "clip_vision/dino_v3_L_naf_fp32.safetensors", 5e8),
                             ("Pixal3D shape VAE", "vae/trellis_2_shape_vae_bf16.safetensors", 5e8), ("Pixal3D texture VAE", "vae/trellis_2_texture_vae_bf16.safetensors", 5e8)):
         add(label, "ok" if _exists(m / rel, big) else "fail", rel, "bash comfy/dl.sh")
+    mv = [f for f in ("pixal3d_multiview_bf16.safetensors", "pixal3d_multiview_int8_convrot.safetensors") if _exists(m / "diffusion_models" / f, 4e9)]
+    add("Pixal3D multiview weights (turnaround sheets)", "ok" if mv else "warn", mv[0] if mv else "optional", "bash comfy/dl.sh (only needed for runs started from a turnaround sheet)")
     for n in set(C.UPSCALERS.values()): add("Upscaler " + n, "ok" if _exists(m / "upscale_models" / n, 1e6) else "warn", n, "./setup.sh comfy (4x-UltraSharp is a manual download)")
     py = C.COMFY_PY; add("ComfyUI Python env", "ok" if _exists(py) else "fail", str(py), "./setup.sh comfy")
     # rigging, animation, T-pose

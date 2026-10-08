@@ -20,7 +20,7 @@ def unload_llms(timeout=150):
     answering (e.g. a judge you cut short), so keep asking until nothing is loaded."""
     t0 = time.time()
     while True:
-        for m in {C.VLM_MODEL, *(j[0] for j in getattr(C, "JUDGES", []))}:
+        for m in {C.VLM_MODEL, *(j[0] for j in getattr(C, "ALL_JUDGES", getattr(C, "JUDGES", [])))}:
             _post("/api/inference/unload", json={"model_path": m})
         if not studio_llms_loaded() or time.time() - t0 > timeout: return
         time.sleep(4)

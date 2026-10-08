@@ -181,6 +181,7 @@ while base_tex.type != "TEX_IMAGE":
     base_tex = [l.from_node for l in base_tex.inputs[0].links][0] if base_tex.inputs and base_tex.inputs[0].links else base_tex
     if base_tex.type != "TEX_IMAGE" and not base_tex.inputs: break
 base_img = base_tex.image; BW, BH = base_img.size
+BW, BH = max(BW, 4096), max(BH, 4096)      # the baked texture is never smaller than 4096: a flat base colour (sheet runs skip Pixal3D's own texture) is a tiny image, and baking at its size gave blocky logos
 uvn = nt.nodes.new("ShaderNodeUVMap"); uvn.uv_map = "proj"
 ptex = nt.nodes.new("ShaderNodeTexImage"); ptex.image = img; ptex.extension = "EXTEND"
 nt.links.new(uvn.outputs[0], ptex.inputs[0])

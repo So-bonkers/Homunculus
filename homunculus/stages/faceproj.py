@@ -363,6 +363,25 @@ def project_body(glb_in, img_path, glb_out, preview_dir, log, agree_check=True):
     fg = np.load(mnpy); log(f"[texture] clothes and body: front of the redraw projected where it agrees with the mesh ({100 * agree[fg].mean():.0f}% of the figure)")
     return glb_out
 
+# the character is turned about the vertical axis so the side that a real view shows faces the front camera: the LEFT view (camera sees the character's left side, +x) needs -90
+SHEET_ANGLES = (("front", 0), ("back", 180), ("left", -90), ("right", 90))
+
+def project_sheet(glb_in, raw, glb_out, preview_dir, log):
+    """Texture from a turnaround sheet: every real view is projected onto the surfaces that face it (front first, then back, left, right), each registered on its own silhouette like the front
+    projection; where two views overlap the one that sees the surface better wins (FACEPROJ_PREV). raw: {name: path of the cut-out figure picture}. No image model is involved."""
+    os.makedirs(preview_dir, exist_ok=True); cur = glb_in; done = []
+    for name, ang in SHEET_ANGLES:
+        if name not in raw: continue
+        npy = os.path.join(preview_dir, f"{name}_dist.npy"); mnpy = os.path.join(preview_dir, f"{name}_mask.npy"); an = os.path.join(preview_dir, f"{name}_agree.npy")
+        fg = _distmap(raw[name], npy, mnpy); np.save(an, np.ones(fg.shape, np.float32))      # a real view is trusted everywhere it faces
+        nxt = os.path.join(preview_dir, f"sheet_{name}.glb")
+        out = _bl(cur, raw[name], nxt, "-", npy, "project", "-", mnpy, an, angle=ang, prev=done, region="full")
+        if "[faceproj] wrote" not in out: log(f"[texture] {name} view: projection failed: {out[-300:]}"); continue
+        cur = nxt; done.append(ang); log(f"[texture] {name} view of the sheet projected")
+    if cur == glb_in: raise RuntimeError("no view of the sheet could be projected")
+    shutil.copy(cur, glb_out); shutil.copy(cur[:-4] + "_basecolor.png", glb_out[:-4] + "_basecolor.png")
+    return glb_out
+
 def multiview(glb_in, img_path, glb_out, preview_dir, log, style="", desc="", views=None, paint_grey=False):
     """Turn the model, let the image model clean up each view's render (keeping its layout), project it back where that view sees
     the surface better than the views before it. Views whose outline the edit changed are skipped."""

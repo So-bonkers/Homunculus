@@ -396,6 +396,7 @@ def _launch(name, img, q):
     if str(q.get("anim_reps", "")).isdigit(): cmd += ["--anim-reps", str(max(1, min(6, int(q["anim_reps"]))))]
     if q.get("look") in ("choose", "asis", "stylized", "game", "anime3d", "clay", "chibi"): cmd += ["--look", q["look"]]
     env = [f"--setenv={k}={os.environ[k]}" for k in ("DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR") if os.environ.get(k)]
+    if q.get("sheet") in ("lfrb", "flbr"): cmd += ["--sheet", q["sheet"]]
     subprocess.run(["systemctl", "--user", "reset-failed", f"homunculus-run-{name}.service"], capture_output=True)
     r = subprocess.run(["systemd-run", "--user", f"--unit=homunculus-run-{name}", "--collect", f"--working-directory={C.ROOT}", "-p", "KillSignal=SIGINT",
                         "-p", "TimeoutStopSec=90", *env, *cmd], capture_output=True, text=True)

@@ -316,6 +316,8 @@ async function home(scrollTo) {
       <form class="form" id="form" autocomplete="off" onsubmit="return false">
         <div class="field"><label for="name">Run name</label><input class="input" id="name" placeholder="e.g. hero_v1" maxlength="40" spellcheck="false"><div class="hint" id="namehint"></div></div>
         <div class="switch"><div><b>Use my picture as is</b><small>Skip the redraw: for clean full-body references (T/A-pose, open hands, plain background). The texture then comes from your picture itself (upscaled, not redrawn).</small></div><button type="button" class="tg" id="direct"></button></div>
+        <div class="switch"><div><b>My picture is a turnaround sheet</b><small>Four views of the character side by side (front, back and both sides, in a T-pose). The 3D shape is built from all four views and the texture comes from them, so the back and sides are real, not guessed. No redraw.</small></div><button type="button" class="tg" id="sheet"></button></div>
+        <div class="field" id="sheetf" style="display:none"><span class="flabel">Order in the sheet</span>${seg("sheetorder", [["lfrb", "Left · Front · Right · Back"], ["flbr", "Front · Left · Back · Right"]], "lfrb")}<div class="hint">Left to right, as the figures are drawn. "Left" means the character's left side: that figure faces the left edge of the picture.</div></div>
         <div class="field" id="lookf"><span class="flabel">Look</span>${seg("look", LOOKS, "choose")}<div class="hint" id="lookhint"></div></div>
         <div class="field"><span class="flabel">Outfit</span>${seg("outfit", [["keep", "Keep"], ["shirtless", "Shirtless"], ["nude", "Nude"]], "keep")}<div class="hint" id="outfithint"></div></div>
         <div class="field"><span class="flabel">Texture</span>${seg("texture", [["simple", "Simple"], ["full", "Full"]], "simple")}<div class="hint" id="texhint"></div></div>
@@ -357,7 +359,7 @@ async function home(scrollTo) {
   if (scrollTo) requestAnimationFrame(() => document.getElementById(scrollTo)?.scrollIntoView({ behavior: "instant", block: "start" }));
 
   // ---- launcher
-  const F = { file: null, direct: false, look: "choose", rigger: "mia", face: "auto", faceRedraw: true, faceSource: "original", texture: "simple", autoRepair: "alert", outfit: "keep", review: "override", zip: true };
+  const F = { file: null, direct: false, sheet: false, sheetOrder: "lfrb", look: "choose", rigger: "mia", face: "auto", faceRedraw: true, faceSource: "original", texture: "simple", autoRepair: "alert", outfit: "keep", review: "override", zip: true };
   let known = [];
   const TEX_HINT = { simple: "The texture comes from your upscaled picture (or the chosen redraw) alone: projected onto the model, face fitted. No extra generated images.", full: "Also redraws the face as a reference and has the image model clean the side and back views. More detail guessed, but it can make the model look worse than the picture." };
   const FSRC_HINT = { original: "The face is taken from your own picture (upscaled): the face as it really is. Falls back to the redraw if its landmarks cannot be matched.", redraw: "The face is taken from the redrawn T-pose picture (the image model may have changed it)." };
@@ -378,8 +380,10 @@ async function home(scrollTo) {
   setHints(); presetPicker($("#anim"), $("#animpresets"));
   $("#grace").oninput = (e) => ($("#graceo").textContent = e.target.value + " s");
   $("#zip").onclick = (e) => { F.zip = !F.zip; e.currentTarget.classList.toggle("on", F.zip); };
-  $("#direct").onclick = (e) => { F.direct = !F.direct; e.currentTarget.classList.toggle("on", F.direct);
-    $("#lookf").style.display = F.direct ? "none" : ""; $('[data-seg="outfit"]').closest(".field").style.display = F.direct ? "none" : ""; };
+  const directUI = () => { const d = F.direct || F.sheet; $("#lookf").style.display = d ? "none" : ""; $('[data-seg="outfit"]').closest(".field").style.display = d ? "none" : ""; };
+  $("#direct").onclick = (e) => { F.direct = !F.direct; e.currentTarget.classList.toggle("on", F.direct); directUI(); };
+  $("#sheet").onclick = (e) => { F.sheet = !F.sheet; e.currentTarget.classList.toggle("on", F.sheet); $("#sheetf").style.display = F.sheet ? "" : "none"; directUI(); };
+  initSeg($('[data-seg="sheetorder"]'), (v) => { F.sheetOrder = v; });
   const nameHint = () => {
     const n = $("#name").value.trim(), h = $("#namehint");
     h.className = "hint";
@@ -399,7 +403,7 @@ async function home(scrollTo) {
     drop.insertAdjacentHTML("beforeend", isMesh(f)
       ? `<div class="meshpv"><div class="ic">${ICON.cube}</div><b>${esc(f.name)}</b><span>${(f.size / 1048576).toFixed(1)} MB · 3D model: it will be prepared, painted and textured</span></div><span class="swap">click to change</span>`
       : `<img class="pv" src="${URL.createObjectURL(f)}" alt=""><span class="swap">${esc(f.name)} · click to change</span>`);
-    $("#direct").closest(".switch").style.display = isMesh(f) ? "none" : "";
+    $("#direct").closest(".switch").style.display = isMesh(f) ? "none" : ""; $("#sheet").closest(".switch").style.display = isMesh(f) ? "none" : "";
     $('[data-seg="outfit"]').closest(".field").style.display = isMesh(f) || F.direct ? "none" : "";
     if (!$("#name").value) $("#name").value = f.name.replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 40);
     nameHint();
@@ -413,7 +417,7 @@ async function home(scrollTo) {
     if (!name) { msg.textContent = "Give the run a name."; return $("#name").focus(); }
     if (!/^[A-Za-z0-9_-]{1,40}$/.test(name)) { msg.textContent = "Letters, digits, - and _ only."; return; }
     if (!F.file && !known.some((r) => r.name === name)) { msg.textContent = "Choose an image first."; return; }
-    const q = new URLSearchParams({ name, fname: F.file ? F.file.name : "image.jpg", look: F.direct ? "asis" : F.look, direct: F.direct ? "1" : "0", rigger: F.rigger, anim: $("#anim").value.trim(), anim_reps: $("#animreps").value, outfit: F.outfit, face: F.face, face_source: F.faceSource, texture: F.texture, auto_repair: F.autoRepair, face_redraw: F.faceRedraw ? "1" : "0", review: F.review, grace: $("#grace").value,
+    const q = new URLSearchParams({ name, fname: F.file ? F.file.name : "image.jpg", look: F.direct || F.sheet ? "asis" : F.look, direct: F.direct || F.sheet ? "1" : "0", sheet: F.sheet ? F.sheetOrder : "", rigger: F.rigger, anim: $("#anim").value.trim(), anim_reps: $("#animreps").value, outfit: F.outfit, face: F.face, face_source: F.faceSource, texture: F.texture, auto_repair: F.autoRepair, face_redraw: F.faceRedraw ? "1" : "0", review: F.review, grace: $("#grace").value,
       style: $("#style").value, frm: $("#frm").value, zip: F.zip ? "1" : "0" });
     const x = new XMLHttpRequest(); x.open("POST", "/api/upload?" + q);
     $("#go").disabled = true; $("#upbar").hidden = !F.file; msg.textContent = F.file ? "" : "Starting…";

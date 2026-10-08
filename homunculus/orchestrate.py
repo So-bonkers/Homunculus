@@ -7,7 +7,7 @@ Progress: runs/<name>/progress.html (auto-refreshing), runs/<name>/progress/*.pn
 import argparse, json, os, shutil, subprocess, sys, time, traceback
 from PIL import Image
 from . import config as C, gpu, vlm, prompts, progress, digits, server, notify
-from .stages import comfy, edit, blender, rig, report, cleanup, faceproj
+from .stages import comfy, edit, blender, rig, report, cleanup, faceproj, turnaround
 
 STAGES = ["ingest", "upscale", "plan", "edit", "pick", "upscale_edit", "mesh", "mesh_check", "color", "rig", "rig_check", "animate", "texture", "report"]
 
@@ -99,6 +99,7 @@ def texture_source(R):
 def face_redraw_on(R):
     """Redraw the face as a full-resolution close-up (before the 3D step, or for the texture)? --face-redraw on|off; default: config FACE_REFINE_EARLY. Never when there is no visible face."""
     v = R.state.get("face_redraw")
+    if R.state.get("sheet"): return False       # the front view is one of the four Pixal3D inputs: it must stay the way it was drawn
     return face_on(R) and (C.FACE_REFINE_EARLY if v is None else bool(v))
 
 
@@ -209,8 +210,36 @@ def st_ingest_mesh(R):
     progress.snap(R, "ingest", "3D model prepared: " + note, views, ["view 1", "view 2", "view 3", "view 4"])
     return note
 
+def st_ingest_sheet(R):
+    """Turnaround sheet in (--sheet): cut the four views out, frame them at one scale for the multiview Pixal3D, and use the front figure as 'the picture'."""
+    src = R.state["input"]; dst = R.p("00_input", "sheet" + os.path.splitext(src)[1].lower()); shutil.copy(src, dst); R.A["sheet"] = dst
+    vd = os.path.dirname(R.p("00_input", "views", "_")); raw = turnaround.split(dst, vd, R.state.get("sheet_order", "lfrb"), R.log)
+    R.A["input"] = turnaround.front_reference(raw["front"], R.p("00_input", "input.png"))
+    R.A["sheet_raw"] = raw; R.A["sheet_views"] = turnaround.frame(raw, vd, R.log)
+    contact = turnaround.sheet_image(R.A["sheet_views"], R.p("00_input", "views", "framed_sheet.png"))
+    progress.snap(R, "ingest", "turnaround sheet split into four views (one shared scale, black background)", [contact], ["front, left, back, right"])
+    return "turnaround sheet: " + ", ".join(R.A["sheet_views"])
+
+def sheet_views(R):
+    """The framed turnaround views of a sheet run (None for a normal run); rebuilt from the sheet if the run folder was forked without them."""
+    if not R.state.get("sheet"): return None
+    v = R.A.get("sheet_views")
+    if not v or not all(os.path.exists(p) for p in v.values()):
+        R.log("turnaround views missing; cutting the sheet again"); st_ingest_sheet(R); v = R.A["sheet_views"]
+    return v
+
+def sheet_base(R):
+    """Sheet runs skip Pixal3D's own texture sampling (the four real views are projected onto the mesh later): the mesh gets one flat colour, the character's own median colour from the front view."""
+    if not R.state.get("sheet"): return {}
+    import numpy as np
+    from PIL import Image
+    a = np.asarray(Image.open(sheet_views(R)["front"]).convert("RGB")).reshape(-1, 3); a = a[a.sum(1) > 30]      # the views are on black
+    c = np.median(a, axis=0).astype(int) if len(a) else (128, 128, 128)
+    return {"texture": False, "base_color": int(c[0]) << 16 | int(c[1]) << 8 | int(c[2])}
+
 def st_ingest(R):
     if mesh_mode(R): return st_ingest_mesh(R)
+    if R.state.get("sheet"): return st_ingest_sheet(R)
     src = R.state["input"]; dst = R.p("00_input", "input" + os.path.splitext(src)[1].lower())
     shutil.copy(src, dst); im = Image.open(dst); R.A["input"] = dst
     progress.snap(R, "ingest", f"input {im.size[0]}x{im.size[1]}", [dst])
@@ -481,9 +510,9 @@ def st_mesh_and_check(R):
         for rnd in range(C.MESH_ATTEMPTS if not manual(R) else 12):
             t0 = time.time(); shapes = []
             with gpu.watchdog(R.log) as wd:
-                for k in range(C.SHAPE_SEEDS if not manual(R) else 1):
+                for k in range(1 if manual(R) else C.SHEET_SHAPE_SEEDS if R.state.get("sheet") else C.SHAPE_SEEDS):
                     tries += 1; R.state["mesh_tries"] = tries; tag = f"{R.state['name']}_{tries}"; seed = 42 + 11 * tries
-                    tdir = str(R.dir / "05_mesh" / f"try{tries}"); sh = comfy.shape(R.A["edit_upscaled"], tdir, tag, seed, R.log)
+                    tdir = str(R.dir / "05_mesh" / f"try{tries}"); sh = comfy.shape(R.A["edit_upscaled"], tdir, tag, seed, R.log, views=sheet_views(R))
                     sh = carve(R, sh)
                     shapes.append({"try": tries, "tdir": tdir, "tag": tag, "seed": seed, "glb": sh}); last = (tdir, tag, seed)
             gpu.free_all(R.log)
@@ -548,7 +577,7 @@ def carve(R, glb):
 
 def _full_mesh(R, tdir, tag, seed, t0):
     with gpu.watchdog(R.log) as wd:
-        glb = comfy.mesh(R.A["edit_upscaled"], tdir, tag, seed, R.log)
+        glb = comfy.mesh(R.A["edit_upscaled"], tdir, tag, seed, R.log, views=sheet_views(R), **sheet_base(R))
     R.A["mesh_glb"] = glb; R.save()          # the textured mesh is viewable as soon as Pixal3D has made it; the steps below refine it
     glb = carve(R, glb)
     R.A["mesh_glb"] = glb; R.save()
@@ -564,7 +593,13 @@ def _full_mesh(R, tdir, tag, seed, t0):
     R.A["mesh_glb"] = glb; hi = os.path.join(os.path.dirname(glb), "mesh_hi.glb"); R.A["mesh_hi_glb"] = hi if os.path.exists(hi) else None
     src_copy = os.path.join(os.path.dirname(glb), "source.png"); shutil.copy(R.A["edit_upscaled"], src_copy); R.A["mesh_source"] = src_copy
     R.mark("mesh", "running", seconds=round(time.time() - t0), peak_vram=round(wd["peak"], 1), note=f"{os.path.basename(tdir)} textured")
-    return f"{os.path.basename(tdir)} textured mesh built" + hand_gate(R)
+    return f"{os.path.basename(tdir)} textured mesh built" + hand_gate(R) + (" (sheet run: one shape; if the hands, the helmet top or any other part came out wrong, use the Repair tab)" if R.state.get("sheet") else "")
+
+def project_colours(R, raw, src, out, preview_dir):
+    """Colours onto the mesh: the picture's front for a normal run; every real view of the turnaround sheet (front, back, left, right) for a sheet run. Returns the new GLB."""
+    if R.state.get("sheet") and R.A.get("sheet_raw"):
+        return faceproj.project_sheet(raw, R.A["sheet_raw"], out, preview_dir, R.log)
+    return faceproj.project_body(raw, src, out, preview_dir, R.log, agree_check=not mesh_mode(R))
 
 def st_color(R):
     """A quick base colour before rigging (CPU only, ~20 s): the redraw's front is projected onto the mesh, so the rig is built and
@@ -573,7 +608,7 @@ def st_color(R):
     raw = R.A["mesh_glb"]; d = os.path.dirname(raw); src = texture_source(R)
     out, note = raw, "kept the mesh's own colours"
     try:
-        out = faceproj.project_body(raw, src, raw.replace(".glb", "_colored.glb"), os.path.join(d, "color"), R.log, agree_check=not mesh_mode(R)); note = "front colours projected onto the mesh"
+        out = project_colours(R, raw, src, raw.replace(".glb", "_colored.glb"), os.path.join(d, "color")); note = ("the four views of the sheet" if R.state.get("sheet") else "front colours") + " projected onto the mesh"
     except Exception as e: R.log(f"[color] skipped ({type(e).__name__}: {str(e)[:120]}); the rig uses the mesh as it is")
     R.A["colored_glb"] = out
     try:
@@ -597,8 +632,11 @@ def st_texture(R):
       except Exception as e:
         R.log(f"face close-up failed ({type(e).__name__}: {str(e)[:100]}); projecting the full-body redraw instead")
     base = raw
-    if C.TEXTURE_VIEWS:      # clothes and body: the redraw's front, projected (pixel-aligned with the mesh)
-        try: base = faceproj.project_body(raw, src, raw.replace(".glb", "_body.glb"), os.path.join(d, "texviews"), R.log, agree_check=not mesh_mode(R))
+    cg = R.A.get("colored_glb")
+    if R.state.get("sheet") and cg and os.path.exists(cg) and os.path.exists(cg[:-4] + "_basecolor.png"):
+        base = cg; R.log("[texture] the four views were already projected in the colour stage (same mesh, same views, same result): reusing it")      # identical to projecting again, ~50 s cheaper
+    elif C.TEXTURE_VIEWS:      # clothes and body: the redraw's front, projected (pixel-aligned with the mesh)
+        try: base = project_colours(R, raw, src, raw.replace(".glb", "_body.glb"), os.path.join(d, "texviews"))
         except Exception as e: R.log(f"[texture] body projection skipped ({type(e).__name__}: {str(e)[:120]})")
     out = raw.replace(".glb", "_faceproj.glb")
     before = after = None
@@ -744,6 +782,7 @@ def st_rig_ladder(R):
         ok, v = attempt(variant, extra)
         if ok: return f"{variant}: pass ({v.get('score')}/10)"
     if mesh_mode(R): return "no rig passed the check (your own model: no redraw fallback; flagged for review)"
+    if R.state.get("sheet"): return "no rig passed the check (turnaround sheet: there is no redraw to relax, and the same views give the same shape; flagged for review)"
     if "relaxed_hands" not in tried:
         R.log("rig failed twice; redrawing with relaxed hands")
         R.state.update(hands="relaxed", edit_round=0, fix_notes="", edit_round_limit=2, edit_gen=R.state.get("edit_gen", 0) + 1); R.save()
@@ -776,6 +815,8 @@ def main():
                          "within --review-grace s (default); manual = the run waits for you; off = fully automatic")
     ap.add_argument("--look", choices=["choose", "asis", *prompts.LOOK], help="choose (default for new runs): one redraw per look and you pick; asis: keep the input's style; or one of " + ", ".join(prompts.LOOK))
     ap.add_argument("--direct", action="store_true", help="skip the redraw: the picture is already a clean full-body reference (T/A-pose, plain background)")
+    ap.add_argument("--sheet", nargs="?", const="lfrb", choices=["lfrb", "flbr"], help="the picture is a 4-view turnaround sheet (four figures of the character side by side): the 3D shape is built from all four views with the multiview Pixal3D, and no redraw is made. "
+                    "Order of the figures, left to right: lfrb (default: left, front, right, back) or flbr (front, left, back, right)")
     ap.add_argument("--rigger", choices=list(C.RIGGERS), help="auto-rigger: " + ", ".join(f"{k} ({v[0]})" for k, v in C.RIGGERS.items()) + f" (default {C.DEFAULT_RIGGER})")
     ap.add_argument("--anim", action="append", metavar="PROMPT", help="animation prompt for the Animate stage (repeat for several), e.g. --anim 'walks forward'")
     ap.add_argument("--anim-reps", type=int, default=None, help="clips per prompt (default 2)")
@@ -807,10 +848,12 @@ def main():
     if a.review: R.state["review_mode"] = a.review
     if a.review_grace is not None: R.state["review_grace"] = a.review_grace
     R.state["zip"] = bool(a.zip)
+    if R.state.get("sheet"): C.ALL_JUDGES = list(C.JUDGES); C.JUDGES = list(C.SHEET_JUDGES)      # sheet runs: one judge (still unloads all of them)
     if a.rigger: R.state["rigger"] = a.rigger
     if a.anim is not None: R.state["anim_prompts"] = [p.strip() for p in a.anim if p.strip()]
     if a.anim_reps: R.state["anim_reps"] = a.anim_reps
     if a.direct: R.state["direct"] = True; R.state["look"] = "asis"
+    if a.sheet: R.state["sheet"] = True; R.state["sheet_order"] = a.sheet; R.state["direct"] = True; R.state["look"] = "asis"
     if os.path.splitext(a.image)[1].lower() in MESH_EXT: R.state["mode"] = "mesh"; R.state["outfit"] = "keep"
     if a.look: R.state["look"] = a.look
     elif "look" not in R.state and not R.done("edit"): R.state["look"] = "choose"
