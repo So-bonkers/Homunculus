@@ -20,3 +20,9 @@ Idea: ship the carved raw mesh as a *high-poly export* with a baked normal map f
 
 ## Animation quality
 See the notes in the project chat: a hand-pose layer (fist / open / point / thumbs-up) for fingers, best-of-N takes with a preview grid, and a trial of a human-specific text-to-motion model (HY-Motion or Kimodo) retargeted to the Mixamo skeleton.
+
+## Turnaround sheets made locally
+Today: a sheet has to come from outside (ChatGPT, a 3D render). The local Qwen-Image edit did not manage one: asked for a "back" view it drew the helmet from behind on a suit that still had the front logos and belt, and the "side" views came out as 3/4 views with the arms spread forward. Idea: one view per call with the other views as extra references, a judge gate that rejects 3/4 sides and a back that shows front logos, and a check that the four figures have the same scale and costume before the multiview shape step.
+
+## Colour for surfaces no view faces
+Today: the four horizontal views of a sheet cannot see the top of the head, palms and backs of the hands, the top and sole of a boot; they keep one flat colour, and a repaired part is one flat colour. Idea: fill the unseen texels from their painted neighbours (texture-space dilation inside each UV island), or project a generated top and bottom view.

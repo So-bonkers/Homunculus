@@ -4,7 +4,7 @@ Homunculus itself is GPL-3.0-or-later (see LICENSE). It drives other projects th
 
 | Component | Used for | Where | Licence note |
 |---|---|---|---|
-| [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + Pixal3D weights | upscaling, image → 3D | `comfy/ComfyUI` (cloned by setup.sh) | GPL-3.0 (ComfyUI); Pixal3D weights MIT (model card) |
+| [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + Pixal3D weights | upscaling, image → 3D | `comfy/ComfyUI` (cloned by setup.sh) | GPL-3.0 (ComfyUI); Pixal3D weights (single-image and multiview checkpoints) MIT (model card) |
 | [Unsloth Studio](https://github.com/unslothai/unsloth) | serves Qwen-Image 2.1 edit + the VLM judges | installed separately | see upstream |
 | Qwen-Image 2.1, Qwen3.8, Qwen3.6, Gemma 4 (Unsloth GGUFs) | redraw, planning, judging | downloaded by Studio | Qwen-Image: Qwen Research licence; the three judges: Apache-2.0 (model cards). Full list with links: README, Setup |
 | RealESRGAN, 4x-UltraSharp | upscaling | `comfy/ComfyUI/models/upscale_models` | RealESRGAN BSD-3; **4x-UltraSharp CC BY-NC-SA 4.0** |

@@ -21,6 +21,8 @@ Give it **one picture** of a character (or an existing **3D model**) and it give
 | Texture | face fit, multi-view clean-up, put on the rig and on every clip | Blender + Qwen-Image |
 | Report | contact sheet + report.md | – |
 
+A run that starts from a **turnaround sheet** (four views of the character in one picture) skips Redraw and Pick, builds the shape from all four views with the multiview Pixal3D and projects the four real pictures as the texture; see [docs/TURNAROUND.md](docs/TURNAROUND.md).
+
 ### Sample animations
 
 Prompts typed as plain text. Same motion, two different characters. *(The Spider-Man-style previews come from the preset library; clips on the male model render untextured.)*
@@ -79,7 +81,7 @@ Snapshots the app saves at each important moment of one real run (*knight_full*,
 - **Your picture as is:** with *Use my picture as is* the redraw is skipped and the texture is projected from your own picture (upscaled, never redrawn); the face close-up redraw only helps the 3D shape.
 - **Looks:** keep the picture's style or restyle (3D film, Game, Anime 3D, Clay, Chibi); *All · I pick* makes one candidate per look.
 - **Fork** any stopped run from any stage with new instructions or settings, keeping the original untouched.
-- **Turnaround sheet in** (`--sheet`, or *My picture is a turnaround sheet* in the launcher): give it one picture with the same character four times (front, left, right, back; a T-pose; from ChatGPT, a 3D render, a drawing). It cuts the four figures out, frames them at one scale and builds the 3D shape with the **multiview Pixal3D** (`Pixal3DMultiViewConditioning`) instead of guessing the back and sides from one picture; no redraw is made. The texture is projected from the four real views onto the surfaces that face them, so the back and sides are real, not Pixal3D's guess. See [docs/TURNAROUND.md](docs/TURNAROUND.md) for what a good sheet looks like and what was measured.
+- **Turnaround sheet in** (`--sheet`, or *My picture is a turnaround sheet* in the launcher): give it one picture with the same character four times (front, left, right, back; a T-pose; from ChatGPT, a 3D render, a drawing). It cuts the four figures out, frames them at one scale and builds the 3D shape with the **multiview Pixal3D** (`Pixal3DMultiViewConditioning`) instead of guessing the back and sides from one picture; no redraw is made. The texture is projected from the four real views onto the surfaces that face them, so the back and sides are real, not Pixal3D's guess. Sheet runs are streamlined (one shape, Qwen3.8 as the only judge, no Pixal3D texture sampling): the mesh stage took 633 s instead of 1083 s on one test. See [docs/TURNAROUND.md](docs/TURNAROUND.md) for what a good sheet looks like and what was measured.
 - **Starting from a 3D model** (STL, OBJ, PLY, GLB, FBX): no picture needed; the model is oriented, painted from its own renders and rigged. A model that isn't in a T-pose is put into one first (SkinTokens + a Blender bake).
 - **Text-to-animation** with a typed prompt box and a **preset library** of 190 prompts in 10 categories, each with a 3D **preview** on a male and a female character.
 - **Rigger choice** (Make-It-Animatable default or normal-aware weights) with automatic fallback.
@@ -88,7 +90,7 @@ Snapshots the app saves at each important moment of one real run (*knight_full*,
 - **One package per character:** the *Package* button downloads one zip with the rigged FBX/GLB, the textures, every animation clip (GLB + FBX, named after the prompt) and a README with licence notes.
 - **System check:** the *Check* button (or `python -m homunculus.doctor`) tests Studio, ComfyUI and its models, Blender, Make-It-Animatable, UniMate, GPU memory, disk and the Python packages, and says how to fix what is missing.
 - **Delete runs:** the *Delete* button on a run card or run page removes the run and everything made for it (the run folder, the uploaded input, the Mixamo export and ComfyUI's Pixal3D outputs) after showing exactly what goes and how big it is. Runs that are running are protected; files are matched by exact names so another run's files are never touched.
-- **Repair a broken region:** paint over fused or cut-off fingers (or press *Select hands*) in the 3D viewer and the pipeline redraws that part, rebuilds it in 3D and joins it at the wrist. Tested on real failed hands; see [docs/REPAIR.md](docs/REPAIR.md) for how it works and what it cannot do yet.
+- **Repair any broken part:** paint over whatever came out wrong (cut-off or fused fingers, a crumpled helmet top, a melted foot), or press *Hands*, *Head*, *Crown* or *Feet*, say what it is in a few words, and the pipeline redraws that part from the side it faces, builds its 3D shape again with Pixal3D and joins it where the broken part met the rest. Several parts can go in one job (each with its own label, view and checks), and the new part is never smaller than what it replaces. Hands also get a five-finger check. Tested on a turnaround-sheet run: hands came out right, repaired feet were worse than the originals (so repair only parts that are really broken); see [docs/REPAIR.md](docs/REPAIR.md) for how it works and what it cannot do yet.
 - **Face fidelity:** early face close-up, face reshape, landmark fit, multi-view texture clean-up.
 - **Safe on one GPU:** a lock file allows one GPU job at a time, a VRAM watchdog cancels at 22.5 GB, and the pipeline unloads every other model before a stage; Studio unloads are verified.
 - **Resumable and notified:** every stage is checkpointed in `runs/<name>/state.json`; desktop notifications say when a run needs you or why it stopped.
@@ -124,6 +126,8 @@ Measured on one finished image run, *knight_full* (a fantasy knight from a 576×
 | Report | 1 s | |
 | **Total** | **52 min 47 s** | |
 
+A run from a **turnaround sheet** (one shape, one judge, no Pixal3D texture; a pair of single measurements): mesh stage 633 s (791 s when the judge rejected the first shape and a second was built), colour 21 to 57 s, rig 75 to 199 s, animate 86 to 128 s (one prompt, 2 takes), final texture 18 to 28 s (it reuses the colour stage's projection).
+
 Other timings: a UniMate batch of 30 prompts × 2 takes takes about 15 minutes, so the whole preset library (190 prompts × 2 takes) is **~90 minutes per character**. These are single measurements, not averages; the Pixal3D and texture stages vary the most with how many candidates the judges reject. A run that is stopped for the judges' retries takes longer. The STL route has no timing yet.
 
 ## Setup
@@ -134,7 +138,7 @@ Homunculus is a thin orchestrator around other projects, so setup is mostly inst
 
 1. **Clone and install the app:** `git clone https://github.com/So-bonkers/Homunculus && cd Homunculus && ./setup.sh app`
 2. **Unsloth Studio** ([install guide](https://unsloth.ai/docs/new/studio), [GitHub](https://github.com/unslothai/unsloth)) serves Qwen-Image and the three judges. Run its API on `127.0.0.1:8888` (`unsloth studio --api-only -H 127.0.0.1 -p 8888`, ideally as a user service called `unsloth-api`). The models below load by name the first time the pipeline asks for them, so you do not need to download them by hand (to pre-fetch: `hf download <repo> <file>`).
-3. **ComfyUI + Pixal3D + upscalers:** `./setup.sh comfy`
+3. **ComfyUI + Pixal3D + upscalers:** `./setup.sh comfy` (it also fetches the 11 GB multiview checkpoint that turnaround-sheet runs need; `python -m homunculus.doctor` says whether it is there)
 4. **Make-It-Animatable:** `./setup.sh mia`
 5. **UniMate:** `./setup.sh unimate`, then install UniMate's requirements into `unimate/.venv` (its README lists them)
 6. **SkinTokens** (optional, only for 3D models that are not in a T-pose): `./setup.sh skintokens`, then build it with CMake
@@ -148,7 +152,7 @@ Homunculus is a thin orchestrator around other projects, so setup is mostly inst
 | Planner + judge 1 | **Qwen3.8 27B** vision (`UD-Q4_K_M` + `mmproj-F16`) | 16.5 + 0.9 GB | Apache-2.0 | [unsloth/Qwen3.8-27B-GGUF](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF) |
 | Judge 2 | **Gemma 4 26B-A4B** QAT (`UD-Q4_K_XL` + `mmproj-F16`) | 14.2 + 1.2 GB | Apache-2.0 | [unsloth/gemma-4-26B-A4B-it-qat-GGUF](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF) |
 | Judge 3 | **Qwen3.6 35B-A3B** MTP (`UD-IQ4_NL` + `mmproj-F16`) | 18.5 + 0.9 GB | Apache-2.0 | [unsloth/Qwen3.6-35B-A3B-MTP-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF) |
-| Image → 3D shape | **Pixal3D** `pixal3d_bf16` + DINOv3 encoder + two TRELLIS-2 VAEs, run in ComfyUI | 11 + 1.2 + 2 GB | MIT | [Comfy-Org/Pixal3D](https://huggingface.co/Comfy-Org/Pixal3D) · [ComfyUI](https://github.com/comfyanonymous/ComfyUI) |
+| Image → 3D shape | **Pixal3D** `pixal3d_bf16` + DINOv3 encoder + two TRELLIS-2 VAEs, run in ComfyUI; `pixal3d_multiview_bf16` for turnaround-sheet runs (the int8 variant, 5.2 GB, also works) | 11 + 1.2 + 2 GB (+ 11 GB multiview) | MIT | [Comfy-Org/Pixal3D](https://huggingface.co/Comfy-Org/Pixal3D) · [ComfyUI](https://github.com/comfyanonymous/ComfyUI) |
 | Upscaler (photos) | **RealESRGAN x4plus** | 67 MB | BSD-3 | [release v0.1.0](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth) · [project](https://github.com/xinntao/Real-ESRGAN) |
 | Upscaler (anime) | **RealESRGAN x4plus anime 6B** | 18 MB | BSD-3 | [release v0.2.2.4](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth) |
 | Upscaler (3D renders) | **4x-UltraSharp** | 67 MB | CC BY-NC-SA 4.0 | [Kim2091/UltraSharp](https://huggingface.co/Kim2091/UltraSharp) |
@@ -168,7 +172,7 @@ git clone https://github.com/So-bonkers/Homunculus && cd Homunculus
 ./launch.sh                # starts the app and opens http://127.0.0.1:8765
 ```
 
-You also need **Unsloth Studio** running its API on `127.0.0.1:8888` (it serves Qwen-Image 2.1 edit and the VLM judges; `systemctl --user restart unsloth-api` is what the pipeline suggests when it stalls) and Blender on your `PATH`. Then drop a picture on the home page, press **Start run**. From a terminal:
+You also need **Unsloth Studio** (it serves Qwen-Image 2.1 edit and the VLM judges on `127.0.0.1:8888`; `./launch.sh` starts its API as the user unit `unsloth-api` when nothing answers there; `systemctl --user restart unsloth-api` is what the pipeline suggests when it stalls) and Blender on your `PATH`. Then drop a picture on the home page, press **Start run**. From a terminal:
 
 ```bash
 .venv/bin/python -m homunculus.orchestrate ~/Downloads/my_picture.jpg --name myhero \

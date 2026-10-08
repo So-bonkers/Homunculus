@@ -31,7 +31,7 @@ Where Homunculus still hurts, as of 2026-10-08, in rough order of how much it ge
 
 | Pain point | What it looks like | Status | Next |
 |---|---|---|---|
-| **GPU memory is not enforced** | The watchdog only logs; the repair redraw reached 23.2 GB, above the 22.5 GB limit, before it was resized | Open (set aside on purpose for now) | Make the soft and hard limits actually cancel or shrink a job |
+| **GPU memory is not enforced** | The watchdog only logs (the Pixal3D one in `run_px` does stop ComfyUI above 22.5 GB: it did, on a helmet-top repair donor at 23.3 GB, and the job failed); the repair redraw reached 23.2 GB, above the 22.5 GB limit, before it was resized | Open (set aside on purpose for now) | Make the soft and hard limits actually cancel or shrink a job |
 | **Studio is a single point of failure** | It stalled twice after jobs were interrupted and needed `systemctl --user restart unsloth-api` | Partly. The *Check* button and `doctor` report it | Auto-restart and retry |
 | **A run takes about 53 minutes** | The 3D shape stage alone is about 21 minutes, texture about 13 | Open | Cache reuse between forks, cheaper candidate rounds |
 | **Disk use** | Duplicate FBX and GLB copies; raw shapes of hundreds of MB | Done. GLB only, other formats on demand through *Accept*, optional cleanup | None |
@@ -44,4 +44,4 @@ Several characters in one scene, props that go with the character (a car, a weap
 
 ## Not yet tried end to end
 
-Image generation in the Retexture tab (the GPU step), the automatic repair running inside a real run, and the Accept step's disk cleanup.
+Image generation in the Retexture tab (the GPU step), the automatic repair running inside a real run, the Accept step's disk cleanup, and the Repair tab's new buttons for several parts (the job logic ran from the command line; the browser flow was not clicked through).
