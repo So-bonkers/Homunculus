@@ -131,7 +131,7 @@ def repairs(name):
             u = lambda rel: _url(name, str(C.RUNS / rel)) if rel else None
             regs = [{**{k: v for k, v in r.items() if k not in ("crop", "candidates", "chosen", "after")}, "crop": u(r.get("crop")), "chosen": u(r.get("chosen")), "after": u(r.get("after")),
                      "candidates": [x for x in (u(c) for c in r.get("candidates", [])) if x]} for r in S.get("regions", [])]
-            out.append({"job": d, "status": S.get("status"), "step": S.get("step"), "error": S.get("error"), "log": S.get("log", [])[-8:], "notes": S.get("notes", ""),
+            out.append({"job": d, "status": S.get("status"), "step": S.get("step"), "error": S.get("error"), "log": S.get("log", [])[-8:], "notes": S.get("notes", ""), "label": S.get("label", ""), "view": S.get("view", ""), "groups": S.get("groups") or [],
                         "seconds": S.get("seconds"), "regions": regs, "result": u(S.get("result")), "textured": u(S.get("result_textured")), "can_use": bool(S.get("result_textured"))})
     return out
 

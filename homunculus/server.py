@@ -308,7 +308,7 @@ class H(SimpleHTTPRequestHandler):
             self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
     def repair_job(self):
-        """Start a repair of the painted region of a run's 3D model: {run, strokes: [[x, y, z, r], ...] (glTF coordinates), notes}. The job waits for the GPU
+        """Start a repair of the painted region of a run's 3D model: {run, strokes: [[x, y, z, r], ...] (glTF coordinates), notes, label (what the region is), view (auto|front|back|left|right|top)}. The job waits for the GPU
         lock; its progress is runs/<run>/10_repair/<id>/status.json (GET /api/repair/<run>)."""
         import re, subprocess, sys, time
         try:
@@ -317,11 +317,17 @@ class H(SimpleHTTPRequestHandler):
             if not (C.RUNS / run / "state.json").exists(): return self._json(404, {"error": "No such run."})
             S = json.load(open(C.RUNS / run / "state.json"))
             if not (S.get("artifacts") or {}).get("mesh_glb") or (S.get("stages", {}).get("mesh") or {}).get("status") != "done": return self._json(400, {"error": "The 3D shape stage has not finished yet."})
-            st = d.get("strokes") or []
-            if not (isinstance(st, list) and 1 <= len(st) <= 1500 and all(isinstance(s, list) and len(s) == 4 and all(isinstance(x, (int, float)) for x in s) for s in st)):
-                return self._json(400, {"error": "Paint the broken region on the model first."})
+            groups = d.get("groups") or [{"strokes": d.get("strokes"), "label": d.get("label", ""), "view": d.get("view")}]      # one group per part (hands, feet, ...): own label, view and checks
+            ok = isinstance(groups, list) and 1 <= len(groups) <= 6 and all(isinstance(g, dict) for g in groups)
+            clean = []
+            for g in (groups if ok else []):
+                st = g.get("strokes") or []
+                if not (isinstance(st, list) and 1 <= len(st) <= 1500 and all(isinstance(x, list) and len(x) == 4 and all(isinstance(y, (int, float)) for y in x) for x in st)): ok = False; break
+                view = str(g.get("view") or "auto"); view = view if view in ("auto", "front", "back", "left", "right", "top") else "auto"
+                clean.append({"strokes": st, "label": re.sub(r"[^\w ,.'()/-]", "", str(g.get("label", "")))[:80], "view": view})
+            if not ok: return self._json(400, {"error": "Paint the broken region on the model first."})
             job = time.strftime("%Y%m%d_%H%M%S"); jd = C.RUNS / run / "10_repair" / job; jd.mkdir(parents=True, exist_ok=True)
-            json.dump({"strokes": st, "notes": str(d.get("notes", ""))[:400]}, open(jd / "request.json", "w"))
+            json.dump({"groups": clean, "notes": str(d.get("notes", ""))[:400]}, open(jd / "request.json", "w"))
             unit = f"homunculus-repair-{run}"
             subprocess.run(["systemctl", "--user", "reset-failed", f"{unit}.service"], capture_output=True)
             r = subprocess.run(["systemd-run", "--user", f"--unit={unit}", "--collect", f"--working-directory={C.ROOT}", "-p", "KillSignal=SIGINT",
@@ -390,13 +396,13 @@ def _launch(name, img, q):
     if q.get("frm"): cmd += ["--from", re.sub(r"[^a-z_]", "", q["frm"])]
     if q.get("zip") == "1": cmd += ["--zip"]
     if q.get("direct") == "1": cmd += ["--direct"]
+    if q.get("sheet") in ("lfrb", "flbr"): cmd += ["--sheet", q["sheet"]]
     if q.get("rigger") in C.RIGGERS: cmd += ["--rigger", q["rigger"]]
     for line in str(q.get("anim", "")).splitlines():
         if line.strip(): cmd += ["--anim", line.strip()[:200]]
     if str(q.get("anim_reps", "")).isdigit(): cmd += ["--anim-reps", str(max(1, min(6, int(q["anim_reps"]))))]
     if q.get("look") in ("choose", "asis", "stylized", "game", "anime3d", "clay", "chibi"): cmd += ["--look", q["look"]]
     env = [f"--setenv={k}={os.environ[k]}" for k in ("DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR") if os.environ.get(k)]
-    if q.get("sheet") in ("lfrb", "flbr"): cmd += ["--sheet", q["sheet"]]
     subprocess.run(["systemctl", "--user", "reset-failed", f"homunculus-run-{name}.service"], capture_output=True)
     r = subprocess.run(["systemd-run", "--user", f"--unit=homunculus-run-{name}", "--collect", f"--working-directory={C.ROOT}", "-p", "KillSignal=SIGINT",
                         "-p", "TimeoutStopSec=90", *env, *cmd], capture_output=True, text=True)

@@ -6,11 +6,20 @@ Where Homunculus still hurts, as of 2026-10-08, in rough order of how much it ge
 
 | Pain point | What it looks like | Status | Next |
 |---|---|---|---|
-| **Hands** | Fused or cut-off fingers, paddle hands from Pixal3D; a repair that leaves the hand floating off the arm | Partly. Repair tab (clay redraw, Pixal3D, merged at the wrist with enforced contact), open-edge check that warns or repairs automatically, wrist-bend check after rigging | Fused-but-closed fingers are not detected; repaired hands have one flat colour; a repaired mesh has not been through a full rig, animation and texture run yet; do not stack repairs |
+| **Hands** | Fused or cut-off fingers, paddle hands from Pixal3D; a repair that leaves the hand floating off the arm | Partly. Repair tab (now any region, several parts per job: clay redraw, Pixal3D, merged with enforced contact, never smaller than what it replaces), open-edge check that warns or repairs automatically, wrist-bend check after rigging | Fused-but-closed fingers are not detected; repaired hands have one flat colour; a repaired mesh has not been through a full rig, animation and texture run yet; do not stack repairs |
 | **Fists and fingers in animation** | Motion models do not drive fingers, so punches had no fists and hands looked like claws | Done. Hand-pose layer (fist, open, grip, point, thumbs up) chosen from the prompt | Poses are static per clip; no per-moment changes |
 | **Face and eyes** | Closed eyes, a face that does not match the picture, a face carved into a helmet | Partly. Face option (auto / no face / always) for helmets and masks; face texture taken from the original picture; face close-up redraw is optional | Eye geometry is too small for Pixal3D; no face version of Repair yet; no eye-open check |
 | **Fine detail lost in the redraw** | Engravings, logos and text come back different (Titus's belt symbol): the redraw works at about 576x1024 | Partly. Retexture tab, *Use the original picture*, projects the original's detail onto a brushed part | Not automatic; only works where the pose barely changes; no detail-preserving redraw |
+| **Back and sides of the model are guessed** | Pixal3D invents what it cannot see; its own baked texture is a patchwork of garbled fragments (logos become noise) | Partly. *Turnaround sheet* input (`--sheet`): multiview Pixal3D shape and a projection of the four real views. One test (an F1 driver, a ChatGPT sheet): hands with five separate fingers, real back and side logos | Needs a sheet you made elsewhere: the local Qwen redraw does not produce usable side and back views yet (the back came out with the front logos, the sides at 3/4); front of the lower legs, hands and visor still show some garbled texture |
 | **Texture getting worse in the second pass** | Extra generated views (face close-up, cleaned sides and back) made the model look worse than the picture | Done. Simple texture is the default; Full is opt-in | Sides and back keep Pixal3D's own texture; no PBR maps (normal, roughness) yet |
+
+## Repair of other parts
+
+| Pain point | What it looks like | Status | Next |
+|---|---|---|---|
+| **Repaired parts are one flat colour** | New hands or boots keep one colour; surfaces no view faces (palm, back of the hand, boot top and sole) are never painted | Partly. The flat colour is now the right one (sRGB fix); sheet runs repair on the coloured mesh | Fill unseen surfaces from their painted neighbours instead of one flat colour |
+| **Repaired feet are worse than the originals** | Blocky boots, no toe-cap or sole detail, ragged ankle seams | Open (repair only parts that are really broken) | Higher voxel resolution for feet, a merge that does not assume an arm |
+| **A lone judge is noisy** | The same rig scored 4/10 twice and then 9/10; one false rejection costs minutes | Partly. A sheet run keeps the rig and flags it | Two judges, or re-ask once before acting |
 
 ## Animation
 

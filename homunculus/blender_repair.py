@@ -1,6 +1,8 @@
 """Region repair, Blender side.  Two modes:
 
-blender -b --python blender_repair.py -- analyse base.glb strokes.json out_dir
+blender -b --python blender_repair.py -- analyse base.glb strokes.json out_dir [view]
+    view: front (default) | back | left | right | top | auto. The model is turned so that this side faces the camera before the close-up is rendered (and turned back after
+    the merge): a helmet crown is repaired from above, a back from behind. auto picks the side most of the painted surface faces. "left" = the character's left side.
     strokes.json: {"strokes": [[x, y, z, r], ...]} in glTF coordinates (Y up), as picked in the web viewer.
     Writes out_dir/regionN.json + maskN.npy (vertex indices, one region per connected blob), regionN_crop.png (front close-up of the region,
     orthographic, 1024 px) and prints [repair] lines. The crop is what the image model redraws.
@@ -14,6 +16,7 @@ blender -b --python blender_repair.py -- merge base.glb regions.json out.glb out
     redrawn crop's subject in pixels). Each donor (an image-to-3D mesh of the redrawn crop) is mapped back into the region with the same
     pixel -> metre mapping as the crop render, snapped to the wrist ring, clipped to the hand side and joined; the original vertices of the region
     are deleted. Writes out.glb and out_dir/after_regionN_crop.png (same camera as the crop, for a before/after view).
+blender -b --python blender_repair.py -- preset base.glb out.json name      (strokes for a named region: hands, head, crown, feet; "hands" is also kept as its own mode)
 Front is -Y after import (Pixal3D meshes face the picture camera), Z is up.
 """
 import bpy, bmesh, sys, os, json, math
@@ -68,10 +71,36 @@ def region_color(ob, idx):
         me = ob.data; uv = me.uv_layers.active.data; nl = len(me.loops); UV = np.empty(nl * 2, np.float32); uv.foreach_get("uv", UV); UV = UV.reshape(-1, 2)
         LV = np.empty(nl, np.int32); me.loops.foreach_get("vertex_index", LV); sel = np.isin(LV, idx)
         u = np.clip((UV[sel, 0] % 1.0) * (w - 1), 0, w - 1).astype(int); v = np.clip((UV[sel, 1] % 1.0) * (h - 1), 0, h - 1).astype(int)
-        c = np.median(buf[v, u, :3], axis=0)                                              # Image.pixels are already scene-linear, which is what a material's Base Color takes
+        c = np.median(buf[v, u, :3], axis=0)
+        if not img.is_float and img.colorspace_settings.name.lower().startswith("srgb"):      # a byte image's pixels come back as stored (sRGB-encoded /255), not as linear light; a material's Base Color takes linear
+            c = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
         return [float(x) for x in np.clip(c, 0, 1)]
     except Exception as e:
         print(f"[repair] region colour not found ({type(e).__name__}); using grey"); return [0.35, 0.35, 0.36]
+
+
+VIEWS = {"front": (0, -1, 0), "back": (0, 1, 0), "left": (1, 0, 0), "right": (-1, 0, 0), "top": (0, 0, 1)}      # direction from the model towards the camera ("left" = the character's left side, +x)
+
+
+def view_rotation(d):
+    """3x3 matrix that turns direction d to the front camera direction (0, -1, 0): a turn about the vertical axis for the four sides, a quarter turn about x for the top."""
+    d = np.array(d, float); d /= np.linalg.norm(d)
+    if abs(d[2]) > 0.9:
+        t = math.radians(90 if d[2] > 0 else -90); return np.array([[1, 0, 0], [0, math.cos(t), -math.sin(t)], [0, math.sin(t), math.cos(t)]])
+    t = math.radians(-90) - math.atan2(d[1], d[0]); return np.array([[math.cos(t), -math.sin(t), 0], [math.sin(t), math.cos(t), 0], [0, 0, 1]])
+
+
+def turn(ob, M):
+    """Apply the 3x3 matrix M to every vertex of the object (the object's own transform is already applied)."""
+    V = verts(ob) @ np.asarray(M, np.float32).T; ob.data.vertices.foreach_set("co", V.ravel()); ob.data.update()
+
+
+def ring_normal(Rg, cen):
+    """Normal of the plane through the boundary ring (smallest-variance axis), pointing from the ring to the region: the direction the part sticks out. Falls back to the centre line."""
+    rc = Rg.mean(0); _, sv, vt = np.linalg.svd(Rg - rc, full_matrices=False); n = vt[2]
+    if sv[2] > 0.6 * sv[1] or np.linalg.norm(cen - rc) < 1e-6: n = cen - rc
+    n = n / (np.linalg.norm(n) + 1e-9)
+    return (-n if (cen - rc) @ n < 0 else n), rc
 
 
 # ---------------------------------------------------------------------------------------------------------------- bake
@@ -109,19 +138,23 @@ if mode == "bake":
     img.pack(); bpy.ops.export_scene.gltf(filepath=out_glb, export_format="GLB", use_selection=True); print("[repair] wrote", out_glb)
 
 # ---------------------------------------------------------------------------------------------------------------- hands
-elif mode == "hands":
-    """blender -b --python blender_repair.py -- hands base.glb strokes.json : brush strokes covering both hands of a T/A-posed figure (the outer ~10.5 % of the
-    height at each side). The same rule as the web viewer's 'Select hands' button; used for tests and as the server-side fallback."""
-    base, out_p = argv[1:3]; ob = load(base); V = verts(ob); lo, hi = V.min(0), V.max(0); cx = (lo[0] + hi[0]) / 2; height = hi[2] - lo[2]
-    lim = (hi[0] - lo[0]) / 2 - 0.105 * height; sel = V[np.abs(V[:, 0] - cx) > lim]; cell = 0.02
-    keys = {tuple(k) for k in np.floor(sel / cell).astype(int)}; strokes = []
+elif mode in ("hands", "preset"):
+    """blender -b --python blender_repair.py -- preset base.glb strokes.json name : brush strokes covering a named region of a T/A-posed figure, the same rules as the web viewer's
+    buttons. hands: the outer ~10.5 % of the height at each side; head: the top 13.5 %; crown: the top 7 % (a helmet's dome); feet: the lowest 5 %. Used for tests and from the command line."""
+    base, out_p = argv[1:3]; name = argv[3] if mode == "preset" and len(argv) > 3 else "hands"; ob = load(base); V = verts(ob); lo, hi = V.min(0), V.max(0); cx = (lo[0] + hi[0]) / 2; height = hi[2] - lo[2]
+    if name == "hands": sel = V[np.abs(V[:, 0] - cx) > (hi[0] - lo[0]) / 2 - 0.105 * height]
+    elif name == "head": sel = V[V[:, 2] > hi[2] - 0.135 * height]
+    elif name == "crown": sel = V[V[:, 2] > hi[2] - 0.07 * height]
+    elif name == "feet": sel = V[V[:, 2] < lo[2] + 0.05 * height]
+    else: print(f"[repair] unknown region preset {name}"); sys.exit(2)
+    cell = 0.02; keys = {tuple(k) for k in np.floor(sel / cell).astype(int)}; strokes = []
     for k in keys:
         c = (np.array(k) + 0.5) * cell; strokes.append([float(c[0]), float(c[2]), float(-c[1]), cell * 0.8])      # Blender -> glTF (x, z, -y)
-    json.dump({"strokes": strokes}, open(out_p, "w")); print(f"[repair] {len(sel)} hand vertices -> {len(strokes)} strokes")
+    json.dump({"strokes": strokes}, open(out_p, "w")); print(f"[repair] {name}: {len(sel)} vertices -> {len(strokes)} strokes")
 
 # ---------------------------------------------------------------------------------------------------------------- analyse
 elif mode == "analyse":
-    base, strokes_p, out_dir = argv[1:4]; os.makedirs(out_dir, exist_ok=True)
+    base, strokes_p, out_dir = argv[1:4]; view = argv[4] if len(argv) > 4 else "front"; os.makedirs(out_dir, exist_ok=True)
     ob = load(base); V = verts(ob); E = edges(ob)
     S = np.array(json.load(open(strokes_p))["strokes"], np.float32).reshape(-1, 4)
     S[:, :3] = np.stack([S[:, 0], -S[:, 2], S[:, 1]], 1)                    # glTF (x, y, z) -> Blender (x, -z, y)
@@ -129,6 +162,14 @@ elif mode == "analyse":
     for i in range(0, len(S), 64):
         c = S[i:i + 64]; d = np.linalg.norm(V[:, None, :] - c[None, :, :3], axis=2); mask |= (d <= c[None, :, 3]).any(1)
     print(f"[repair] {int(mask.sum())} of {len(V)} vertices inside {len(S)} brush strokes")
+    if view == "auto" and mask.any():      # the side that most of the painted surface faces (front wins a near tie: it is the best tested one)
+        Nv = np.empty(len(V) * 3, np.float32); ob.data.vertices.foreach_get("normal", Nv); Nv = Nv.reshape(-1, 3)[mask]
+        score = {k: int((Nv @ np.array(d) > 0.3).sum()) for k, d in VIEWS.items()}; view = max(score, key=score.get)
+        if score["front"] >= 0.85 * score[view]: view = "front"
+        print(f"[repair] view chosen from the painted surface: {view} {score}")
+    VIEW_R = view_rotation(VIEWS.get(view, VIEWS["front"]))
+    if view != "front": turn(ob, VIEW_R); V = verts(ob)                       # from here on everything is in the camera's frame: the close-up is always rendered from the front
+    json.dump({"view": view, "R": VIEW_R.tolist()}, open(os.path.join(out_dir, "view.json"), "w"))
     # connected blobs. The glTF importer splits vertices along UV seams, so connectivity is computed on welded positions
     uq, canon = np.unique(np.round(V * 1e5).astype(np.int64), axis=0, return_inverse=True); canon = canon.ravel(); nc = len(uq)
     Vc = np.zeros((nc, 3), np.float32); Vc[canon] = V; Ec = canon[E]; Ec = Ec[Ec[:, 0] != Ec[:, 1]]
@@ -158,11 +199,10 @@ elif mode == "analyse":
         P = V[idx]; lo, hi = P.min(0), P.max(0); cen = P.mean(0)
         bd = Ec[mc[Ec[:, 0]] != mc[Ec[:, 1]]]; ring_idx = np.unique(np.where(mc[bd[:, 0]], bd[:, 0], bd[:, 1]))     # masked vertices next to unmasked ones
         if len(ring_idx) < 8: print(f"[repair] blob {k}: no boundary (the selection covers a whole part); skipped"); continue
-        R = Vc[ring_idx]; rc = R.mean(0); n = cen - rc
-        n = n / (np.linalg.norm(n) + 1e-9); rr = float(np.linalg.norm(R - rc - np.outer((R - rc) @ n, n), axis=1).mean())
+        R = Vc[ring_idx]; n, rc = ring_normal(R, cen); rr = float(np.linalg.norm(R - rc - np.outer((R - rc) @ n, n), axis=1).mean())
         half = float(max(hi[0] - lo[0], hi[2] - lo[2]) / 2 * 1.35 + 0.02); box = [float((lo[0] + hi[0]) / 2), float((lo[2] + hi[2]) / 2), half]
         info = {"index": k, "n_verts": int(len(idx)), "bbox": [lo.tolist(), hi.tolist()], "centroid": cen.tolist(), "ring": {"center": rc.tolist(), "normal": n.tolist(), "radius": rr},
-                "box": box, "mask": f"mask{k}.npy", "crop": f"region{k}_crop.png"}
+                "box": box, "mask": f"mask{k}.npy", "crop": f"region{k}_crop.png", "view": view, "R": VIEW_R.tolist()}
         np.save(os.path.join(out_dir, f"mask{k}.npy"), idx); json.dump(info, open(os.path.join(out_dir, f"region{k}.json"), "w"), indent=1)
         info["color"] = region_color(ob, idx); json.dump(info, open(os.path.join(out_dir, f"region{k}.json"), "w"), indent=1)
         render_crop(os.path.join(out_dir, f"region{k}_crop.png"), box); render_crop(os.path.join(out_dir, f"region{k}_clay.png"), box, clay=True)
@@ -174,7 +214,10 @@ elif mode == "analyse":
 # ---------------------------------------------------------------------------------------------------------------- merge
 elif mode == "merge":
     base, regs_p, out_glb, out_dir = argv[1:5]; os.makedirs(out_dir, exist_ok=True)
-    jobs = json.load(open(regs_p)); ob = load(base); V = verts(ob)
+    jobs = json.load(open(regs_p)); ob = load(base)
+    _R0 = np.array(json.load(open(jobs[0]["region"])).get("R") or np.eye(3))      # all regions of a job share one view: work in the camera's frame, turn back before writing
+    if not np.allclose(_R0, np.eye(3)): turn(ob, _R0)
+    V = verts(ob)
     # 1) every region's donor, mapped, snapped to the wrist, clipped; collected before anything is deleted
     donors = []; delete = np.zeros(len(V), bool); boxes = []
     for j in jobs:
@@ -202,6 +245,14 @@ elif mode == "merge":
         ymean = (dlo[1] + dhi[1]) / 2; Yo = ((np.array(info["bbox"][0][1]) + np.array(info["bbox"][1][1])) / 2) - f * ymean
         D2 = np.stack([f * D[:, 0] + Xo, f * D[:, 1] + Yo, f * D[:, 2] + Zo], 1)
         rc = np.array(info["ring"]["center"]); n = np.array(info["ring"]["normal"]); rr = info["ring"]["radius"]
+        # size: the redraw fixes the shape, but its size is whatever the image model drew and its depth is a guess (a picture has no thickness). The region being replaced is the size reference:
+        # the new part may be redrawn, never smaller than what it replaces (length along the part and spread across it, thickness along the camera axis)
+        P0 = V[idx]; ctr = D2.mean(0)
+        ext = lambda P, ax: float(np.ptp(P @ ax))
+        k = max(ext(P0, n) / max(ext(D2, n), 1e-6), ext(P0, np.array([0.0, 0.0, 1.0])) / max(ext(D2, np.array([0.0, 0.0, 1.0])), 1e-6)); k = min(max(k, 1.0), 1.4)
+        D2 = ctr + (D2 - ctr) * k
+        ky = min(max(float(np.ptp(P0[:, 1])) / max(float(np.ptp(D2[:, 1])), 1e-6), 1.0), 1.8); D2[:, 1] = D2[:, 1].mean() + (D2[:, 1] - D2[:, 1].mean()) * ky
+        print(f"[repair] region {info['index']}: size matched to the original (x{k:.2f} overall, x{ky:.2f} in depth)")
         # contact: the picture fixes the hand's size and position only roughly, so measure where the remaining arm REALLY ends along the arm axis and slide the donor's
         # stub over that end (an overlap of about one wrist radius), centred on the arm and with the arm's size. Nothing is left floating.
         ax = lambda P: P - rc - np.outer((P - rc) @ n, n)                    # offsets from the arm axis (the line through the wrist ring along n)
@@ -217,7 +268,7 @@ elif mode == "merge":
                 cb, cd = Vk[za].mean(0), D2[zd].mean(0); cb = cb - ((cb - rc) @ n) * n; cd = cd - ((cd - rc) @ n) * n
                 D2 = D2 + (cb - cd)                                           # across the arm: centred on it
                 perp = lambda P, c: np.linalg.norm(P - c - np.outer((P - c) @ n, n), axis=1).mean()
-                g = min(1.3, max(0.77, perp(Vk[za], cb) / max(perp(D2[zd], cb), 1e-6))); D2 = cb + (D2 - cb) * g
+                g = min(1.3, max(0.95, perp(Vk[za], cb) / max(perp(D2[zd], cb), 1e-6))); D2 = cb + (D2 - cb) * g
                 print(f"[repair] region {info['index']}: donor scale x{f:.3f}; arm ends {abs(t_end) * 100:.1f} cm from the wrist ring, stub slid {overlap * 100:.1f} cm over it, "
                       f"centred ({np.linalg.norm(cb - cd) * 100:.1f} cm shift, x{g:.2f} size)")
         t = (D2 - rc) @ n; keep = np.ones(len(D2), bool)                      # the donor starts inside the arm by construction: nothing to clip
@@ -230,6 +281,8 @@ elif mode == "merge":
     bpy.context.view_layer.objects.active = ob
     bm = bmesh.new(); bm.from_mesh(ob.data); bm.verts.ensure_lookup_table()
     bmesh.ops.delete(bm, geom=[bm.verts[i] for i in np.nonzero(delete)[0]], context="VERTS"); bm.to_mesh(ob.data); bm.free()
-    bpy.ops.object.select_all(action="SELECT"); bpy.ops.export_scene.gltf(filepath=out_glb, export_format="GLB")
     for info in boxes: render_crop(os.path.join(out_dir, f"after_region{info['index']}_crop.png"), info["box"])
+    if not np.allclose(_R0, np.eye(3)):
+        for o in [o for o in bpy.data.objects if o.type == "MESH"]: turn(o, _R0.T)                    # back to the model's own frame
+    bpy.ops.object.select_all(action="SELECT"); bpy.ops.export_scene.gltf(filepath=out_glb, export_format="GLB")
     print("[repair] wrote", out_glb)
