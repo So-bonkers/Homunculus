@@ -1,4 +1,4 @@
-"""Convert SMPL dance motion (AIST++ .pkl, FineDance .npy) to a BVH file that tools/retarget_bvh.py reads with --map smpl.
+"""Convert SMPL dance motion (AIST++ .pkl, FineDance .npy (6D rotations)) to a BVH file that tools/retarget_bvh.py reads with --map smpl.
 
     python3 -I tools/smpl_to_bvh.py <clip.pkl|clip.npy> <out.bvh> [--format aist|finedance] [--fps N] [--trans-scale S]
 
@@ -32,11 +32,14 @@ class _Safe(pickle.Unpickler):
 
 
 def load(path, fmt):
-    """-> (poses (N, 24, 3) axis-angle, trans (N, 3), source fps)"""
+    """-> (poses (N, 24, 3) axis-angle (FineDance's 6D rotations are converted), trans (N, 3), source fps)"""
     if fmt == "aist":
         d = _Safe(open(path, "rb")).load(); return np.asarray(d["smpl_poses"], float).reshape(-1, 24, 3), np.asarray(d["smpl_trans"], float) / float(np.ravel(d["smpl_scaling"])[0]), 60
-    a = np.load(path, allow_pickle=False).astype(float)                                           # FineDance: [:, :3] translation, [:, 3:] SMPL-H axis-angle (22 body joints first)
-    p = a[:, 3:].reshape(len(a), -1, 3)[:, :22]; return np.concatenate([p, np.zeros((len(a), 2, 3))], 1), a[:, :3], 30
+    a = np.load(path, allow_pickle=False).astype(float)                                           # FineDance: 315 columns = 3 translation + 52 joints x 6D rotation (22 body joints first; hands unused here)
+    d6 = a[:, 3:].reshape(len(a), -1, 6)[:, :22]; a1, a2 = d6[..., :3], d6[..., 3:]                 # 6D -> matrix, rows first (checked: with columns first the knees bend forward)
+    b1 = a1 / np.linalg.norm(a1, axis=-1, keepdims=True); b2 = a2 - (b1 * a2).sum(-1, keepdims=True) * b1; b2 /= np.linalg.norm(b2, axis=-1, keepdims=True)
+    M = np.stack([b1, b2, np.cross(b1, b2)], -2); rv = Rot.from_matrix(M.reshape(-1, 3, 3)).as_rotvec().reshape(len(a), 22, 3)
+    return np.concatenate([rv, np.zeros((len(a), 2, 3))], 1), a[:, :3], 30
 
 
 def fk(rots, root):
