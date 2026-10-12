@@ -18,7 +18,9 @@ KEEP = ("Keep the exact same character and costume as in the first image: the sa
 VIEWS = {"back": "The same character seen exactly from BEHIND, the camera 180 degrees around: the back of the hood, jacket and legs; the chest emblem is on the front only and must not appear. ",
          "left": "The same character in a strict 90 degree side profile from the character's LEFT side, facing the left edge of the picture. ",
          "right": "The same character in a strict 90 degree side profile from the character's RIGHT side, facing the right edge of the picture. ",
-         "front": "The same character seen exactly from the FRONT. "}
+         "front": "The same character seen exactly from the FRONT. ",
+         "top": "The same character seen exactly from DIRECTLY ABOVE, the camera high above looking straight down: the top of the head or helmet, the shoulders and the tops of the arms; the character's front is toward the bottom of the picture. ",
+         "bottom": "The same character seen exactly from DIRECTLY BELOW, the camera under the character looking straight up: the soles of the shoes, the underside of the legs, hips and chest; the character's front is toward the top of the picture. "}
 
 
 LORA = "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors"
