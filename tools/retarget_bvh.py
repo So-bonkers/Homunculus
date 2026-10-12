@@ -30,7 +30,12 @@ MAPS = {
             "LeftUpLeg": "LeftUpLeg", "LeftLeg": "LeftLeg", "LeftFoot": "LeftFoot", "LeftToeBase": "LeftToeBase",
             "RightUpLeg": "RightUpLeg", "RightLeg": "RightLeg", "RightFoot": "RightFoot", "RightToeBase": "RightToeBase"},
 }
-MAPS["mixamo"] = {k: k for k in MAPS["cmu"]}                                  # a BVH made from a Mixamo skeleton (names with or without the prefix)
+MAPS["smpl"] = {"Hips": "Pelvis", "Spine": "Spine1", "Spine1": "Spine2", "Spine2": "Spine3", "Neck": "Neck", "Head": "Head",                  # SMPL as written by tools/smpl_to_bvh.py (AIST++, FineDance)
+                "LeftShoulder": "L_Collar", "LeftArm": "L_Shoulder", "LeftForeArm": "L_Elbow", "LeftHand": "L_Wrist",
+                "RightShoulder": "R_Collar", "RightArm": "R_Shoulder", "RightForeArm": "R_Elbow", "RightHand": "R_Wrist",
+                "LeftUpLeg": "L_Hip", "LeftLeg": "L_Knee", "LeftFoot": "L_Ankle", "LeftToeBase": "L_Foot",
+                "RightUpLeg": "R_Hip", "RightLeg": "R_Knee", "RightFoot": "R_Ankle", "RightToeBase": "R_Foot"}
+MAPS["mixamo"] ={k: k for k in MAPS["cmu"]}                                  # a BVH made from a Mixamo skeleton (names with or without the prefix)
 LIMB = ("LeftArm", "LeftForeArm", "RightArm", "RightForeArm", "LeftUpLeg", "LeftLeg", "RightUpLeg", "RightLeg", "LeftFoot", "RightFoot")      # bones whose rest DIRECTION is well defined on both sides
 MAP = MAPS[MAP_NAME]
 
