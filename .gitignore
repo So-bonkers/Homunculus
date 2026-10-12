@@ -28,3 +28,5 @@ presets/*/source/
 presets/*/textures/
 presets/*/*_rigged.fbx
 comfy/object_info.json
+# MSFlow trial: cloned code, weights and generated motion (outside the app)
+/msflow/

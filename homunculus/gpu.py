@@ -1,5 +1,5 @@
 """One-heavy-model-at-a-time GPU control: VRAM readout, unload everything, ComfyUI start/stop, watchdog."""
-import subprocess, threading, time, requests
+import shutil, subprocess, threading, time, requests
 from contextlib import contextmanager
 from . import config as C
 
@@ -39,6 +39,10 @@ def comfy_stop():
 
 def comfy_start(log):
     if comfy_running(): return
+    try:      # ROCm: a start-up patch for a segfault in the vision patch-embedding convolution (see comfy/rocm_conv3d_fix.py)
+        cn = C.COMFY_UI / "custom_nodes"; cn.mkdir(exist_ok=True); src = C.COMFY / "rocm_conv3d_fix.py"; dst = cn / "rocm_conv3d_fix.py"
+        if src.exists() and (not dst.exists() or dst.read_bytes() != src.read_bytes()): shutil.copy(src, dst)
+    except Exception as e: log(f"could not install the ROCm conv3d patch ({type(e).__name__})")
     env = ["--setenv=PYTHONUNBUFFERED=1", "--setenv=UV_CPU=1", "--setenv=TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1",
            "--setenv=TORCH_BLAS_PREFER_HIPBLASLT=0", "--setenv=PYTORCH_ROCM_ARCH=gfx1100"]
     cmd = ["systemd-run", "--user", f"--unit={C.COMFY_UNIT}", "--collect", f"--working-directory={C.COMFY_UI}",

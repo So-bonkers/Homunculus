@@ -34,6 +34,24 @@ Single-image vs multiview Pixal3D on the same sheet: single-view arms drooped an
 - With one judge, a false rejection is expensive: the same mesh scored 4/10 twice in the rig check and then 9/10. The rig ladder's last resorts (redraw with relaxed hands, next-best redraw) make no sense for a sheet (nothing is redrawn, the same views give the same shape), so a sheet run now keeps the rig and flags it.
 - The viewer did not list the coloured mesh, so it showed Pixal3D's raw texture until the final stage.
 
+## Top and bottom pictures (texture only)
+The multiview Pixal3D takes four views at 90 degrees and nothing from above or below, so the top of the head, the shoulders, the tops of the feet, the soles and the underside of a jacket face none of the four sides and kept one flat colour (the dark halos around the figure). A sheet run can take two extra pictures, `--sheet-top` and `--sheet-bottom`, used **only for the texture**: each is projected onto the surfaces that face it (`faceproj.project_sheet`, a general view direction in `blender_face_project.py`), best-facing view winning where they overlap. They are registered by the figure's **width** (the arm span), not its height, because the body's depth is not drawn to scale in a picture from above. Conventions: from above, the character's front faces the **bottom** of the picture and its left is on the right; from below, the front faces the **top** and the left is again on the right. `tools/sheet_from_refs.py ... --only top,bottom` draws them with Qwen-Image and the reference pictures (not yet run on a real character; the projection was tested by projecting the mesh's own top-down and bottom-up renders back onto it: the shapes land on each other).
+
+## Orientation (fixed)
+The multiview model does not always build the character facing the same way, so the mesh is turned half a turn only when the toes point +y (`blender_rotz.py auto`). A fixed half turn painted the front picture on the back of a generated sheet's character.
+
+## Generating the views locally: what was tried (October 2026)
+A sheet can also be built from several ordinary pictures of the character, with Qwen-Image 2.1 and its `reference_images` (`tools/multiref_trial.py`, `tools/sheet_from_refs.py`). References clearly help the front T-pose redraw (the real chest emblem instead of an invented one). Generating the other views from the references alone fails the same ways every time: the back shows front details, the side views are 3/4 views, and the hands differ from view to view.
+
+**Depth-guided views** (`tools/depth_guided_views.py`, `homunculus/blender_depth_views.py`): a coarse proxy mesh (the single-image Pixal3D shape of the front T-pose, about a minute), rendered from each side as a depth or normal map, then each view generated under its own map with the Qwen-Image 2.1 Fun ControlNet Union (official Comfy-Org patch, `QwenImageDiffsynthControlnet`; ComfyUI only, Unsloth Studio has no ControlNet). One character, one seed, so indications only:
+- **Scale agrees**: the generated views come out the same height within 1 % (unguided: 9 % apart).
+- **Front/back is not decided by depth, nor by a normal map**: at strength 0.8 the "back" shows the front (emblem, open hood); at 0.5 it is a back but with the front emblem painted on. Only giving the back view the *unguided* back as its first reference (and not the front picture) with the depth for framing produced a correct back.
+- **The side-view arms hang down** in every guided variant (depth or normal, strength 0.5 or 0.8), against a T-pose front and back. Open.
+- **Qwen-Image 2.1 Turbo** = the base int8 model + the Comfy-Org turbo LoRA (rank 178, 0.9 GB), 8 steps, CFG 1, sampled on the sigma schedule Turbo ships with (`SamplerCustom` + `ManualSigmas`): about 39 s per view instead of 102 s, and the same results to the eye, including fine detail at 4x zoom (hands, shoes). VRAM was not measured. Not wired into the pipeline.
+- **Depth Anything 3 as a sheet consistency check does not work**: from four views 90 degrees apart it recovers camera positions and equal heights, but the clouds do not fuse into one body, on a clean control sheet as much as on a bad one (`tools/da3_check.py` is kept as a record, with its weights, 0.5 GB).
+
+**ROCm crash found and fixed on the way**: importing ComfyUI turns cuDNN (MIOpen) off, and with it off PyTorch's fallback for the text encoder's vision patch-embedding 3D convolution segfaults on AMD, killing ComfyUI the first time a Qwen-Image 2.1 graph read a reference picture. That convolution is a matrix multiply (kernel = stride = input size), so `comfy/rocm_conv3d_fix.py` does it as one (same numbers, max difference 5e-6); `gpu.comfy_start` copies it into ComfyUI's custom nodes every time.
+
 ## Limits
 - You must supply the sheet; there is no local generator for it yet.
 - Four views at most: no top or bottom view.
