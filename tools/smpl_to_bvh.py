@@ -1,6 +1,6 @@
 """Convert SMPL dance motion (AIST++ .pkl, FineDance .npy (6D rotations)) to a BVH file that tools/retarget_bvh.py reads with --map smpl.
 
-    python3 -I tools/smpl_to_bvh.py <clip.pkl|clip.npy> <out.bvh> [--format aist|finedance] [--fps N] [--trans-scale S]
+    python3 -I tools/smpl_to_bvh.py <clip.pkl|clip.npy> <out.bvh> [--format aist|finedance|gvhmr] [--fps N] [--trans-scale S]
 
 The SMPL model files need a licence and are not used: the rest pose is an idealised SMPL T-pose (limbs along the axes, adult proportions); only the bone DIRECTIONS matter to the retargeting, which works
 with world orientations (see retarget_bvh.py). SMPL rest joints are axis aligned, so each joint's local axis-angle IS the BVH local rotation.
@@ -35,6 +35,9 @@ def load(path, fmt):
     """-> (poses (N, 24, 3) axis-angle (FineDance's 6D rotations are converted), trans (N, 3), source fps)"""
     if fmt == "aist":
         d = _Safe(open(path, "rb")).load(); return np.asarray(d["smpl_poses"], float).reshape(-1, 24, 3), np.asarray(d["smpl_trans"], float) / float(np.ravel(d["smpl_scaling"])[0]), 60
+    if fmt == "gvhmr":                                                                              # tools/video_to_smpl.py: SMPL-X body (21 joints, axis-angle) from a video, 30 fps, translation in metres
+        d = np.load(path, allow_pickle=False); n = len(d["body_pose"])
+        return np.concatenate([d["global_orient"].reshape(n, 1, 3), d["body_pose"].reshape(n, 21, 3), np.zeros((n, 2, 3))], 1).astype(float), d["transl"].astype(float), 30
     a = np.load(path, allow_pickle=False).astype(float)                                           # FineDance: 315 columns = 3 translation + 52 joints x 6D rotation (22 body joints first; hands unused here)
     d6 = a[:, 3:].reshape(len(a), -1, 6)[:, :22]; a1, a2 = d6[..., :3], d6[..., 3:]                 # 6D -> matrix, rows first (checked: with columns first the knees bend forward)
     b1 = a1 / np.linalg.norm(a1, axis=-1, keepdims=True); b2 = a2 - (b1 * a2).sum(-1, keepdims=True) * b1; b2 /= np.linalg.norm(b2, axis=-1, keepdims=True)
@@ -75,7 +78,7 @@ def main():
         if f in a: i = a.index(f); v = a[i + 1]; del a[i:i + 2]; return c(v)
         return d
     fmt = opt("--format", None); fps = opt("--fps", None, float); ts = opt("--trans-scale", None, float)
-    src, dst = a[0], a[1]; fmt = fmt or ("aist" if src.endswith(".pkl") else "finedance")
+    src, dst = a[0], a[1]; fmt = fmt or ("aist" if src.endswith(".pkl") else "gvhmr" if src.endswith(".npz") else "finedance")
     poses, trans, sfps = load(src, fmt); fps = fps or sfps; n = len(poses)
     rots = [Rot.from_rotvec(poses[:, j]) for j in range(24)]
     local = fk(rots, np.zeros((n, 3)))                                                              # pose with the pelvis at the origin

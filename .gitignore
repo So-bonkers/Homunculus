@@ -32,3 +32,4 @@ comfy/object_info.json
 /msflow/
 # CMU / BVH mocap test clips for tools/retarget_bvh.py (downloaded from github.com/Shriinivas/cmubvh; CMU places no restrictions on the use of the original dataset)
 /mocap_test/
+/gvhmr/

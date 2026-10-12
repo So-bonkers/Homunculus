@@ -1,6 +1,6 @@
 """Render an animated rigged character to PNG frames with a moving camera (run inside Blender; tools/make_mp4.py drives it and encodes the video).
 
-blender -b --python tools/render_dance.py -- <character.fbx> <frames_dir> [--fps 30] [--size 1280x720] [--range a b] [--seed 7] [--cuts f1,f2,..] [--samples 12] [--engine eevee|workbench] [--probe]
+blender -b --python tools/render_dance.py -- <character.fbx> <frames_dir> [--fps 30] [--size 1280x720] [--range a b] [--seed 7] [--cuts f1,f2,..] [--fixed] [--samples 12] [--engine eevee|workbench] [--probe]
   --range a b   render output frames a..b-1 only (so several Blender processes can share one clip); the camera plan is deterministic, every process computes the same one
   --cuts        output frames at which a new shot must start (the seams of a joined clip)
   --probe       print the plan and the time of one frame, render nothing else
@@ -19,6 +19,8 @@ def opt(flag, default=None, n=1, cast=str):
     return default
 OUT_FPS = opt("--fps", 30, cast=int); W, H_PX = [int(x) for x in opt("--size", "1280x720").split("x")]; RANGE = opt("--range", None, n=2, cast=int)
 SEED = opt("--seed", 7, cast=int); CUTS = [int(x) for x in (opt("--cuts", "") or "").split(",") if x]; SAMPLES = opt("--samples", 12, cast=int); ENGINE = opt("--engine", "eevee")
+FIXED = "--fixed" in argv                                    # one steady front camera for the whole clip (to compare with a video)
+if FIXED: argv.remove("--fixed")
 PROBE = "--probe" in argv
 if PROBE: argv.remove("--probe")
 model, frames_dir = argv[0], argv[1]; os.makedirs(frames_dir, exist_ok=True)
@@ -57,8 +59,9 @@ rng = random.Random(SEED)
 def ease(u): return u * u * (3 - 2 * u)
 SHOTS = {      # name: (distance from, to; camera height from, to (x character height); look-at height from, to; orbit sweep degrees; focal mm)
     "medium": ((2.9, 2.6), (0.62, 0.62), (0.55, 0.55), 0, 40), "orbit": ((3.6, 3.4), (0.35, 0.5), (0.5, 0.5), 40, 28), "push_in": ((4.0, 1.9), (0.5, 0.7), (0.5, 0.62), 0, 38),
-    "low_hero": ((2.7, 2.2), (0.08, 0.14), (0.6, 0.6), 22, 26), "close_up": ((1.7, 1.35), (0.78, 0.84), (0.8, 0.82), 15, 70), "side_track": ((3.0, 3.1), (0.45, 0.5), (0.5, 0.5), 8, 40)}
+    "low_hero": ((2.7, 2.2), (0.08, 0.14), (0.6, 0.6), 22, 26), "close_up": ((1.7, 1.35), (0.78, 0.84), (0.8, 0.82), 15, 70), "fixed": ((3.4, 3.4), (0.5, 0.5), (0.5, 0.5), 0, 40), "side_track": ((3.0, 3.1), (0.45, 0.5), (0.5, 0.5), 8, 40)}
 def plan(n, cuts):
+    if FIXED: return [dict(name="fixed", a=0, b=n, ang=0, sweep=0)]
     segs = [0] + [c for c in cuts if 0 < c < n] + [n]; shots = []; last = None; last_ang = 0.0
     for a, b in zip(segs[:-1], segs[1:]):
         t = a; first = True
