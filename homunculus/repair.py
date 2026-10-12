@@ -1,6 +1,7 @@
 """Repair any part of a run's 3D model: the user paints the broken region (cut-off fingers, a crumpled helmet crown, a melted foot, ...) in the web viewer and this regenerates it.
     python -m homunculus.repair <run> --job <id>     (the job folder runs/<run>/10_repair/<id>/ holds request.json: {"strokes": [[x,y,z,r],...], "notes": "...", "label": "...", "view": "auto"})
-    python -m homunculus.repair <run> --region hands|head|crown|feet [--label "..."] [--view auto|front|back|left|right|top]     (a named region of a T/A-posed figure; the viewer's buttons use the same rules)
+    python -m homunculus.repair <run> --region hands|head|crown|feet [--auto] [--label "..."] [--view auto|front|back|left|right|top]     (a named region of a T/A-posed figure; the viewer's buttons use the same rules)
+The redraw is chosen by YOU on the Repair tab (the job waits for the pick; --auto lets the finger counter / silhouette check and the VLM choose, which the unattended hand repair of a run uses).
 Steps (each recorded in status.json for the web app): 1 region from the strokes + a close-up of it, rendered from the side it faces (Blender)  2 the image model redraws the close-up
 as a complete, clean version of what the region is (the label), the checks and the VLM choose (hands also get the finger counter)  3 Pixal3D turns the chosen redraw into a small mesh
 4 that mesh is mapped back with the same pixel->metre mapping as the close-up, slid over the boundary the region leaves in the surface and joined, the original region deleted
@@ -17,9 +18,23 @@ HANDS = re.compile(r"\b(hand|hands|finger|fingers|glove|gloves|palm|thumb)\b", r
 
 PROMPT = ("This is a grey clay render of part of a 3D character: {what}, where the surface is broken, missing, cut off, fused, dented, crumpled or deformed. "
           "Redraw it as the same grey clay model with a complete, clean, natural version of that part{anatomy}, seen from the same side, with the same size, position and angle, "
-          "continuing the surrounding parts in the same way (the same neck, arm, leg or body where it meets them). Keep the clay look, the same lighting and the same grey colour: "
+          "continuing the surrounding parts in the same way (the same neck, arm, leg or body where it meets them). KEEP WHAT IS ON THE PART: a shoe stays the same shoe, a glove the same glove, a boot, cuff, sleeve, hood or helmet the same garment with the same design; only repair its shape, never replace clothing or equipment by bare skin or a different object. Keep the clay look, the same lighting and the same grey colour: "
           "no skin, no colours, no new details. Plain light grey background, nothing else in the picture.")
-ANATOMY = {"hands": ": five clearly separated fingers (thumb, index, middle, ring and little finger), open and relaxed"}
+_NUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6}
+
+
+def expected_digits(label):
+    """How many digits a hand of this character has: 5 unless the label says otherwise ("three fingers and a thumb" is 4, "four digits" is 4, "four fingers" is 4): a cartoon glove often has fewer."""
+    t = (label or "").lower()
+    m = re.search(r"\b(one|two|three|four|five|six|[1-6])\s+fingers?\s+and\s+(?:a|one|1)\s+thumb", t)
+    if m: return _NUM[m.group(1)] + 1
+    m = re.search(r"\b(one|two|three|four|five|six|[1-6])\s+(?:digits?|fingers?)\b", t)
+    return _NUM[m.group(1)] if m else 5
+
+
+def _anatomy(n):
+    if n == 5: return ": five clearly separated fingers (thumb, index, middle, ring and little finger), open and relaxed"
+    return f": exactly {n} clearly separated digits in all ({n - 1} fingers and a thumb, NOT five), open and relaxed"
 
 
 def is_hands(label):
@@ -28,7 +43,7 @@ def is_hands(label):
 
 def prompt_for(label):
     """The redraw prompt for a region: what it is (the label, or 'the painted part') and, for hands, the anatomy that counts."""
-    return PROMPT.format(what=(label.strip().rstrip(".") if label and label.strip() else "the painted part"), anatomy=ANATOMY["hands"] if is_hands(label) else "")
+    return PROMPT.format(what=(label.strip().rstrip(".") if label and label.strip() else "the painted part"), anatomy=_anatomy(expected_digits(label)) if is_hands(label) else "")
 
 
 SEEDS = [11, 23, 37, 41, 59, 73]
@@ -111,8 +126,8 @@ def _choose(J, k, cands, crop, label=""):
     with none left the best of the rest wins. Returns (path, counts or overlaps, passed)."""
     hands = is_hands(label)
     if hands:
-        score = {p: _fingers(p) for p in cands}; J.log(f"region {k}: finger counts " + ", ".join(f"{os.path.basename(p)[7:-4]}={n}" for p, n in score.items()))
-        ok = [p for p in cands if score[p] == 5]; rank = lambda p: abs(score[p] - 5)
+        want = expected_digits(label); score = {p: _fingers(p) for p in cands}; J.log(f"region {k}: digit counts (want {want}) " + ", ".join(f"{os.path.basename(p)[7:-4]}={n}" for p, n in score.items()))
+        ok = [p for p in cands if score[p] == want]; rank = lambda p: abs(score[p] - want)
     else:
         score = {p: _overlap(p, crop) for p in cands}; J.log(f"region {k}: shape overlap with the close-up " + ", ".join(f"{os.path.basename(p)[7:-4]}={v:.2f}" for p, v in score.items()) + f" (a repair overlaps 0.5 to {UNCHANGED}; more is the original handed back)")
         ok = [p for p in cands if 0.5 <= score[p] < UNCHANGED]; rank = lambda p: (score[p] >= UNCHANGED, abs(score[p] - 0.85))
@@ -129,6 +144,45 @@ def _choose(J, k, cands, crop, label=""):
     finally:
         try: vlm.unload(J.log)
         except Exception: pass
+
+
+def _seed_batch(b, n):
+    """Seeds for the b-th batch of n redraws: the fixed list first, then more as you ask for more."""
+    pool = SEEDS + [1000 + 37 * i for i in range(200)]
+    return pool[b * n:(b + 1) * n]
+
+
+def _info(cands, crop, label):
+    """What the local checks say about each redraw, as plain text for the page: for hands the digit counter, otherwise the silhouette overlap with the close-up. Information only: you decide."""
+    out = {}
+    for p in cands:
+        if is_hands(label): out[p] = f"counter: {_fingers(p)} digits (this character should have {expected_digits(label)})"
+        else:
+            try: out[p] = f"overlap with the close-up {_overlap(p, crop):.2f} (a repair is about 0.5 to 0.98; 1.0 = the original handed back)"
+            except Exception: out[p] = ""
+    return out
+
+
+def _manual_choice(J, reg, gi, k, crop, rd, label, notes, per_round):
+    """You are the judge: redraw, show every candidate on the page, wait for your pick (or for more redraws), repeat. No filter, no VLM. The GPU is free while it waits (the image model is unloaded)."""
+    cands_all, info, batch = [], {}, 0; f = J.dir / f"choice_{gi}_{k}.json"
+    while True:
+        reg["status"] = f"redrawing (batch {batch + 1})"; reg["awaiting"] = False; J.save(); J.log(f"region {k}: redrawing the close-up ({per_round} candidates)")
+        cands = _redraw(J, crop, str(rd), _seed_batch(batch, per_round), notes, prompt_for(label)); cands_all += cands; info.update(_info(cands, crop, label)); batch += 1
+        reg["candidates"] = [J.rel(p) for p in cands_all]; reg["info"] = [info.get(p, "") for p in cands_all]
+        if not cands_all: raise RuntimeError(f"region {k}: the image model returned nothing")
+        if f.exists(): f.unlink()
+        reg["awaiting"] = True; reg["status"] = "waiting for your choice"; J.save(); J.log(f"region {k}: {len(cands_all)} redraws ready: pick one on the page (or ask for more)")
+        try: notify.send(f"homunculus · {J.R.state['name']}: pick a redraw", f"Region {k} ({label or 'the painted part'}): {len(cands_all)} redraws are waiting for your choice in the Repair tab.")
+        except Exception: pass
+        while not f.exists(): time.sleep(0.5)
+        try: choice = json.load(open(f))["choice"]
+        except Exception: time.sleep(1); choice = json.load(open(f))["choice"]
+        f.unlink(); reg["awaiting"] = False
+        if choice == "more": J.log(f"region {k}: you asked for more redraws"); continue
+        i = int(choice)
+        if not 0 <= i < len(cands_all): J.log(f"region {k}: choice {i} is out of range; ignored"); continue
+        J.log(f"region {k}: you chose redraw {i + 1}"); return cands_all[i]
 
 
 def bake_glb(J, merged):
@@ -176,7 +230,7 @@ def remerge(R, job, base=None):
     J.S["base"] = str(base); J.S["result"] = J.rel(str(out)); bake_glb(J, str(out)); J.save(); return str(out)
 
 
-def run_job(R, job, groups, notes="", rounds=2, per_round=3):
+def run_job(R, job, groups, notes="", rounds=2, per_round=3, manual=False):
     """groups: [{"strokes": [[x,y,z,r],...], "label": "what it is", "view": "auto|front|..."}, ...]. Each group has its own prompt, view and checks (hands get the finger counter, a foot or a
     helmet top does not); the groups are repaired one after the other on the running result, and the texture is baked once at the end."""
     J = Job(R, job); S = J.S; S.update(status="running", step="regions", notes=notes, groups=[{"label": g.get("label", ""), "view": g.get("view", "auto")} for g in groups],
@@ -200,7 +254,9 @@ def run_job(R, job, groups, notes="", rounds=2, per_round=3):
         for reg in regs:
             k = reg["index"]; crop = str(an / f"region{k}_clay.png"); rd = J.dir / f"region{k}{sfx}"
             best, chosen_ok, cands_all = None, False, []
-            for rnd in range(rounds):
+            if manual:      # you choose: no digit counter or silhouette filter decides, no VLM is loaded
+                best = _manual_choice(J, reg, gi, k, crop, rd, label, notes, per_round); chosen_ok = True; cands_all = [str(C.RUNS / c) for c in reg.get("candidates", [])]
+            for rnd in range(0 if manual else rounds):
                 reg["status"] = f"redrawing (round {rnd + 1})"; J.save(); J.log(f"region {k}{sfx}: redrawing the close-up ({per_round} candidates)")
                 cands = _redraw(J, crop, str(rd), SEEDS[rnd * per_round:(rnd + 1) * per_round], notes, prompt_for(label)); cands_all += cands
                 reg["candidates"] = [J.rel(p) for p in cands_all]; J.save()
@@ -209,7 +265,7 @@ def run_job(R, job, groups, notes="", rounds=2, per_round=3):
                 if chosen_ok: break
                 J.log(f"region {k}{sfx}: no redraw passed the check in round {rnd + 1}")
             if not best: raise RuntimeError(f"region {k}{sfx}: the image model returned nothing")
-            reg.update(chosen=J.rel(best), checked=chosen_ok, **({"five_fingers": chosen_ok} if hands else {}), status="building the 3D part"); J.save()
+            reg.update(chosen=J.rel(best), checked=chosen_ok, by="you" if manual else "the checks", **({"five_fingers": chosen_ok} if hands else {}), status="building the 3D part"); J.save()
             J.log(f"region {k}{sfx}: Pixal3D on the chosen redraw")
             donor = comfy.mesh(best, str(rd / "donor"), f"repair_{R.state['name']}_{job}_{gi}{k}", seed=7, log=J.log, faces=90000, tex=2048,
                                texture=False, upres=1536 if hands else 1024)      # the donor gets a flat colour anyway: no texture sampling; a part that fills its picture (a helmet top) peaked at 23.3 GB at 1536
@@ -236,7 +292,7 @@ def run_job(R, job, groups, notes="", rounds=2, per_round=3):
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("run"); ap.add_argument("--job", default=None); ap.add_argument("--hands", action="store_true", help="same as --region hands"); ap.add_argument("--region", action="append", choices=["hands", "head", "crown", "feet"], help="a named region of a T/A-posed figure instead of painted strokes; repeat for several (each gets its own label, view and checks)")
-    ap.add_argument("--label", default=None, help="what the region is, e.g. \"the top of the helmet\" (default: from --region, or \"the painted part\")"); ap.add_argument("--view", default=None, choices=["auto", "front", "back", "left", "right", "top"], help="the side to redraw it from (default: front for hands, else auto)"); ap.add_argument("--notes", default="")
+    ap.add_argument("--label", default=None, help="what the region is, e.g. \"the top of the helmet\" (default: from --region, or \"the painted part\")"); ap.add_argument("--view", default=None, choices=["auto", "front", "back", "left", "right", "top"], help="the side to redraw it from (default: front for hands, else auto)"); ap.add_argument("--notes", default=""); ap.add_argument("--auto", action="store_true", help="the checks and the VLM choose the redraw (default: you choose it on the Repair tab)")
     ap.add_argument("--remerge", metavar="JOB", help="join the donors of an earlier job again and bake (CPU, no GPU lock); --base PATH names the mesh the job was made on")
     ap.add_argument("--base", default=None)
     ap.add_argument("--bake", metavar="JOB", help="only bake the textured single mesh of an earlier job (CPU, no GPU lock)")
@@ -257,7 +313,7 @@ def main():
     try:
         req = json.load(open(jd / "request.json")) if (jd / "request.json").exists() else {}
         regions = a.region or (["hands"] if a.hands else [])
-        LABEL = {"hands": "the hands", "head": "the head", "crown": "the top of the head or helmet", "feet": "the feet"}
+        LABEL = {"hands": "the hands (keep any gloves)", "head": "the head (keep any hood or helmet)", "crown": "the top of the head or helmet", "feet": "the feet (keep the shoes or boots)"}
         if regions:
             if len(regions) > 1 and (a.label or a.view): raise RuntimeError("--label and --view apply to one region: give them only with a single --region")
             groups = []
@@ -268,7 +324,8 @@ def main():
         else:
             label = a.label if a.label is not None else req.get("label", ""); groups = [{"strokes": req["strokes"], "label": label, "view": a.view or req.get("view") or ("front" if is_hands(label) else "auto")}]
         a.notes = a.notes or req.get("notes", "")
-        with gpu.watchdog(J.log): out = run_job(R, job, groups, a.notes)
+        manual = not a.auto and bool(req.get("manual", True))
+        with gpu.watchdog(J.log): out = run_job(R, job, groups, a.notes, manual=manual)
     except Exception as e:
         J = Job(R, job); J.S.update(status="failed", error=f"{type(e).__name__}: {str(e)[:300]}"); J.save(); notify.send(f"homunculus · {a.run}: repair failed", str(e)[:200], critical=True); raise
     notify.send(f"homunculus · {a.run}", "Repair finished. Open the Repair tab to compare before and after.")

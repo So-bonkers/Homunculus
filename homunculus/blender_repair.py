@@ -79,6 +79,58 @@ def region_color(ob, idx):
         print(f"[repair] region colour not found ({type(e).__name__}); using grey"); return [0.35, 0.35, 0.36]
 
 
+GRAFT = os.environ.get("REPAIR_GRAFT", "1") != "0"      # planar cut + blend + bridge + colour transfer (0: the old overlapping shells with one flat colour)
+
+
+def srgb_to_linear(c):
+    c = np.asarray(c, np.float64); return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+
+
+def texture_colours(ob, idx=None):
+    """Linear base-colour of the given vertices (all of them when idx is None) sampled from the base-colour texture at each vertex's first loop UV; None when the mesh has no texture."""
+    try:
+        mat = next(m for m in ob.data.materials if m and m.use_nodes); tex = next(n for n in mat.node_tree.nodes if n.type == "TEX_IMAGE" and n.image)
+        img = tex.image; w, h = img.size; buf = np.empty(w * h * 4, np.float32); img.pixels.foreach_get(buf); buf = buf.reshape(h, w, 4)
+        me = ob.data; nl = len(me.loops); UV = np.empty(nl * 2, np.float32); me.uv_layers.active.data.foreach_get("uv", UV); UV = UV.reshape(-1, 2)
+        LV = np.empty(nl, np.int32); me.loops.foreach_get("vertex_index", LV)
+        first = np.full(len(me.vertices), -1, np.int64); first[LV[::-1]] = np.arange(nl)[::-1]             # the first loop of every vertex
+        sel = np.arange(len(me.vertices)) if idx is None else np.asarray(idx); ok = first[sel] >= 0
+        out = np.full((len(sel), 3), 0.35)
+        u = np.clip((UV[first[sel[ok]], 0] % 1.0) * (w - 1), 0, w - 1).astype(int); v = np.clip((UV[first[sel[ok]], 1] % 1.0) * (h - 1), 0, h - 1).astype(int)
+        c = buf[v, u, :3].astype(np.float64)
+        out[ok] = srgb_to_linear(c) if (not img.is_float and img.colorspace_settings.name.lower().startswith("srgb")) else c
+        return out
+    except Exception as e:
+        print(f"[repair] no texture colours ({type(e).__name__})"); return None
+
+
+def bake_colours_to_texture(ob, cols, size=1024):
+    """Give the object a material whose base colour is an IMAGE: the per-vertex colours baked onto the object's own UV layout (Cycles, emission, CPU). Vertex colours do not survive the glTF round trip
+    to the later bake; an image does. Returns False (and leaves the object alone) when it has no UVs."""
+    me = ob.data
+    if not me.uv_layers: return False
+    set_vertex_colours(ob, cols)
+    m = me.materials[0]; nt = m.node_tree; out = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL"); b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"); an = next(n for n in nt.nodes if n.type == "VERTEX_COLOR")
+    em = nt.nodes.new("ShaderNodeEmission"); nt.links.new(an.outputs["Color"], em.inputs["Color"]); nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
+    img = bpy.data.images.new("repair_part_basecolor", size, size, alpha=False); img.colorspace_settings.name = "sRGB"
+    tn = nt.nodes.new("ShaderNodeTexImage"); tn.image = img; nt.nodes.active = tn
+    sc = bpy.context.scene; sc.render.engine = "CYCLES"; sc.cycles.samples = 1; sc.cycles.device = "CPU"
+    bpy.ops.object.select_all(action="DESELECT"); ob.select_set(True); bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.bake(type="EMIT", margin=6, use_clear=True)
+    nt.links.new(tn.outputs["Color"], b.inputs["Base Color"]); nt.links.new(b.outputs["BSDF"], out.inputs["Surface"])      # the image is now the colour; the emission was only the bake's carrier
+    img.pack(); me.color_attributes.remove(me.color_attributes["Col"]); return True
+
+
+def set_vertex_colours(ob, cols, name="Col"):
+    """A point-domain colour attribute (linear RGBA) on the object's mesh, and a material whose base colour is that attribute."""
+    me = ob.data
+    if name in me.color_attributes: me.color_attributes.remove(me.color_attributes[name])
+    at = me.color_attributes.new(name=name, type="FLOAT_COLOR", domain="POINT"); a = np.ones((len(me.vertices), 4), np.float32); a[:, :3] = np.asarray(cols, np.float32); at.data.foreach_set("color", a.ravel())
+    m = bpy.data.materials.new("repair_part"); m.use_nodes = True; nt = m.node_tree; b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    an = nt.nodes.new("ShaderNodeVertexColor"); an.layer_name = name; nt.links.new(an.outputs["Color"], b.inputs["Base Color"]); b.inputs["Roughness"].default_value = 0.5
+    me.materials.clear(); me.materials.append(m); return m
+
+
 VIEWS = {"front": (0, -1, 0), "back": (0, 1, 0), "left": (1, 0, 0), "right": (-1, 0, 0), "top": (0, 0, 1)}      # direction from the model towards the camera ("left" = the character's left side, +x)
 
 
@@ -219,7 +271,16 @@ elif mode == "merge":
     if not np.allclose(_R0, np.eye(3)): turn(ob, _R0)
     V = verts(ob)
     # 1) every region's donor, mapped, snapped to the wrist, clipped; collected before anything is deleted
-    donors = []; delete = np.zeros(len(V), bool); boxes = []
+    donors = []; delete = np.zeros(len(V), bool); boxes = []; grafts = []; base_cols = texture_colours(ob) if GRAFT else None
+    if GRAFT:      # welded connectivity (the importer splits vertices along texture seams) for the flood fill that removes what the old part leaves behind
+        _uq, _canon = np.unique(np.round(V * 1e5).astype(np.int64), axis=0, return_inverse=True); _canon = _canon.ravel(); _nc = len(_uq)
+        _Vc = np.zeros((_nc, 3), np.float32); _Vc[_canon] = V; _E = _canon[edges(ob)]; _E = _E[_E[:, 0] != _E[:, 1]]; _E = np.vstack([_E, _E[:, ::-1]])
+    def flood(mark_w, allowed_w):
+        """Grow mark_w along mesh edges into allowed vertices until nothing new is reached."""
+        while True:
+            new = np.zeros(_nc, bool); sel = mark_w[_E[:, 0]] & allowed_w[_E[:, 1]] & ~mark_w[_E[:, 1]]
+            if not sel.any(): return mark_w
+            new[_E[sel, 1]] = True; mark_w = mark_w | new
     for j in jobs:
         _i = json.load(open(j["region"])); delete[np.load(os.path.join(os.path.dirname(j["region"]), _i["mask"]))] = True
     Vk = V[~delete]                                                          # what stays of the original mesh: the donors must meet it
@@ -272,7 +333,44 @@ elif mode == "merge":
                 print(f"[repair] region {info['index']}: donor scale x{f:.3f}; arm ends {abs(t_end) * 100:.1f} cm from the wrist ring, stub slid {overlap * 100:.1f} cm over it, "
                       f"centred ({np.linalg.norm(cb - cd) * 100:.1f} cm shift, x{g:.2f} size)")
         t = (D2 - rc) @ n; keep = np.ones(len(D2), bool)                      # the donor starts inside the arm by construction: nothing to clip
+        grafted = False
+        if GRAFT and arm.sum() > 30 and tube.sum() > 30:
+            # --- a real graft instead of two shells: cut both parts at one plane just inside the retained end, blend the donor's cross-section into the retained ring, bridge the two rings, carry the colours over
+            tV = (V - rc) @ n; lV = np.linalg.norm(ax(V), axis=1)
+            _m0 = np.zeros(_nc, bool); _m0[_canon[delete]] = True; _touch = np.zeros(_nc, bool); _sel0 = _m0[_E[:, 0]] & ~_m0[_E[:, 1]]; _touch[_E[_sel0, 1]] = True      # retained vertices that touch the old region = its ragged end
+            _tw0 = (_Vc - rc) @ n; _near = _touch & (np.linalg.norm(_Vc - rc - np.outer(_tw0, n), axis=1) < 2.2 * rr)
+            t_cut = (float(np.percentile(_tw0[_near], 4)) - 0.25 * rr) if _near.sum() > 20 else t_end - 0.4 * overlap      # inside the most inward ragged tip: below it everything goes, so the cut is clean
+            D2 = D2 + n * (((t_cut - 0.35 * rr) - float(np.percentile(((D2 - rc) @ n)[tube], 2))))                   # the donor's stub starts below the plane (it is cut there)
+            delete |= (tV > t_cut) & (lV < 1.8 * rr)                                    # the retained end is cut clean at the plane (the sphere selection left it ragged, with bits of the old part)
+            _mark = np.zeros(_nc, bool); _mark[_canon[delete]] = True; _tW = (_Vc - rc) @ n
+            _mark = flood(_mark, _tW > t_cut); _before = int(delete.sum()); delete |= _mark[_canon]               # whatever of the old part is still attached beyond the plane goes too (shoe collars, laces)
+            print(f"[repair] region {info['index']}: {int(delete.sum()) - _before} more vertices of the old part removed beyond the plane (what the selection left attached)")
+            td = (D2 - rc) @ n; ld = np.linalg.norm(ax(D2), axis=1); keep = td >= t_cut      # the donor's stub inside the retained part is dropped
+            ring_r = (~delete) & (np.abs(tV - t_cut) < 0.4 * rr) & (lV < 2.2 * rr); ring_d = keep & (td < t_cut + 0.4 * rr) & (ld < 2.2 * rr)
+            if ring_r.sum() > 12 and ring_d.sum() > 12:
+                perp = lambda P: P - rc - np.outer((P - rc) @ n, n)
+                c_r, c_d = perp(V[ring_r]).mean(0), perp(D2[ring_d]).mean(0); r_r = np.linalg.norm(perp(V[ring_r]) - c_r, axis=1).mean(); r_d = np.linalg.norm(perp(D2[ring_d]) - c_d, axis=1).mean()
+                L = 1.6 * rr; fb = np.clip(1.0 - (td - t_cut) / L, 0, 1)                   # 1 at the plane, fading to 0 a little beyond: the donor flows into the retained ring's size and centre
+                Pp = perp(D2); scale = 1 + fb * (r_r / max(r_d, 1e-6) - 1)
+                D2 = np.where((fb > 0)[:, None], D2 - Pp + c_r + (Pp - c_d) * scale[:, None], D2)          # the perpendicular part is re-expressed about the retained ring's centre, with the ring's size, fading out along the part
+                grafted = True; print(f"[repair] region {info['index']}: graft plane {t_cut * 100:+.1f} cm from the ring; ring radius retained {r_r * 100:.1f} cm, donor {r_d * 100:.1f} cm blended over {L * 100:.1f} cm")
+                grafts.append({"rc": rc, "n": n, "rr": rr, "t_cut": t_cut, "index": info["index"]})
+            else: print(f"[repair] region {info['index']}: no clean ring to graft onto (retained {int(ring_r.sum())} / donor {int(ring_d.sum())} vertices near the plane); using the overlapping shells")
         for i, v in enumerate(do.data.vertices): v.co = Vector(D2[i].tolist())
+        if grafted:   # colours: each donor vertex takes the colour of the nearest vertex of the region it replaces (its texture there); where nothing is near, the region's median colour
+            src = texture_colours(ob, idx)
+            if src is not None:
+                from mathutils import kdtree
+                kd = kdtree.KDTree(len(idx)); [kd.insert(Vector(V[i].tolist()), q) for q, i in enumerate(idx)]; kd.balance()
+                Nb = np.empty(len(V) * 3, np.float32); ob.data.vertices.foreach_get("normal", Nb); Nb = Nb.reshape(-1, 3)[idx]        # the old part's surface normals
+                do.data.update(); Nd = np.empty(len(D2) * 3, np.float32); do.data.vertices.foreach_get("normal", Nd); Nd = Nd.reshape(-1, 3)
+                dmax = 1.6 * rr; flat = np.array(info.get("color") or [0.35, 0.35, 0.36]); dc = np.tile(flat, (len(D2), 1)); near = 0
+                for i in range(len(D2)):
+                    # the donor surface lies inside or outside the old one by a few mm: among the nearest old vertices take the closest that FACES the same way (not the old part's inside lining)
+                    cand = kd.find_n(Vector(D2[i].tolist()), 12)
+                    pick = next((c for c in cand if c[2] < dmax and float(Nb[c[1]] @ Nd[i]) > 0.2), None) or next((c for c in cand if c[2] < dmax), None)
+                    if pick is not None: dc[i] = src[pick[1]]; near += 1
+                ok_tex = bake_colours_to_texture(do, dc); print(f"[repair] region {info['index']}: colours carried over for {near} of {len(D2)} donor vertices" + (" (baked into the donor's texture)" if ok_tex else " (the donor has no UVs: one flat colour)"))
         bm = bmesh.new(); bm.from_mesh(do.data); bm.verts.ensure_lookup_table()
         bmesh.ops.delete(bm, geom=[bm.verts[i] for i in np.nonzero(~keep)[0]], context="VERTS"); bm.to_mesh(do.data); bm.free(); do.name = f"repair_donor_{info['index']}"
         donors.append(do); boxes.append(info)
@@ -281,6 +379,77 @@ elif mode == "merge":
     bpy.context.view_layer.objects.active = ob
     bm = bmesh.new(); bm.from_mesh(ob.data); bm.verts.ensure_lookup_table()
     bmesh.ops.delete(bm, geom=[bm.verts[i] for i in np.nonzero(delete)[0]], context="VERTS"); bm.to_mesh(ob.data); bm.free()
+    if grafts:
+        base_mat = [m for m in ob.data.materials][:]; 
+        bpy.ops.object.select_all(action="DESELECT"); ob.select_set(True)
+        for d_ in donors: d_.select_set(True)
+        bpy.context.view_layer.objects.active = ob; bpy.ops.object.join(); ob = bpy.context.view_layer.objects.active
+        bm = bmesh.new(); bm.from_mesh(ob.data)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-6)           # the glTF importer splits vertices along texture seams: weld them (the UVs live on the face corners and stay), or every seam looks like a boundary
+        bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table(); part_slot = max(len(ob.data.materials) - 1, 0)
+        for g in grafts:
+            rc_, n_, rr_, tc = g["rc"], g["n"], g["rr"], g["t_cut"]
+            def on_ring(v):
+                p_ = np.array(v.co); t_ = (p_ - rc_) @ n_; return abs(t_ - tc) < 0.5 * rr_ and np.linalg.norm(p_ - rc_ - t_ * n_) < 2.4 * rr_
+            es = [e for e in bm.edges if e.is_boundary and all(on_ring(v) for v in e.verts)]
+            # the boundary edges there should form exactly two loops (the retained ring and the donor's): count the connected pieces
+            seen, loops = set(), 0
+            adj = {}
+            for e in es:
+                for v in e.verts: adj.setdefault(v.index, []).append(e)
+            for e in es:
+                if e.index in seen: continue
+                loops += 1; stack = [e]
+                while stack:
+                    c = stack.pop()
+                    if c.index in seen: continue
+                    seen.add(c.index)
+                    for v in c.verts: stack += [x for x in adj[v.index] if x.index not in seen]
+            if os.environ.get("REPAIR_DEBUG"):      # what are the loops? edges, mean distance from the axis, which material (base or new part) the neighbouring face has
+                comp, seen2 = [], set()
+                for e in es:
+                    if e.index in seen2: continue
+                    stack, grp = [e], []
+                    while stack:
+                        c = stack.pop()
+                        if c.index in seen2: continue
+                        seen2.add(c.index); grp.append(c); [stack.extend(x for x in adj[v.index] if x.index not in seen2) for v in c.verts]
+                    comp.append(grp)
+                for grp in comp:
+                    pts = np.array([np.array(v.co) for e in grp for v in e.verts]); t_ = (pts - rc_) @ n_; rad = np.linalg.norm(pts - rc_ - np.outer(t_, n_), axis=1)
+                    mats = {f.material_index for e in grp for f in e.link_faces}
+                    print(f"[repair]   loop: {len(grp)} edges, mean radius {rad.mean() * 100:.1f} cm (max {rad.max() * 100:.1f}), t {t_.mean() * 100:+.1f} cm, centre offset {np.linalg.norm((pts - rc_ - np.outer(t_, n_)).mean(0)) * 100:.1f} cm, material index {mats}")
+            comp, seen2 = [], set()
+            for e in es:
+                if e.index in seen2: continue
+                stack, grp = [e], []
+                while stack:
+                    c = stack.pop()
+                    if c.index in seen2: continue
+                    seen2.add(c.index); grp.append(c); [stack.extend(x for x in adj[v.index] if x.index not in seen2) for v in c.verts]
+                comp.append(grp)
+            def stat(grp):
+                pts = np.array([np.array(v.co) for e in grp for v in e.verts]); t_ = (pts - rc_) @ n_; q = pts - rc_ - np.outer(t_, n_); return np.linalg.norm(q - q.mean(0), axis=1).mean(), {f.material_index for e in grp for f in e.link_faces}
+            info_l = [(grp, *stat(grp)) for grp in comp]
+            ret = [x for x in info_l if x[2] and min(x[2]) < part_slot - (len(donors) - 1)]          # loops whose faces use the base material
+            new_ = [x for x in info_l if x[2] and min(x[2]) >= part_slot - (len(donors) - 1)]
+            if not ret or not new_: print(f"[repair] graft {g['index']}: no retained loop or no donor loop at the plane ({len(ret)} / {len(new_)}): not bridged"); continue
+            r_loop = max(ret, key=lambda x: len(x[0])); n_loop = max(new_, key=lambda x: x[1])         # the biggest retained loop; the donor's OUTER loop (a hollow donor has an inner one too)
+            if len(comp) != 2: print(f"[repair] graft {g['index']}: {len(comp)} loops at the plane; bridging the largest retained one ({len(r_loop[0])} edges) to the donor's outer one ({len(n_loop[0])} edges)")
+            es = r_loop[0] + n_loop[0]
+            ring_ids = sorted({v.index for e in r_loop[0] for v in e.verts}); strip_col = None
+            if base_cols is not None:      # the strip takes the colour of the retained ring (its vertices still carry their index in the original numbering only before the weld: use the nearest original vertex by position)
+                from mathutils import kdtree
+                kd0 = kdtree.KDTree(len(V)); [kd0.insert(Vector(V[i].tolist()), i) for i in range(0, len(V), 3)]; kd0.balance()
+                strip_col = np.mean([base_cols[kd0.find(v.co)[1]] for v in (bm.verts[i] for i in ring_ids)], axis=0)
+            res = bmesh.ops.bridge_loops(bm, edges=es, use_pairs=False, use_cyclic=False, use_merge=False, merge_factor=0.5, twist_offset=0)
+            strip_slot = part_slot
+            if strip_col is not None:      # a flat material for the strip (a thin band, ~2 cm): the mean colour of the retained ring
+                sm = bpy.data.materials.new("repair_strip"); sm.use_nodes = True; sb = next(n for n in sm.node_tree.nodes if n.type == "BSDF_PRINCIPLED"); sb.inputs["Base Color"].default_value = (*[float(x) for x in strip_col], 1.0); sb.inputs["Roughness"].default_value = 0.6
+                ob.data.materials.append(sm); strip_slot = len(ob.data.materials) - 1
+            for f_ in res.get("faces", []): f_.material_index = strip_slot; f_.smooth = True
+            print(f"[repair] graft {g['index']}: the two rings bridged with {len(res.get('faces', []))} faces")
+        bm.normal_update(); bm.to_mesh(ob.data); bm.free()
     for info in boxes: render_crop(os.path.join(out_dir, f"after_region{info['index']}_crop.png"), info["box"])
     if not np.allclose(_R0, np.eye(3)):
         for o in [o for o in bpy.data.objects if o.type == "MESH"]: turn(o, _R0.T)                    # back to the model's own frame

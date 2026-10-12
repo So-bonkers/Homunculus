@@ -114,6 +114,7 @@ class H(SimpleHTTPRequestHandler):
         if path == "/api/animate": return self.animate_job()
         if path == "/api/repair": return self.repair_job()
         if path == "/api/repair_use": return self.repair_use()
+        if path == "/api/repair_choose": return self.repair_choose()
         if path == "/api/retex": return self.retex_job()
         if path == "/api/accept": return self.accept_run()
         if path == "/api/delete": return self.delete_run()
@@ -307,6 +308,23 @@ class H(SimpleHTTPRequestHandler):
         except Exception as e:
             self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
+    def repair_choose(self):
+        """Your pick for a repair redraw: {run, job, group, region, choice} where choice is the number of the candidate (0-based) or "more". The waiting job reads it from choice_<group>_<region>.json."""
+        try:
+            d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            run, job = os.path.basename(str(d.get("run", ""))), os.path.basename(str(d.get("job", "")))
+            jd = C.RUNS / run / "10_repair" / job
+            if not (jd / "status.json").exists(): return self._json(404, {"error": "No such repair."})
+            g, k = int(d.get("group", 0)), int(d.get("region", 0)); choice = d.get("choice")
+            if choice != "more": choice = int(choice)
+            S = json.load(open(jd / "status.json")); reg = next((r for r in S.get("regions", []) if r.get("group", 0) == g and r.get("index") == k), None)
+            if not reg or not reg.get("awaiting"): return self._json(409, {"error": "That region is not waiting for a choice (anymore)."})
+            cf = jd / f"choice_{g}_{k}.json"
+            if cf.exists(): return self._json(409, {"error": "Your last answer for this region has not been read yet; one moment."})
+            json.dump({"choice": choice}, open(cf, "w")); self._json(200, {"ok": True})
+        except Exception as e:
+            self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
     def repair_job(self):
         """Start a repair of the painted region of a run's 3D model: {run, strokes: [[x, y, z, r], ...] (glTF coordinates), notes, label (what the region is), view (auto|front|back|left|right|top)}. The job waits for the GPU
         lock; its progress is runs/<run>/10_repair/<id>/status.json (GET /api/repair/<run>)."""
@@ -327,7 +345,7 @@ class H(SimpleHTTPRequestHandler):
                 clean.append({"strokes": st, "label": re.sub(r"[^\w ,.'()/-]", "", str(g.get("label", "")))[:80], "view": view})
             if not ok: return self._json(400, {"error": "Paint the broken region on the model first."})
             job = time.strftime("%Y%m%d_%H%M%S"); jd = C.RUNS / run / "10_repair" / job; jd.mkdir(parents=True, exist_ok=True)
-            json.dump({"groups": clean, "notes": str(d.get("notes", ""))[:400]}, open(jd / "request.json", "w"))
+            json.dump({"groups": clean, "notes": str(d.get("notes", ""))[:400], "manual": bool(d.get("manual", True))}, open(jd / "request.json", "w"))
             unit = f"homunculus-repair-{run}"
             subprocess.run(["systemctl", "--user", "reset-failed", f"{unit}.service"], capture_output=True)
             r = subprocess.run(["systemd-run", "--user", f"--unit={unit}", "--collect", f"--working-directory={C.ROOT}", "-p", "KillSignal=SIGINT",

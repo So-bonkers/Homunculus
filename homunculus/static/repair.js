@@ -10,7 +10,7 @@ THREE.Mesh.prototype.raycast = acceleratedRaycast;
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const STEP = { queued: "Waiting for the GPU", regions: "Finding the region", running: "Working", merge: "Joining the new part", done: "Done" };
 // Named regions of a T/A-posed figure (fractions of the height; glTF y is up): hands = the outer 10.5 % at each side, head = the top 13.5 %, crown = the top 7 % (a helmet's dome), feet = the lowest 5 %.
-const PRESETS = { hands: { label: "hands", view: "front" }, head: { label: "head", view: "auto" }, crown: { label: "top of the head or helmet", view: "top" }, feet: { label: "feet", view: "auto" } };
+const PRESETS = { hands: { label: "hands (keep any gloves)", view: "front" }, head: { label: "head (keep any hood or helmet)", view: "auto" }, crown: { label: "top of the head or helmet", view: "top" }, feet: { label: "feet (keep the shoes or boots)", view: "auto" } };
 
 export async function mountRepair(host, d, { createViewer, toast }) {
   const meshDone = (d.stages.find((s) => s.key === "mesh") || {}).status === "done";
@@ -26,6 +26,7 @@ export async function mountRepair(host, d, { createViewer, toast }) {
       <p class="hint">Paint over anything that came out broken (cut-off or fused fingers, a crumpled helmet top, a melted foot, a dented limb), a little of the neighbouring part included, or press a region button. The image model redraws that part from the side it faces, Pixal3D turns the redraw into a mesh again and it is joined where the broken part met the rest. Works on the model before rigging.</p>
       <div class="row2"><div class="field"><label class="flabel" for="rplabel">What is it?</label><input class="input" id="rplabel" maxlength="80" placeholder="e.g. the top of the helmet" spellcheck="false"></div>
         <div class="field"><label class="flabel" for="rpview">Redraw from</label><select class="input" id="rpview"><option value="auto">Automatic</option><option value="front">Front</option><option value="back">Back</option><option value="left">Left side</option><option value="right">Right side</option><option value="top">Above</option></select></div></div>
+      <label class="hint" style="display:flex;gap:8px;align-items:flex-start;margin:6px 0"><input type="checkbox" id="rpmanual" checked><span><b>I choose the redraw myself.</b> The job shows you every redraw and waits for your pick; no filter and no AI judge decides. Untick it to let the finger counter / silhouette check and the VLM choose.</span></label>
       <textarea class="notes" id="rpnotes" rows="2" placeholder="Optional: e.g. the glove has a white wrist band; a smooth round dome with no crease"></textarea>
       <div class="rp-go" style="margin-top:8px"><button class="btn btn-ghost btn-sm" id="rpadd" disabled title="Keep this selection (with its label and view) and select another part: each part is redrawn with its own prompt and checks">Add this part, select another</button></div>
       <div id="rpstaged" class="hint" style="margin:6px 0"></div>
@@ -110,7 +111,7 @@ export async function mountRepair(host, d, { createViewer, toast }) {
     const b = $("#rpgo"), msg = $("#rpmsg"); b.disabled = true; msg.textContent = "Starting…";
     try {
       const groups = [...staged, ...(strokes.length ? [current()] : [])];
-      const r = await fetch("/api/repair", { method: "POST", body: JSON.stringify({ run: d.name, groups, notes: $("#rpnotes").value.trim() }) }); const j = await r.json();
+      const r = await fetch("/api/repair", { method: "POST", body: JSON.stringify({ run: d.name, groups, notes: $("#rpnotes").value.trim(), manual: $("#rpmanual").checked }) }); const j = await r.json();
       if (!r.ok) { msg.textContent = j.error || "Could not start the repair."; update(); return; }
       staged = []; strokes = []; update();
       msg.textContent = ""; toast && toast("Repair started"); poll();
@@ -128,14 +129,20 @@ export async function mountRepair(host, d, { createViewer, toast }) {
         <span class="pill ${j.status === "done" ? "finished" : j.status === "failed" ? "failed" : "running"}"><i></i>${esc(j.status === "running" || j.status === "queued" ? (STEP[j.step] || j.status) : j.status)}</span>${j.seconds ? `<small>${j.seconds} s</small>` : ""}</div>
       ${j.error ? `<div class="alertbar"><span>${esc(j.error)}</span></div>` : ""}
       ${j.regions.map((r) => `<div class="rp-reg"><div class="rp-imgs">${r.crop ? `<figure><img src="${esc(r.crop)}" alt=""><figcaption>before</figcaption></figure>` : ""}
-          ${(r.candidates || []).map((c) => `<figure class="${c === r.chosen ? "pick" : ""}"><img src="${esc(c)}" alt="" loading="lazy"><figcaption>${c === r.chosen ? "chosen" : "redraw"}</figcaption></figure>`).join("")}
+          ${(r.candidates || []).map((c, ci) => `<figure class="${c === r.chosen ? "pick" : ""}"><img src="${esc(c)}" alt="" loading="lazy"><figcaption>${c === r.chosen ? "chosen" : "redraw " + (ci + 1)}${r.awaiting ? ` <button class="btn btn-glow btn-sm" data-pick="${esc(j.job)}|${r.group || 0}|${r.index}|${ci}">Use this</button><br><small>${esc((r.info || [])[ci] || "")}</small>` : ""}</figcaption></figure>`).join("")}
           ${r.after ? `<figure class="after"><img src="${esc(r.after)}" alt=""><figcaption>after${r.after_fingers ? ` · ${r.after_fingers} fingers counted` : ""}</figcaption></figure>` : ""}</div>
-          <small>${r.label ? esc(r.label) + " · " : ""}${esc(r.status || "")}${r.five_fingers === false ? " · no redraw had five fingers: best effort" : r.checked === false ? " · no redraw passed the check: best effort" : ""}</small></div>`).join("")}
+          ${r.awaiting ? `<div class="rp-act"><b>Pick the redraw to build</b> <button class="btn btn-ghost btn-sm" data-more="${esc(j.job)}|${r.group || 0}|${r.index}">Make 3 more</button></div>` : ""}
+          <small>${r.label ? esc(r.label) + " · " : ""}${esc(r.status || "")}${r.by === "you" ? " · chosen by you" : ""}${r.five_fingers === false ? " · no redraw had five fingers: best effort" : r.checked === false ? " · no redraw passed the check: best effort" : ""}</small></div>`).join("")}
       ${j.status === "running" || j.status === "queued" ? `<div class="rp-log">${j.log.map((l) => `<div>${esc(l)}</div>`).join("")}</div>` : ""}
       ${j.result ? `<div class="rp-act"><button class="btn btn-primary btn-sm" data-show="${esc(j.result)}">View repaired model</button><button class="btn btn-ghost btn-sm" data-show="orig">View original</button>
         <a class="btn btn-ghost btn-sm" href="${esc(j.result)}" download>Download .glb</a>${j.can_use ? `<button class="btn btn-glow btn-sm" data-use="${esc(j.job)}">Use for this run</button>` : ""}</div>${j.can_use ? `<div class="rp-use" id="use_${esc(j.job)}" hidden></div>` : ""}` : ""}</div>`).join("") || `<div class="hint" style="margin-top:14px">No repairs yet.</div>`;
   }
   $("#rpjobs").onclick = async (e) => {
+    const pk = e.target.closest("[data-pick],[data-more]");
+    if (pk) { const more = pk.dataset.more !== undefined, [job, group, region, idx] = (pk.dataset.pick || pk.dataset.more).split("|"); pk.disabled = true;
+      try { const r = await fetch("/api/repair_choose", { method: "POST", body: JSON.stringify({ run: d.name, job, group: +group, region: +region, choice: more ? "more" : +idx }) }); const j = await r.json();
+        if (!r.ok) { toast && toast(j.error || "Could not send your choice."); pk.disabled = false; return; } toast && toast(more ? "Making more redraws…" : "Building that redraw…"); poll(); } catch { toast && toast("Could not reach the server."); pk.disabled = false; }
+      return; }
     const u = e.target.closest("[data-use]");
     if (u) { const job = u.dataset.use, box = $("#use_" + job); box.hidden = false;
       box.innerHTML = `<div class="hint">One mesh with the original texture continues from the Colour stage (colour, rig, rig check, animation, texture). Needs the run to be stopped or finished.</div>

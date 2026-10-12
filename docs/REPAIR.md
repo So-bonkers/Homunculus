@@ -21,6 +21,14 @@ What is general and what is specific to hands:
 
 The job waits for the GPU lock like every other GPU job, runs as the unit `homunculus-repair-<run>`, and keeps the VRAM peak under the limit (768 px redraw with a 512 reference: 19.4 GB; at 1024 it reached 23.2 GB).
 
+## You choose the redraw (default)
+
+The Repair tab's *I choose the redraw myself* box is ticked by default. After the redraws are generated the job **pauses** (the image model is unloaded, the GPU is free), shows every redraw with a *Use this* button and *Make 3 more*, and builds only the one you pick. No filter and no AI judge decides and the VLM is not even loaded; under each redraw the page shows the digit count (hands) or the silhouette overlap, as information only. `--auto` on the command line (and the unattended hand repair of a run) lets the checks and the VLM choose instead. The server refuses a second answer until the first has been read, so a double click cannot overwrite it. The prompt also tells the image model to keep what is on the part (a shoe stays the shoe, a glove the glove), after a first test where it replaced shoes by bare feet.
+
+## A real graft, not two shells
+
+The first merge laid the new part over the old end as a separate shell, with the leg's ragged end and the old shoe collar still attached, in one flat colour. It now: cuts the retained end clean at a plane just inside its ragged tip and removes whatever of the old part is still attached beyond it; blends the new part's cross-section into the retained ring (size and centre); **bridges the two rings** with new faces; and carries the colours over from the old surface (each new vertex takes the colour of the nearest old vertex that faces the same way), baked into the new part's own texture. Tested on both feet of one run: both rings bridged (237 and 199 faces). Still imperfect: a few red spots bleed at the heel, the leg fabric's own ragged hem remains, and the shape is only as good as the redraw you picked.
+
 ## Several parts, size and colour
 
 - **Several parts in one job.** A job holds *groups* (hands, feet, a crown, ...): each has its own label, view, prompt and checks. They are repaired one after the other on the running result and the texture is baked once at the end (`--region hands --region feet`, or *Add this part, select another* in the viewer). Parts that are far apart are different regions; parts that nearly touch (4 % of the height) are one region.
