@@ -75,6 +75,12 @@ def _redraw(J, crop_png, out_dir, seeds, notes, prompt):
     import requests
     q = E.q; os.makedirs(out_dir, exist_ok=True)
     im = Image.open(crop_png).convert("RGB").resize((SIZE, SIZE), Image.LANCZOS)
+    if C.REPAIR_TURBO:      # the 8-step Turbo model in ComfyUI; the 30-step model in Studio below is the fallback
+        try:
+            from .stages import qwen_turbo
+            got = qwen_turbo.edit_many(im, prompt + (" " + notes if notes else ""), seeds, SIZE, out_dir, J.log)
+            if got: return [got[sd] for sd in seeds if sd in got]
+        except Exception as e: J.log(f"Turbo redraw unavailable ({type(e).__name__}: {str(e)[:140]}); using the 30-step model in Studio")
     gpu.free_all(J.log, keep="studio"); gpu.wait_for_headroom("qwen_image", J.log); q.ensure_loaded(); outs = []
     try:
         for sd in seeds:

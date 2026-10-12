@@ -51,6 +51,7 @@ EDIT_ROUNDS = 3               # first round + up to 2 VLM-guided retries
 MESH_ATTEMPTS = 2             # rounds of shape candidates per chosen redraw
 SHAPE_SEEDS = 3               # shape candidates generated per round (best of N)
 SHEET_SHAPE_SEEDS = 1         # turnaround-sheet runs: one shape per round (the four real views already pin the shape down); a defect is fixed afterwards with Repair
+REPAIR_TURBO = os.environ.get("HOMUNCULUS_REPAIR_TURBO", "1") != "0"   # Repair: the redraws come from Qwen-Image 2.1 Turbo in ComfyUI (8 steps, about 2.6x faster per picture); 0 = the 30-step model in Unsloth Studio
 SHEET_FILL = os.environ.get("HOMUNCULUS_SHEET_FILL", "1") != "0"   # turnaround-sheet runs: texels no view painted take the colour of the nearest painted surface (stages/texfill.py) instead of the flat base colour
 SHEET_JUDGES = JUDGES[:1]     # turnaround-sheet runs: Qwen3.8 alone judges (it replaces the three-judge panel: about 4 minutes less in the shape check alone)
 MESH_FACES, MESH_TEX = 250000, 4096
