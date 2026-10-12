@@ -1,6 +1,6 @@
 """Retarget a BVH mocap clip (CMU and similar) onto a rigged Mixamo-skeleton character, and export it as GLB and FBX.
 
-blender -b --python tools/retarget_bvh.py -- <rigged_character.fbx|glb> <clip.bvh> <out_dir> <name> [--fps 60] [--map cmu|mixamo] [--start N] [--end N] [--floor-lock]
+blender -b --python tools/retarget_bvh.py -- <rigged_character.fbx|glb> <clip.bvh> <out_dir> <name> [--fps 60] [--map cmu|mixamo] [--start N] [--end N] [--floor-lock] [--src-fps N] [--src-scale S]
 
 How it works (world-space, no add-on):
   * Every mapped bone of the character is given the WORLD orientation of its source bone:  R_target(f) = D(f) * C * R_target_rest,  D(f) = R_source(f) * R_source_rest^-1.
@@ -18,7 +18,7 @@ argv = sys.argv[sys.argv.index("--") + 1:]
 def opt(flag, default=None, cast=str):
     if flag in argv: i = argv.index(flag); v = argv[i + 1]; del argv[i:i + 2]; return cast(v)
     return default
-OUT_FPS = opt("--fps", 60, int); MAP_NAME = opt("--map", "cmu"); F_START = opt("--start", None, int); F_END = opt("--end", None, int); REPORT_ONLY_FLOOR = "--floor-lock" in argv
+OUT_FPS = opt("--fps", 60, int); MAP_NAME = opt("--map", "cmu"); F_START = opt("--start", None, int); SRC_FPS_OPT = opt("--src-fps", None, int); SRC_UNIT = opt("--src-scale", None, float); F_END = opt("--end", None, int); REPORT_ONLY_FLOOR = "--floor-lock" in argv
 if "--floor-lock" in argv: argv.remove("--floor-lock")
 target_path, bvh_path, out_dir, name = argv[:4]; os.makedirs(out_dir, exist_ok=True)
 
@@ -53,9 +53,22 @@ if missing: sys.exit(f"the character lacks bones {missing}: it needs a Mixamo-st
 Tw = T.matrix_world; Tr = Tw.to_quaternion().to_matrix(); Tr_inv = Tr.inverted()
 
 # ---- source
-bpy.ops.import_anim.bvh(filepath=bvh_path, axis_forward="-Z", axis_up="Y", global_scale=1.0, rotate_mode="NATIVE", update_scene_fps=False, use_fps_scale=False)
-S = bpy.context.object; sc = bpy.context.scene; act = S.animation_data.action
-SRC_FPS = round(1.0 / (open(bvh_path).read().split("Frame Time:")[1].split()[0] and float(open(bvh_path).read().split("Frame Time:")[1].split()[0])))
+SRC_FBX = bvh_path.lower().endswith((".fbx", ".glb", ".gltf"))              # the source can also be a rigged Mixamo character with an animation (e.g. the Thriller clips): --map mixamo, --src-fps N
+before = set(bpy.data.objects)
+if SRC_FBX:
+    (bpy.ops.import_scene.gltf if bvh_path.lower().endswith((".glb", ".gltf")) else bpy.ops.import_scene.fbx)(filepath=bvh_path)
+    new = [o for o in bpy.data.objects if o not in before]; S = next(o for o in new if o.type == "ARMATURE"); sc = bpy.context.scene
+    for o in new:
+        if o.type == "MESH": bpy.data.objects.remove(o, do_unlink=True)                          # the source's body is not wanted, only its motion
+    act = S.animation_data.action
+    for cb in [cb for ly in act.layers for st in ly.strips for cb in st.channelbags]:
+        for fc in [fc for fc in cb.fcurves if not fc.data_path.startswith("pose.")]: cb.fcurves.remove(fc)       # an FBX action can animate the armature object itself (scale): drop that, keep the bones
+    S.scale = (0.01, 0.01, 0.01) if SRC_UNIT is None else (SRC_UNIT,) * 3
+    SRC_FPS = SRC_FPS_OPT or round(sc.render.fps)
+else:
+    bpy.ops.import_anim.bvh(filepath=bvh_path, axis_forward="-Z", axis_up="Y", global_scale=1.0, rotate_mode="NATIVE", update_scene_fps=False, use_fps_scale=False)
+    S = bpy.context.object; sc = bpy.context.scene; act = S.animation_data.action
+    SRC_FPS = round(1.0 / float(open(bvh_path).read().split("Frame Time:")[1].split()[0]))
 f0, f1 = int(round(act.frame_range[0])), int(round(act.frame_range[1])); f0 = F_START if F_START is not None else f0; f1 = F_END if F_END is not None else f1
 sb = {}
 for k, sn in MAP.items():
@@ -75,6 +88,9 @@ print("[retarget] rest-pose direction difference corrected (degrees): " + ", ".j
 def floor_z(obj, w, names): return min((w @ obj.data.bones[n].tail_local).z for n in names if n in obj.data.bones)
 t_feet = [b.name for b in T.data.bones if "Toe" in b.name or "Foot" in b.name]; s_feet = [sb[k].name for k in ("LeftFoot", "RightFoot", "LeftToeBase", "RightToeBase")]
 fl_t, fl_s = floor_z(T, Tw, t_feet), floor_z(S, Sw, s_feet)
+_meshes = [o for o in bpy.data.objects if o.type == "MESH" and o.name != "Icosphere"]
+if _meshes:        # the lowest point of the character's own body is the floor (bone tails of a glTF rig are not meaningful)
+    fl_t = min((o.matrix_world @ Vector(c)).z for o in _meshes for c in o.bound_box)
 hips_t0 = (Tw @ tb["Hips"].head_local); h_t = hips_t0.z - fl_t; h_s = (Sw @ sb["Hips"].head_local).z - fl_s
 K = h_t / h_s
 print(f"[retarget] source {SRC_FPS} fps, frames {f0}-{f1}; standing hip height target {h_t:.5f} source {h_s:.3f} -> scale {K:.6f}; target floor z {fl_t:.5f}", flush=True)
