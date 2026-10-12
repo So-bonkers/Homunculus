@@ -29,6 +29,14 @@ The Repair tab's *I choose the redraw myself* box is ticked by default. After th
 
 The first merge laid the new part over the old end as a separate shell, with the leg's ragged end and the old shoe collar still attached, in one flat colour. It now: cuts the retained end clean at a plane just inside its ragged tip and removes whatever of the old part is still attached beyond it; blends the new part's cross-section into the retained ring (size and centre); **bridges the two rings** with new faces; and carries the colours over from the old surface (each new vertex takes the colour of the nearest old vertex that faces the same way), baked into the new part's own texture. Tested on both feet of one run: both rings bridged (237 and 199 faces). Still imperfect: a few red spots bleed at the heel, the leg fabric's own ragged hem remains, and the shape is only as good as the redraw you picked.
 
+### The seam (changed 2026-10-13)
+
+On the two hands of the F1 character the seams came out as ragged white or dark sawtooth bands. Two causes, both fixed (`blender_repair.py`):
+- **The cut went through whole vertices.** Everything beyond the plane was deleted vertex by vertex, which leaves a staircase edge. Both parts are now cut a little long and then trimmed exactly at the plane through the triangles (bisect), so each side ends in a clean circle.
+- **Only one loop pair was bridged.** A sleeve is double-walled and a donor hand is hollow, so the cut has an outer and an inner loop on each side (a layered cuff has up to eleven loops). Every retained loop is now paired with the donor loop nearest in size and position and bridged; loops left over are capped. The merge prints the loops it found, the pairs it bridged and the open edges left at the plane.
+
+Result on the same job (merge repeated on a copy): region 0 closed completely (0 open edges, 2 pairs); region 1 (the layered cuff) has 5 pairs bridged and 20 small open edges left, in pieces of 5 edges or fewer. The white tear is gone on region 1 and down to a thin line on region 0. Not fixed: the cuff colours stay blotchy (the colour carry-over takes the nearest old vertex, and the old cuff had a badge).
+
 ## Several parts, size and colour
 
 - **Several parts in one job.** A job holds *groups* (hands, feet, a crown, ...): each has its own label, view, prompt and checks. They are repaired one after the other on the running result and the texture is baked once at the end (`--region hands --region feet`, or *Add this part, select another* in the viewer). Parts that are far apart are different regions; parts that nearly touch (4 % of the height) are one region.

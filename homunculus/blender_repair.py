@@ -341,11 +341,12 @@ elif mode == "merge":
             _tw0 = (_Vc - rc) @ n; _near = _touch & (np.linalg.norm(_Vc - rc - np.outer(_tw0, n), axis=1) < 2.2 * rr)
             t_cut = (float(np.percentile(_tw0[_near], 4)) - 0.25 * rr) if _near.sum() > 20 else t_end - 0.4 * overlap      # inside the most inward ragged tip: below it everything goes, so the cut is clean
             D2 = D2 + n * (((t_cut - 0.35 * rr) - float(np.percentile(((D2 - rc) @ n)[tube], 2))))                   # the donor's stub starts below the plane (it is cut there)
-            delete |= (tV > t_cut) & (lV < 1.8 * rr)                                    # the retained end is cut clean at the plane (the sphere selection left it ragged, with bits of the old part)
+            DELTA = 0.6 * rr          # both parts are cut a little LONG here and trimmed exactly at the plane afterwards (bisect through the triangles), so the seam is a clean circle, not a staircase of whole vertices
+            delete |= (tV > t_cut + DELTA) & (lV < 1.8 * rr)                           # the retained end is cut at the plane (the sphere selection left it ragged, with bits of the old part)
             _mark = np.zeros(_nc, bool); _mark[_canon[delete]] = True; _tW = (_Vc - rc) @ n
-            _mark = flood(_mark, _tW > t_cut); _before = int(delete.sum()); delete |= _mark[_canon]               # whatever of the old part is still attached beyond the plane goes too (shoe collars, laces)
+            _mark = flood(_mark, _tW > t_cut + DELTA); _before = int(delete.sum()); delete |= _mark[_canon]               # whatever of the old part is still attached beyond the plane goes too (shoe collars, laces)
             print(f"[repair] region {info['index']}: {int(delete.sum()) - _before} more vertices of the old part removed beyond the plane (what the selection left attached)")
-            td = (D2 - rc) @ n; ld = np.linalg.norm(ax(D2), axis=1); keep = td >= t_cut      # the donor's stub inside the retained part is dropped
+            td = (D2 - rc) @ n; ld = np.linalg.norm(ax(D2), axis=1); keep = td >= t_cut - DELTA      # the donor's stub inside the retained part is dropped (the rest of it is trimmed at the plane below)
             ring_r = (~delete) & (np.abs(tV - t_cut) < 0.4 * rr) & (lV < 2.2 * rr); ring_d = keep & (td < t_cut + 0.4 * rr) & (ld < 2.2 * rr)
             if ring_r.sum() > 12 and ring_d.sum() > 12:
                 perp = lambda P: P - rc - np.outer((P - rc) @ n, n)
@@ -391,6 +392,23 @@ elif mode == "merge":
             rc_, n_, rr_, tc = g["rc"], g["n"], g["rr"], g["t_cut"]
             def on_ring(v):
                 p_ = np.array(v.co); t_ = (p_ - rc_) @ n_; return abs(t_ - tc) < 0.5 * rr_ and np.linalg.norm(p_ - rc_ - t_ * n_) < 2.4 * rr_
+            lim0 = part_slot - (len(donors) - 1); pn = Vector(n_.tolist()); pco = Vector((rc_ + n_ * tc).tolist())
+            def trim(want_ret, clear_outer):      # cut the faces of one part exactly at the plane (through the triangles) and drop what lies beyond it
+                fs = []
+                for f in bm.faces:
+                    if (f.material_index < lim0) != want_ret: continue
+                    ok_ = True
+                    for v in f.verts:
+                        p_ = np.array(v.co); t_ = (p_ - rc_) @ n_
+                        if abs(t_ - tc) > 1.0 * rr_ or np.linalg.norm(p_ - rc_ - t_ * n_) > 3.0 * rr_: ok_ = False; break
+                    if ok_: fs.append(f)
+                if not fs: return 0
+                geom_ = list(fs) + list({e for f in fs for e in f.edges}) + list({v for f in fs for v in f.verts})
+                bmesh.ops.bisect_plane(bm, geom=geom_, dist=1e-6, plane_co=pco, plane_no=pn, clear_outer=clear_outer, clear_inner=not clear_outer)
+                return len(fs)
+            nr, nd = trim(True, True), trim(False, False)
+            bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table(); bm.faces.ensure_lookup_table()
+            print(f"[repair] graft {g['index']}: both parts trimmed at the plane ({nr} retained and {nd} donor faces cut there)")
             es = [e for e in bm.edges if e.is_boundary and all(on_ring(v) for v in e.verts)]
             # the boundary edges there should form exactly two loops (the retained ring and the donor's): count the connected pieces
             seen, loops = set(), 0
@@ -428,27 +446,66 @@ elif mode == "merge":
                     if c.index in seen2: continue
                     seen2.add(c.index); grp.append(c); [stack.extend(x for x in adj[v.index] if x.index not in seen2) for v in c.verts]
                 comp.append(grp)
-            def stat(grp):
-                pts = np.array([np.array(v.co) for e in grp for v in e.verts]); t_ = (pts - rc_) @ n_; q = pts - rc_ - np.outer(t_, n_); return np.linalg.norm(q - q.mean(0), axis=1).mean(), {f.material_index for e in grp for f in e.link_faces}
-            info_l = [(grp, *stat(grp)) for grp in comp]
-            ret = [x for x in info_l if x[2] and min(x[2]) < part_slot - (len(donors) - 1)]          # loops whose faces use the base material
-            new_ = [x for x in info_l if x[2] and min(x[2]) >= part_slot - (len(donors) - 1)]
+            def loop_geo(grp):
+                pts = np.array([np.array(v.co) for e in grp for v in e.verts]); t_ = (pts - rc_) @ n_; q = pts - rc_ - np.outer(t_, n_); c_ = q.mean(0)
+                return c_, float(np.linalg.norm(q, axis=1).mean()), {f.material_index for e in grp for f in e.link_faces}      # centre and mean radius about the part's axis, materials of the neighbouring faces
+            LP = []
+            for grp in comp:
+                c_, r_, mats_ = loop_geo(grp); LP.append(dict(edges=grp, n=len(grp), c=c_, r=r_, mats=mats_))
+            lim = part_slot - (len(donors) - 1)
+            ret = [x for x in LP if x["mats"] and min(x["mats"]) < lim]; new_ = [x for x in LP if x["mats"] and min(x["mats"]) >= lim]          # loops whose faces use the base material / the donor's
             if not ret or not new_: print(f"[repair] graft {g['index']}: no retained loop or no donor loop at the plane ({len(ret)} / {len(new_)}): not bridged"); continue
-            r_loop = max(ret, key=lambda x: len(x[0])); n_loop = max(new_, key=lambda x: x[1])         # the biggest retained loop; the donor's OUTER loop (a hollow donor has an inner one too)
-            if len(comp) != 2: print(f"[repair] graft {g['index']}: {len(comp)} loops at the plane; bridging the largest retained one ({len(r_loop[0])} edges) to the donor's outer one ({len(n_loop[0])} edges)")
-            es = r_loop[0] + n_loop[0]
-            ring_ids = sorted({v.index for e in r_loop[0] for v in e.verts}); strip_col = None
+            # a double-walled sleeve and a hollow donor each have an outer and an inner loop at the cut (a layered cuff has more): pair every retained loop with the donor loop nearest in size and position
+            # and bridge each pair; whatever is left over (small fragments of cloth folds, an unmatched inner lining) is capped, so the cut leaves no open edge
+            cost = sorted((float(np.linalg.norm(a_["c"] - b_["c"]) + abs(a_["r"] - b_["r"])), i, j) for i, a_ in enumerate(ret) for j, b_ in enumerate(new_) if a_["n"] >= 8 and b_["n"] >= 8)
+            used_r, used_n, pairs = set(), set(), []
+            for cst, i, j in cost:
+                if i in used_r or j in used_n or cst > 1.2 * rr_: continue
+                used_r.add(i); used_n.add(j); pairs.append((ret[i], new_[j]))
+            print(f"[repair] graft {g['index']}: {len(ret)} retained and {len(new_)} donor loops at the plane -> {len(pairs)} pair(s) bridged: " + ", ".join(f"{a_['n']}-{b_['n']} edges" for a_, b_ in pairs))
+            kd0 = None
             if base_cols is not None:      # the strip takes the colour of the retained ring (its vertices still carry their index in the original numbering only before the weld: use the nearest original vertex by position)
                 from mathutils import kdtree
                 kd0 = kdtree.KDTree(len(V)); [kd0.insert(Vector(V[i].tolist()), i) for i in range(0, len(V), 3)]; kd0.balance()
-                strip_col = np.mean([base_cols[kd0.find(v.co)[1]] for v in (bm.verts[i] for i in ring_ids)], axis=0)
-            res = bmesh.ops.bridge_loops(bm, edges=es, use_pairs=False, use_cyclic=False, use_merge=False, merge_factor=0.5, twist_offset=0)
-            strip_slot = part_slot
-            if strip_col is not None:      # a flat material for the strip (a thin band, ~2 cm): the mean colour of the retained ring
-                sm = bpy.data.materials.new("repair_strip"); sm.use_nodes = True; sb = next(n for n in sm.node_tree.nodes if n.type == "BSDF_PRINCIPLED"); sb.inputs["Base Color"].default_value = (*[float(x) for x in strip_col], 1.0); sb.inputs["Roughness"].default_value = 0.6
-                ob.data.materials.append(sm); strip_slot = len(ob.data.materials) - 1
-            for f_ in res.get("faces", []): f_.material_index = strip_slot; f_.smooth = True
-            print(f"[repair] graft {g['index']}: the two rings bridged with {len(res.get('faces', []))} faces")
+            nfaces = 0
+            for a_, b_ in pairs:
+                ring_ids = sorted({v.index for e in a_["edges"] for v in e.verts}); strip_col = None
+                if kd0 is not None: strip_col = np.mean([base_cols[kd0.find(v.co)[1]] for v in (bm.verts[i] for i in ring_ids)], axis=0)
+                res = bmesh.ops.bridge_loops(bm, edges=a_["edges"] + b_["edges"], use_pairs=False, use_cyclic=False, use_merge=False, merge_factor=0.5, twist_offset=0)
+                strip_slot = part_slot
+                if strip_col is not None:      # a flat material for the strip (a thin band, ~2 cm): the mean colour of the retained ring
+                    sm = bpy.data.materials.new("repair_strip"); sm.use_nodes = True; sb = next(n for n in sm.node_tree.nodes if n.type == "BSDF_PRINCIPLED"); sb.inputs["Base Color"].default_value = (*[float(x) for x in strip_col], 1.0); sb.inputs["Roughness"].default_value = 0.6
+                    ob.data.materials.append(sm); strip_slot = len(ob.data.materials) - 1
+                for f_ in res.get("faces", []): f_.material_index = strip_slot; f_.smooth = True
+                nfaces += len(res.get("faces", []))
+            capped = 0
+            def near_plane(v):          # a wider band than the ring's: open edges the old selection left a little way along the sleeve count too
+                p_ = np.array(v.co); t_ = (p_ - rc_) @ n_; return abs(t_ - tc) < 2.0 * rr_ and np.linalg.norm(p_ - rc_ - t_ * n_) < 3.0 * rr_
+            rest = [e for e in bm.edges if e.is_boundary and all(near_plane(v) for v in e.verts)]          # everything still open there: unmatched inner linings, fragments of cloth folds
+            if rest:
+                try: capped = len(bmesh.ops.holes_fill(bm, edges=rest, sides=len(rest)).get("faces", []))
+                except Exception as ex: print(f"[repair] graft {g['index']}: could not cap the leftover loops ({ex})")
+            still = [e for e in bm.edges if e.is_boundary and all(near_plane(v) for v in e.verts)]
+            print(f"[repair] graft {g['index']}: {len(pairs)} ring pair(s) bridged with {nfaces} faces, {capped} cap face(s) over the leftover loops; open edges left at the plane: {len(still)}")
+            if still and os.environ.get("REPAIR_DEBUG"):
+                adj2 = {}
+                for e in still:
+                    for v in e.verts: adj2.setdefault(v.index, []).append(e)
+                seen3, sizes = set(), []
+                for e in still:
+                    if e.index in seen3: continue
+                    st_, n3 = [e], 0
+                    while st_:
+                        c = st_.pop()
+                        if c.index in seen3: continue
+                        seen3.add(c.index); n3 += 1; [st_.extend(x for x in adj2[v.index] if x.index not in seen3) for v in c.verts]
+                    sizes.append(n3)
+                print(f"[repair]   leftover open pieces (edges): {sorted(sizes, reverse=True)}")
+                degs = {}
+                for e in still:
+                    for v in e.verts: degs[v.index] = degs.get(v.index, 0) + 1
+                from collections import Counter
+                print(f"[repair]   vertex degree among them: {dict(Counter(degs.values()))} (2 = a clean loop; 1 = chain end; 3+ = touching loops); verts outside the ring band: {sum(1 for e in still for v in e.verts if not on_ring(v))}")
         bm.normal_update(); bm.to_mesh(ob.data); bm.free()
     for info in boxes: render_crop(os.path.join(out_dir, f"after_region{info['index']}_crop.png"), info["box"])
     if not np.allclose(_R0, np.eye(3)):
