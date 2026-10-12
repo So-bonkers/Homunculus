@@ -67,6 +67,7 @@ def face_on(R):
     """Is there a visible face to work on? --face on|off|auto (auto: the planner says whether a helmet or mask hides it). With no face, the face close-up, face reshape and face fit are all skipped."""
     f = R.state.get("face", "auto")
     if f in ("on", "off"): return f == "on"
+    if nollm(R): return False          # --no-llm: nobody can tell whether a helmet hides the face; pass --face on if there is one
     return (R.state.get("vlm", {}).get("plan") or {}).get("face_visible", True) is not False
 
 
@@ -126,6 +127,11 @@ RIG_CAPS = ["rest", "walk", "walk 3/4", "wave", "open hand", "fist L", "fist R"]
 def fing(c):
     """Finger count caption for a shape candidate (only when hand views are on)."""
     return f" · digits R{c['digits']['right']}/L{c['digits']['left']}" if C.HAND_VIEWS else ""
+
+def nollm(R):
+    """--no-llm: no language model plans or judges anything in this run (no planner, no shape judges, no rig judges); every candidate that exists is accepted, you look at the result yourself."""
+    return bool(R.state.get("no_llm"))
+
 
 def manual(R):
     """--review manual: you are the judge. One candidate at a time, no VLM judges (they'd only make you wait)."""
@@ -338,6 +344,10 @@ def st_plan_mesh(R):
     return f"front = view {front}, {o.get('pose')}; {str(plan.get('subject', ''))[:80]}"
 
 def st_plan(R):
+    if nollm(R):
+        plan = {"style": R.state.get("style_override") or "photo", "subject": "the character in the picture", "clothing": "as in the picture", "remove": [], "cropped": []}
+        R.state["vlm"]["plan"] = plan; R.state["edit_prompt"] = prompts.edit_prompt(plan, hands=R.state.get("hands", C.DEFAULT_POSE), outfit=R.state.get("outfit", "keep")); R.save()
+        return "no LLM: neutral plan (use --face on|off, the planner does not decide)"
     if mesh_mode(R): return st_plan_mesh(R)
     vlm.load(R.log)
     try:
@@ -533,6 +543,8 @@ def st_mesh_and_check(R):
                         [f"#{i+1} (try {c['try']}){fing(c)}" for i, c in enumerate(shapes)], choose=True)
             if manual(R):        # you are the judge; the finger count is still shown on each candidate
                 for c in ok: c["verdict"] = {"pass": True, "score": 0, "tally": "your call", "problems": []}
+            elif nollm(R):        # no judges: every candidate that passed the (geometric) gates is accepted
+                for c in ok: c["verdict"] = {"pass": True, "score": 0, "tally": "no LLM judging", "problems": []}
             elif ok:
                 queries = []
                 for c in ok:
@@ -757,7 +769,7 @@ def rig_once(R, variant, extra):
     views = blender.pose_views(fbx, str(R.dir / "08_rig_check" / variant)); R.A["pose_views"] = views
     keys = ("rest_front", "walk_front", "walk_34", "wave_front") + (("wave_hand", "fist_Left_a", "fist_Right_a") if C.HAND_VIEWS else ())
     open_review(R, "rig_check", f"rig ({variant}) test poses", [views[k] for k in keys], RIG_CAPS[:len(keys)])
-    v = {"pass": True, "score": 0, "tally": "your call", "problems": [], "votes": {}} if manual(R) else vlm.majority_pass(vlm.panel(fp(R, prompts.RIG_CHECK if C.HAND_VIEWS else prompts.RIG_CHECK_NOHANDS), [views[k] for k in keys], required=("pass",), log=R.log, cancel=decided(R), human_notes=R.state.get("human_notes", "")), R.log)
+    v = {"pass": True, "score": 0, "tally": "no LLM judging", "problems": [], "votes": {}} if nollm(R) else {"pass": True, "score": 0, "tally": "your call", "problems": [], "votes": {}} if manual(R) else vlm.majority_pass(vlm.panel(fp(R, prompts.RIG_CHECK if C.HAND_VIEWS else prompts.RIG_CHECK_NOHANDS), [views[k] for k in keys], required=("pass",), log=R.log, cancel=decided(R), human_notes=R.state.get("human_notes", "")), R.log)
     R.state["vlm"][f"rig_check_{variant}"] = v; R.save()
     for side, r_ in wrist_check(R, fbx): v.setdefault("problems", []).append(f"the {side} hand is detached from the forearm (gap {r_['gap_bent_cm']} cm when the wrist bends): repair it in the Repair tab")
     R.state["needs_repair"] = [side for side in ("left", "right") if side in (R.state.get("wrist_check") or {}) and not R.state["wrist_check"][side].get("ok", True)]; R.save()
@@ -813,6 +825,7 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("image"); ap.add_argument("--name", required=True)
     ap.add_argument("--from", dest="frm", choices=STAGES); ap.add_argument("--only", choices=STAGES); ap.add_argument("--style", choices=list(C.UPSCALERS))
     ap.add_argument("--no-open", action="store_true", help="don't open the live progress page in the browser")
+    ap.add_argument("--no-llm", dest="no_llm", action="store_true", help="no language model in the run: no planner (neutral plan; set --face yourself), no shape judges, no rig judges. Everything that is built is accepted; you judge the result")
     ap.add_argument("--review", choices=["off", "override", "manual"], default=None,
                     help="human review after every judge decision (pick, 3D shape, rig): override = judges decide, you can override on the page "
                          "within --review-grace s (default); manual = the run waits for you; off = fully automatic")
@@ -855,6 +868,7 @@ def main():
     if a.review_grace is not None: R.state["review_grace"] = a.review_grace
     R.state["zip"] = bool(a.zip)
     if R.state.get("sheet"): C.ALL_JUDGES = list(C.JUDGES); C.JUDGES = list(C.SHEET_JUDGES)      # sheet runs: one judge (still unloads all of them)
+    if a.no_llm: R.state["no_llm"] = True; R.state["review_mode"] = "off"
     if a.rigger: R.state["rigger"] = a.rigger
     if a.anim is not None: R.state["anim_prompts"] = [p.strip() for p in a.anim if p.strip()]
     if a.anim_reps: R.state["anim_reps"] = a.anim_reps

@@ -28,8 +28,10 @@ def studio_up():
 
 def need_studio(log, R=None, what="the redraws and the judges", max_wait_s=3600):
     """Unsloth Studio is the one app the pipeline can't start itself. If it is gone, tell the user and wait for it."""
+    R = R or CURRENT["R"]
+    if R and R.state.get("no_llm"): return          # --no-llm: nothing in this run talks to Studio
     if studio_up(): return
-    R = R or CURRENT["R"]; name = R.state["name"] if R else "run"
+    name = R.state["name"] if R else "run"
     msg = (f"Unsloth Studio isn't answering; {name} needs it for {what}. Open Unsloth Studio "
            f"(or run: systemctl --user restart unsloth-api). The run continues by itself once it is back.")
     log("!! " + msg); _set(R, msg); send(f"homunculus · {name}: Unsloth Studio is needed", msg, critical=True)
