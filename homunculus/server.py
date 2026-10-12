@@ -415,6 +415,10 @@ def ensure_service():
     def up():
         with socket.socket() as s_:
             s_.settimeout(0.5); return s_.connect_ex(("127.0.0.1", PORT)) == 0
+    if q.get("sheet_equal_height") in ("1", "on"): cmd += ["--sheet-equal-height"]
+    for n in ("top", "bottom"):      # extra texture pictures from above and below: only files that are in the uploads folder
+        v = str(q.get(f"sheet_{n}", ""))
+        if v and os.path.realpath(v).startswith(os.path.realpath(str(C.ROOT / "uploads")) + os.sep) and os.path.exists(v): cmd += [f"--sheet-{n}", v]
     if up(): return True
     subprocess.run(["systemctl", "--user", "start", "homunculus-web.service"], capture_output=True)
     for _ in range(20):

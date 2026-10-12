@@ -8,8 +8,9 @@ _SCRIPT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "blender_face
 
 FRAME = None      # mesh-first runs: frame.json of the grey front render (exact camera); None = estimate from the silhouette
 
-def _bl(*args, angle=0, prev=(), region="head"):
-    env = dict(os.environ, FACEPROJ_ANGLE=str(angle), FACEPROJ_PREV=",".join(str(a) for a in prev), FACEPROJ_REGION=region)
+def _bl(*args, angle=0, prev=(), region="head", view=None, fit="height"):
+    env = dict(os.environ, FACEPROJ_ANGLE=str(angle), FACEPROJ_PREV=",".join(str(a) for a in prev), FACEPROJ_REGION=region, FACEPROJ_FIT=fit)
+    if view: env["FACEPROJ_VIEW"] = ",".join(str(x) for x in view)
     if FRAME: env["FACEPROJ_FRAME"] = str(FRAME)
     r = subprocess.run([C.BLENDER, "-b", "--python", _SCRIPT, "--", *map(str, args)], capture_output=True, text=True, timeout=1500, env=env)
     return r.stdout + r.stderr
@@ -365,6 +366,7 @@ def project_body(glb_in, img_path, glb_out, preview_dir, log, agree_check=True):
 
 # the character is turned about the vertical axis so the side that a real view shows faces the front camera: the LEFT view (camera sees the character's left side, +x) needs -90
 SHEET_ANGLES = (("front", 0), ("back", 180), ("left", -90), ("right", 90))
+SHEET_UP_DOWN = (("top", (0, 0, 1)), ("bottom", (0, 0, -1)))      # extra pictures, projected from above and from below (registered by their width, not their height)
 
 def project_sheet(glb_in, raw, glb_out, preview_dir, log):
     """Texture from a turnaround sheet: every real view is projected onto the surfaces that face it (front first, then back, left, right), each registered on its own silhouette like the front
@@ -378,6 +380,13 @@ def project_sheet(glb_in, raw, glb_out, preview_dir, log):
         out = _bl(cur, raw[name], nxt, "-", npy, "project", "-", mnpy, an, angle=ang, prev=done, region="full")
         if "[faceproj] wrote" not in out: log(f"[texture] {name} view: projection failed: {out[-300:]}"); continue
         cur = nxt; done.append(ang); log(f"[texture] {name} view of the sheet projected")
+    for name, d in SHEET_UP_DOWN:                    # the pictures from above and below: the surfaces that face none of the four sides (the top of the head, the shoulders, the tops and the soles of the feet)
+        if name not in raw: continue
+        npy = os.path.join(preview_dir, f"{name}_dist.npy"); mnpy = os.path.join(preview_dir, f"{name}_mask.npy"); an = os.path.join(preview_dir, f"{name}_agree.npy")
+        fg = _distmap(raw[name], npy, mnpy); np.save(an, np.ones(fg.shape, np.float32)); nxt = os.path.join(preview_dir, f"sheet_{name}.glb")
+        out = _bl(cur, raw[name], nxt, "-", npy, "project", "-", mnpy, an, prev=done, region="full", view=d, fit="bbox")
+        if "[faceproj] wrote" not in out: log(f"[texture] {name} view: projection failed: {out[-300:]}"); continue
+        cur = nxt; done.append(":".join(str(x) for x in d)); log(f"[texture] {name} picture projected")
     if cur == glb_in: raise RuntimeError("no view of the sheet could be projected")
     shutil.copy(cur, glb_out); shutil.copy(cur[:-4] + "_basecolor.png", glb_out[:-4] + "_basecolor.png")
     return glb_out

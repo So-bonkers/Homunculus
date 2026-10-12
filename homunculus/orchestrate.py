@@ -215,7 +215,10 @@ def st_ingest_sheet(R):
     src = R.state["input"]; dst = R.p("00_input", "sheet" + os.path.splitext(src)[1].lower()); shutil.copy(src, dst); R.A["sheet"] = dst
     vd = os.path.dirname(R.p("00_input", "views", "_")); raw = turnaround.split(dst, vd, R.state.get("sheet_order", "lfrb"), R.log)
     R.A["input"] = turnaround.front_reference(raw["front"], R.p("00_input", "input.png"))
-    R.A["sheet_raw"] = raw; R.A["sheet_views"] = turnaround.frame(raw, vd, R.log)
+    R.A["sheet_views"] = turnaround.frame(raw, vd, R.log, equal_height=bool(R.state.get("sheet_equal_height")))       # the four sides are what Pixal3D sees
+    for n, src in (R.state.get("sheet_extra") or {}).items():      # a picture from above and one from below: not for the 3D shape (the multiview model takes the four sides), only for the texture
+        if os.path.exists(src): raw[n] = shutil.copy(src, os.path.join(vd, f"{n}_raw.png")); R.log(f"extra picture for the texture: {n}")
+    R.A["sheet_raw"] = raw
     contact = turnaround.sheet_image(R.A["sheet_views"], R.p("00_input", "views", "framed_sheet.png"))
     progress.snap(R, "ingest", "turnaround sheet split into four views (one shared scale, black background)", [contact], ["front, left, back, right"])
     return "turnaround sheet: " + ", ".join(R.A["sheet_views"])
@@ -817,6 +820,9 @@ def main():
     ap.add_argument("--direct", action="store_true", help="skip the redraw: the picture is already a clean full-body reference (T/A-pose, plain background)")
     ap.add_argument("--sheet", nargs="?", const="lfrb", choices=["lfrb", "flbr"], help="the picture is a 4-view turnaround sheet (four figures of the character side by side): the 3D shape is built from all four views with the multiview Pixal3D, and no redraw is made. "
                     "Order of the figures, left to right: lfrb (default: left, front, right, back) or flbr (front, left, back, right)")
+    ap.add_argument("--sheet-equal-height", dest="sheet_equal_height", action="store_true", help="for a turnaround sheet drawn by an image generator: its figures come out at different sizes (up to 27 % apart were measured), so give every view the same figure height before framing")
+    ap.add_argument("--sheet-top", dest="sheet_top", metavar="PICTURE", help="turnaround sheet runs: a picture of the character from directly above, for the texture only (the top of the head, the shoulders, the tops of the feet). The character's front faces the BOTTOM of the picture")
+    ap.add_argument("--sheet-bottom", dest="sheet_bottom", metavar="PICTURE", help="turnaround sheet runs: a picture of the character from directly below, for the texture only (the soles, the underside). The character's front faces the TOP of the picture")
     ap.add_argument("--rigger", choices=list(C.RIGGERS), help="auto-rigger: " + ", ".join(f"{k} ({v[0]})" for k, v in C.RIGGERS.items()) + f" (default {C.DEFAULT_RIGGER})")
     ap.add_argument("--anim", action="append", metavar="PROMPT", help="animation prompt for the Animate stage (repeat for several), e.g. --anim 'walks forward'")
     ap.add_argument("--anim-reps", type=int, default=None, help="clips per prompt (default 2)")
@@ -853,6 +859,9 @@ def main():
     if a.anim is not None: R.state["anim_prompts"] = [p.strip() for p in a.anim if p.strip()]
     if a.anim_reps: R.state["anim_reps"] = a.anim_reps
     if a.direct: R.state["direct"] = True; R.state["look"] = "asis"
+    if a.sheet_equal_height: R.state["sheet_equal_height"] = True; R.save()
+    for n in ("top", "bottom"):
+        if getattr(a, f"sheet_{n}"): R.state.setdefault("sheet_extra", {})[n] = os.path.abspath(getattr(a, f"sheet_{n}")); R.save()
     if a.sheet: R.state["sheet"] = True; R.state["sheet_order"] = a.sheet; R.state["direct"] = True; R.state["look"] = "asis"
     if os.path.splitext(a.image)[1].lower() in MESH_EXT: R.state["mode"] = "mesh"; R.state["outfit"] = "keep"
     if a.look: R.state["look"] = a.look

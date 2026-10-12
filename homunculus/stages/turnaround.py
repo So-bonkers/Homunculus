@@ -46,14 +46,22 @@ def front_reference(raw_front, dst):
     c = Image.new("RGB", (s, s), bg); c.paste(im, ((s - w) // 2, (s - h) // 2)); c.save(dst); return dst
 
 
-def frame(raw, out_dir, log=print):
+def frame(raw, out_dir, log=print, equal_height=False):
     """raw: {name: path}. Cut every view out, use one scale for all (the largest extent of any view), keep the front's vertical centre for all, centre each view horizontally on its own box.
-    Writes <name>.png (1024 px, black background) and returns {name: path}."""
+    equal_height: a sheet drawn by an image generator has figures of different sizes (up to 27 % apart were measured), but orthographic views of one character are equally tall: every view is first
+    resized so its figure (head to soles) has the median height. Writes <name>.png (1024 px, black background) and returns {name: path}."""
     ims, boxes = {}, {}
     for n in NAMES:
         if n not in raw: continue
         im = Image.open(raw[n]).convert("RGB"); m = _cutout(im); ys, xs = np.nonzero(m)
-        boxes[n] = (xs.min(), ys.min(), xs.max() + 1, ys.max() + 1); ims[n] = (im, m)
+        ims[n] = [im, m, ys.max() + 1 - ys.min()]
+    if equal_height and len(ims) > 1:
+        target = float(np.median([v[2] for v in ims.values()])); log("figure heights " + ", ".join(f"{n} {v[2]}px" for n, v in ims.items()) + f" -> {target:.0f}px each")
+        for n, v in ims.items():
+            k = target / v[2]
+            if abs(k - 1) > 0.01: im = v[0].resize((max(1, round(v[0].width * k)), max(1, round(v[0].height * k))), Image.LANCZOS); ims[n] = [im, _cutout(im), target]
+    for n, v in list(ims.items()):
+        ys, xs = np.nonzero(v[1]); boxes[n] = (xs.min(), ys.min(), xs.max() + 1, ys.max() + 1); ims[n] = (v[0], v[1])
     ext = max(max(b[2] - b[0], b[3] - b[1]) for b in boxes.values()); k = SIZE / (ext * 1.1)
     cy = (boxes["front"][1] + boxes["front"][3]) / 2
     out = {}

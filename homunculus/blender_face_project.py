@@ -29,13 +29,28 @@ me = ob.data
 # FACEPROJ_PREV lists the angles already projected (a view only takes over where it sees the surface better);
 # FACEPROJ_REGION = head (default) | full (whole body)
 ANGLE = float(os.environ.get("FACEPROJ_ANGLE", "0") or 0)
-PREV = [float(a) for a in os.environ.get("FACEPROJ_PREV", "").split(",") if a.strip()]
+PREV = [a.strip() for a in os.environ.get("FACEPROJ_PREV", "").split(",") if a.strip()]      # yaw angles in degrees, or "dx:dy:dz" view directions (toward the camera)
+VIEW = [float(x) for x in os.environ.get("FACEPROJ_VIEW", "").split(",") if x.strip()]         # a view direction (toward the camera) instead of a yaw: needed for the top and the bottom
+FIT = os.environ.get("FACEPROJ_FIT", "height")                                                 # height: scale from the figure's height (standing views); bbox: from its width and bounding box (top, bottom)
+
+def view_rotation(d):
+    """3x3 matrix turning direction d to the camera direction (0, -1, 0): a turn about the vertical axis for the sides, a quarter turn about x for the top and the bottom."""
+    d = np.array(d, float); d /= np.linalg.norm(d)
+    if abs(d[2]) > 0.9:
+        t = math.radians(90 if d[2] > 0 else -90); return np.array([[1, 0, 0], [0, math.cos(t), -math.sin(t)], [0, math.sin(t), math.cos(t)]])
+    t = math.radians(-90) - math.atan2(d[1], d[0]); return np.array([[math.cos(t), -math.sin(t), 0], [math.sin(t), math.cos(t), 0], [0, 0, 1]])
 REGION = os.environ.get("FACEPROJ_REGION", "head")     # head | headview (head band, agreement mask) | body | full
 _n0 = len(me.vertices); N0 = np.empty(_n0 * 3, np.float32); me.vertices.foreach_get("normal", N0); N0 = N0.reshape(-1, 3)
 def facing_at(a):
-    t = math.radians(a); return -(N0[:, 0] * math.sin(t) + N0[:, 1] * math.cos(t))
+    if isinstance(a, str) and ":" in a:      # a view direction: how much each surface faces that camera
+        R = view_rotation([float(x) for x in a.split(":")]); return -(N0 @ R.T)[:, 1]
+    t = math.radians(float(a)); return -(N0[:, 0] * math.sin(t) + N0[:, 1] * math.cos(t))
+def _turn_verts(R):
+    Vv = np.empty(len(me.vertices) * 3, np.float32); me.vertices.foreach_get("co", Vv); Vv = Vv.reshape(-1, 3) @ np.asarray(R, np.float32).T
+    me.vertices.foreach_set("co", Vv.ravel()); me.update()
 if ANGLE:      # glTF imports use quaternions: switch to Euler so the turn is applied
     ob.rotation_mode = "XYZ"; ob.rotation_euler = (0, 0, math.radians(ANGLE)); bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+if VIEW: R_VIEW = view_rotation(VIEW); _turn_verts(R_VIEW)
 
 # ---------------------------------------------------------------- image + silhouette registration
 img = bpy.data.images.load(img_path); W, H = img.size
@@ -54,6 +69,9 @@ xc_m = np.median(V[band, 0])
 r0, r1 = int(top_i + 0.30 * (bot_i - top_i)), int(top_i + 0.45 * (bot_i - top_i))
 xs = [np.mean(np.nonzero(fg[r])[0]) for r in range(r0, r1) if fg[r].any()]
 xc_i = float(np.median(xs))
+if FIT == "bbox":      # a top or bottom picture: its height is the body's depth, which nobody draws to scale; the arm span (width) is the reliable size. Scale and centre from the bounding boxes.
+    s = (cols.max() - cols.min() + 1) / max(V[:, 0].max() - V[:, 0].min(), 1e-6); xc_m = (V[:, 0].max() + V[:, 0].min()) / 2; xc_i = (cols.max() + cols.min()) / 2.0
+    zc_m = (V[:, 2].max() + V[:, 2].min()) / 2; top_i = (rows.max() + rows.min()) / 2.0 + (zc_m - zmax) * s
 if os.environ.get("FACEPROJ_FRAME"):      # mesh-first runs: the exact camera of the grey front render (no estimate from the silhouette)
     _f = json.load(open(os.environ["FACEPROJ_FRAME"])); _k = W / _f["canvas"]
     s, top_i, xc_i, xc_m = _f["s"] * _k, _f["top"] * _k, _f["xc_i"] * _k, _f["xc_m"]
@@ -207,6 +225,7 @@ print("[faceproj] basecolor", png_out)
 nt.links.new(old_surface, out.inputs["Surface"])
 base_tex.image = target
 for n_ in (uvn, ptex, attrn, mix, emit, tnode): nt.nodes.remove(n_)
+if VIEW: _turn_verts(R_VIEW.T)      # back to the model's own frame before export
 if ANGLE:      # back to the original orientation before export
     ob.rotation_mode = "XYZ"; ob.rotation_euler = (0, 0, math.radians(-ANGLE)); bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
 me.uv_layers.remove(me.uv_layers["proj"]); me.color_attributes.remove(me.color_attributes["projw"])

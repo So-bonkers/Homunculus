@@ -21,12 +21,13 @@ def mv_model():
     d = C.COMFY_UI / "models" / "diffusion_models"
     return run_px.PIXAL_MV_MODEL if (d / run_px.PIXAL_MV_MODEL).exists() and (d / run_px.PIXAL_MV_MODEL).stat().st_size > 9e9 else "pixal3d_multiview_int8_convrot.safetensors"
 
-def turn_around(glb, log, deg=180.0):
-    """The multiview model builds the character facing the other way from the single-image one: turn the GLB so the front is the front again (in place)."""
+def turn_around(glb, log, deg="auto"):
+    """The multiview model does not always build the character facing the same way (+y for some sheets, -y for others), and the pipeline's front is -y: measure where the toes point and turn half
+    a turn only when needed (in place). deg="auto" or a number of degrees."""
     tmp = glb + ".turn.glb"
     r = subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "blender_rotz.py"), "--", glb, tmp, str(deg)], capture_output=True, text=True)
     if not os.path.exists(tmp): raise RuntimeError("turning the multiview mesh failed: " + (r.stdout + r.stderr)[-400:])
-    os.replace(tmp, glb); log(f"multiview mesh turned {deg:.0f} degrees: {os.path.basename(glb)}")
+    os.replace(tmp, glb); log(next((l for l in r.stdout.splitlines() if l.startswith("[rotz]")), "[rotz] turned") + f": {os.path.basename(glb)}")
 
 def upscale(src, dst, model, log, long_side=2048):
     gpu.free_all(log, keep="comfy"); gpu.wait_for_headroom("upscale", log); gpu.comfy_start(log)
