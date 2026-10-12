@@ -30,3 +30,5 @@ presets/*/*_rigged.fbx
 comfy/object_info.json
 # MSFlow trial: cloned code, weights and generated motion (outside the app)
 /msflow/
+# CMU / BVH mocap test clips for tools/retarget_bvh.py (downloaded from github.com/Shriinivas/cmubvh; CMU places no restrictions on the use of the original dataset)
+/mocap_test/
