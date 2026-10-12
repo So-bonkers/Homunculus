@@ -8,9 +8,10 @@ _SCRIPT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "blender_face
 
 FRAME = None      # mesh-first runs: frame.json of the grey front render (exact camera); None = estimate from the silhouette
 
-def _bl(*args, angle=0, prev=(), region="head", view=None, fit="height"):
+def _bl(*args, angle=0, prev=(), region="head", view=None, fit="height", coverage=None):
     env = dict(os.environ, FACEPROJ_ANGLE=str(angle), FACEPROJ_PREV=",".join(str(a) for a in prev), FACEPROJ_REGION=region, FACEPROJ_FIT=fit)
     if view: env["FACEPROJ_VIEW"] = ",".join(str(x) for x in view)
+    if coverage: env["FACEPROJ_COVERAGE"] = str(coverage)      # also write where this pass painted (blend weight per texel)
     if FRAME: env["FACEPROJ_FRAME"] = str(FRAME)
     r = subprocess.run([C.BLENDER, "-b", "--python", _SCRIPT, "--", *map(str, args)], capture_output=True, text=True, timeout=1500, env=env)
     return r.stdout + r.stderr
@@ -368,26 +369,42 @@ def project_body(glb_in, img_path, glb_out, preview_dir, log, agree_check=True):
 SHEET_ANGLES = (("front", 0), ("back", 180), ("left", -90), ("right", 90))
 SHEET_UP_DOWN = (("top", (0, 0, 1)), ("bottom", (0, 0, -1)))      # extra pictures, projected from above and from below (registered by their width, not their height)
 
-def project_sheet(glb_in, raw, glb_out, preview_dir, log):
+def _union(acc, png):
+    """largest blend weight any pass had per texel (png: grayscale-ish, written by blender_face_project.py); a missing file leaves it unchanged"""
+    if not os.path.exists(png): return acc
+    a = np.asarray(Image.open(png).convert("RGB"), np.float32)[..., 0] / 255.0
+    return a if acc is None else np.maximum(acc, a)
+
+def project_sheet(glb_in, raw, glb_out, preview_dir, log, fill=False):
     """Texture from a turnaround sheet: every real view is projected onto the surfaces that face it (front first, then back, left, right), each registered on its own silhouette like the front
-    projection; where two views overlap the one that sees the surface better wins (FACEPROJ_PREV). raw: {name: path of the cut-out figure picture}. No image model is involved."""
-    os.makedirs(preview_dir, exist_ok=True); cur = glb_in; done = []
+    projection; where two views overlap the one that sees the surface better wins (FACEPROJ_PREV). raw: {name: path of the cut-out figure picture}. No image model is involved.
+    fill: afterwards, texels that no view painted take the colour of the nearest painted surface instead of the flat base colour (stages/texfill.py); the unfilled model stays as sheet_unfilled.glb."""
+    os.makedirs(preview_dir, exist_ok=True); cur = glb_in; done = []; covall = None
     for name, ang in SHEET_ANGLES:
         if name not in raw: continue
         npy = os.path.join(preview_dir, f"{name}_dist.npy"); mnpy = os.path.join(preview_dir, f"{name}_mask.npy"); an = os.path.join(preview_dir, f"{name}_agree.npy")
         fg = _distmap(raw[name], npy, mnpy); np.save(an, np.ones(fg.shape, np.float32))      # a real view is trusted everywhere it faces
         nxt = os.path.join(preview_dir, f"sheet_{name}.glb")
-        out = _bl(cur, raw[name], nxt, "-", npy, "project", "-", mnpy, an, angle=ang, prev=done, region="full")
+        cp = os.path.join(preview_dir, f"{name}_cov.png")
+        out = _bl(cur, raw[name], nxt, "-", npy, "project", "-", mnpy, an, angle=ang, prev=done, region="full", coverage=cp if fill else None)
         if "[faceproj] wrote" not in out: log(f"[texture] {name} view: projection failed: {out[-300:]}"); continue
-        cur = nxt; done.append(ang); log(f"[texture] {name} view of the sheet projected")
+        covall = _union(covall, cp); cur = nxt; done.append(ang); log(f"[texture] {name} view of the sheet projected")
     for name, d in SHEET_UP_DOWN:                    # the pictures from above and below: the surfaces that face none of the four sides (the top of the head, the shoulders, the tops and the soles of the feet)
         if name not in raw: continue
         npy = os.path.join(preview_dir, f"{name}_dist.npy"); mnpy = os.path.join(preview_dir, f"{name}_mask.npy"); an = os.path.join(preview_dir, f"{name}_agree.npy")
         fg = _distmap(raw[name], npy, mnpy); np.save(an, np.ones(fg.shape, np.float32)); nxt = os.path.join(preview_dir, f"sheet_{name}.glb")
-        out = _bl(cur, raw[name], nxt, "-", npy, "project", "-", mnpy, an, prev=done, region="full", view=d, fit="bbox")
+        cp = os.path.join(preview_dir, f"{name}_cov.png")
+        out = _bl(cur, raw[name], nxt, "-", npy, "project", "-", mnpy, an, prev=done, region="full", view=d, fit="bbox", coverage=cp if fill else None)
         if "[faceproj] wrote" not in out: log(f"[texture] {name} view: projection failed: {out[-300:]}"); continue
-        cur = nxt; done.append(":".join(str(x) for x in d)); log(f"[texture] {name} picture projected")
+        covall = _union(covall, cp); cur = nxt; done.append(":".join(str(x) for x in d)); log(f"[texture] {name} picture projected")
     if cur == glb_in: raise RuntimeError("no view of the sheet could be projected")
+    if fill and covall is not None:
+        unfilled = os.path.join(preview_dir, "sheet_unfilled.glb"); shutil.copy(cur, unfilled); shutil.copy(cur[:-4] + "_basecolor.png", unfilled[:-4] + "_basecolor.png")
+        try:
+            from . import texfill
+            filled = os.path.join(preview_dir, "sheet_filled.glb"); r = texfill.fill(glb_in, cur, covall, filled, os.path.join(preview_dir, "fill"), log)
+            cur = filled; log(f"[texture] unpainted surfaces filled from their painted neighbours ({r['filled'] * 100:.0f} % of the texture)")
+        except Exception as e: log(f"[texture] fill skipped ({type(e).__name__}: {str(e)[:160]}); the unpainted surfaces keep the base colour")
     shutil.copy(cur, glb_out); shutil.copy(cur[:-4] + "_basecolor.png", glb_out[:-4] + "_basecolor.png")
     return glb_out
 

@@ -220,6 +220,12 @@ bpy.ops.object.bake(type="EMIT", use_clear=True, margin=8)
 print("[faceproj] baked", BW, BH)
 png_out = glb_out[:-4] + "_basecolor.png"; target.filepath_raw = png_out; target.file_format = "PNG"; target.save()
 print("[faceproj] basecolor", png_out)
+cov_out = os.environ.get("FACEPROJ_COVERAGE")        # also bake where this view painted (the blend weight, 0..1) at half size: tools use it to find the texels no view reached
+if cov_out:
+    nt.links.new(attrn.outputs["Color"], emit.inputs[0])
+    cov = bpy.data.images.new("coverage_faceproj", BW // 2, BH // 2, alpha=False); cov.colorspace_settings.name = "Non-Color"; tnode.image = cov; nt.nodes.active = tnode
+    bpy.ops.object.bake(type="EMIT", use_clear=True, margin=0)
+    cov.filepath_raw = cov_out; cov.file_format = "PNG"; cov.save(); print("[faceproj] coverage", cov_out)
 
 # ---------------------------------------------------------------- restore material with the new base colour, export
 nt.links.new(old_surface, out.inputs["Surface"])

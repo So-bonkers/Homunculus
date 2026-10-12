@@ -598,10 +598,10 @@ def _full_mesh(R, tdir, tag, seed, t0):
     R.mark("mesh", "running", seconds=round(time.time() - t0), peak_vram=round(wd["peak"], 1), note=f"{os.path.basename(tdir)} textured")
     return f"{os.path.basename(tdir)} textured mesh built" + hand_gate(R) + (" (sheet run: one shape; if the hands, the helmet top or any other part came out wrong, use the Repair tab)" if R.state.get("sheet") else "")
 
-def project_colours(R, raw, src, out, preview_dir):
+def project_colours(R, raw, src, out, preview_dir, fill=False):
     """Colours onto the mesh: the picture's front for a normal run; every real view of the turnaround sheet (front, back, left, right) for a sheet run. Returns the new GLB."""
     if R.state.get("sheet") and R.A.get("sheet_raw"):
-        return faceproj.project_sheet(raw, R.A["sheet_raw"], out, preview_dir, R.log)
+        return faceproj.project_sheet(raw, R.A["sheet_raw"], out, preview_dir, R.log, fill=fill and C.SHEET_FILL)
     return faceproj.project_body(raw, src, out, preview_dir, R.log, agree_check=not mesh_mode(R))
 
 def st_color(R):
@@ -611,7 +611,7 @@ def st_color(R):
     raw = R.A["mesh_glb"]; d = os.path.dirname(raw); src = texture_source(R)
     out, note = raw, "kept the mesh's own colours"
     try:
-        out = project_colours(R, raw, src, raw.replace(".glb", "_colored.glb"), os.path.join(d, "color")); note = ("the four views of the sheet" if R.state.get("sheet") else "front colours") + " projected onto the mesh"
+        out = project_colours(R, raw, src, raw.replace(".glb", "_colored.glb"), os.path.join(d, "color"), fill=True); note = ("the four views of the sheet" if R.state.get("sheet") else "front colours") + " projected onto the mesh"
     except Exception as e: R.log(f"[color] skipped ({type(e).__name__}: {str(e)[:120]}); the rig uses the mesh as it is")
     R.A["colored_glb"] = out
     try:
@@ -639,7 +639,7 @@ def st_texture(R):
     if R.state.get("sheet") and cg and os.path.exists(cg) and os.path.exists(cg[:-4] + "_basecolor.png"):
         base = cg; R.log("[texture] the four views were already projected in the colour stage (same mesh, same views, same result): reusing it")      # identical to projecting again, ~50 s cheaper
     elif C.TEXTURE_VIEWS:      # clothes and body: the redraw's front, projected (pixel-aligned with the mesh)
-        try: base = project_colours(R, raw, src, raw.replace(".glb", "_body.glb"), os.path.join(d, "texviews"))
+        try: base = project_colours(R, raw, src, raw.replace(".glb", "_body.glb"), os.path.join(d, "texviews"), fill=True)
         except Exception as e: R.log(f"[texture] body projection skipped ({type(e).__name__}: {str(e)[:120]})")
     out = raw.replace(".glb", "_faceproj.glb")
     before = after = None

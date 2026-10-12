@@ -18,7 +18,7 @@ Where Homunculus still hurts, as of 2026-10-08, in rough order of how much it ge
 
 | Pain point | What it looks like | Status | Next |
 |---|---|---|---|
-| **Repaired parts are one flat colour** | New hands or boots keep one colour; surfaces no view faces (palm, back of the hand, boot top and sole) are never painted | Partly. The flat colour is now the right one (sRGB fix); sheet runs repair on the coloured mesh | Fill unseen surfaces from their painted neighbours instead of one flat colour |
+| **Repaired parts are one flat colour** | New hands or boots keep one colour; surfaces no view faces (palm, back of the hand, boot top and sole) are never painted | Partly. The flat colour is now the right one (sRGB fix). Sheet runs now fill the texels no view painted from the nearest painted surface in 3D (median of 24 neighbours; `HOMUNCULUS_SHEET_FILL=0` turns it off). On the F1 sheet it gave the boots and the helmet top plausible colours and left painted areas untouched; the soles come out blotchy | Not used by Repair on a non-sheet run yet; no top and bottom pictures were tried with it; the fill is solved at 1024 px, so holes under about 20 texels at 4096 gain nothing |
 | **Repaired feet are worse than the originals** | Blocky boots, no toe-cap or sole detail, ragged ankle seams | Open (repair only parts that are really broken) | Higher voxel resolution for feet, a merge that does not assume an arm |
 | **A lone judge is noisy** | The same rig scored 4/10 twice and then 9/10; one false rejection costs minutes | Partly. A sheet run keeps the rig and flags it | Two judges, or re-ask once before acting |
 
