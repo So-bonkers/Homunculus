@@ -2,6 +2,7 @@
 import io, os, subprocess, sys, threading, time, requests
 from PIL import Image
 from .. import config as C, gpu
+from . import imagegen
 sys.path.insert(0, str(C.ROOT))
 import qwen_edit as q   # ensure_loaded(), watchdog(), to_b64(), post()
 
@@ -14,10 +15,9 @@ def _pad_to(path, EW, EH):
     return im.resize((EW, EH), Image.LANCZOS)
 
 def run(src, out_dir, prompt, round_idx, log, n=C.EDIT_SEEDS, on_saved=None, size=(C.EDIT_W, C.EDIT_H), keep_loaded=False):
-    gpu.free_all(log, keep="studio")
     os.makedirs(out_dir, exist_ok=True)
-    EW, EH = size; b64 = q.to_b64(_pad_to(src, EW, EH))
-    q.ensure_loaded(); log(f"Qwen-Image loaded, VRAM {gpu.vram_gb():.1f} GB")
+    EW, EH = size; padded = _pad_to(src, EW, EH)
+    m = imagegen.on(log); log(f"{'Qwen-Image 2.1 Turbo' if m == 'turbo' else 'Qwen-Image'} loaded, VRAM {gpu.vram_gb():.1f} GB")
     stop, state = threading.Event(), {"peak": 0.0}
     th = threading.Thread(target=q.watchdog, args=(stop, state), daemon=True); th.start()
     outs = []
@@ -27,28 +27,21 @@ def run(src, out_dir, prompt, round_idx, log, n=C.EDIT_SEEDS, on_saved=None, siz
             if os.path.exists(out): outs.append(out); continue
             for attempt in range(3):
                 try:
-                    r = q.post("/api/inference/images/generate", timeout=900, json={
-                        "prompt": prompt, "init_image": b64, "workflow": "edit", "width": EW, "height": EH,
-                        "steps": 30, "seed": (int("".join(ch for ch in str(round_idx) if ch.isdigit()) or 0) * 37 + 100 * (ord(str(round_idx)[-1]) % 7) + k + 7000 * attempt) % 2**31, "reference_resolution": 512})
-                    if r.status_code != 200:
-                        log(f"edit error {r.status_code}: {r.text[:120]}")
-                        if "No diffusion model is loaded" in r.text or "cancelled" in r.text:
-                            gpu.wait_for_headroom("qwen_image", log); q.ensure_loaded()   # the watchdog unloaded it: reload once memory is free
-                        time.sleep(5); continue
-                    iid = r.json()["images"][0]["id"]
-                    img = requests.get(f"{q.API}/api/inference/images/gallery/{iid}/file", timeout=300).content
-                    Image.open(io.BytesIO(img)).convert("RGB").save(out); outs.append(out)
+                    seed = (int("".join(ch for ch in str(round_idx) if ch.isdigit()) or 0) * 37 + 100 * (ord(str(round_idx)[-1]) % 7) + k + 7000 * attempt) % 2**31
+                    imagegen.edit(padded, prompt, seed, (EW, EH), 512, log).save(out); outs.append(out)
+                    state["peak"] = max(state["peak"], gpu.vram_gb())
                     log(f"saved {os.path.basename(out)} (peak {state['peak']:.1f} GB)")
                     if on_saved: on_saved(list(outs))
                     break
                 except Exception as e:
-                    log(f"edit exception {type(e).__name__}: {str(e)[:100]}; restarting Studio and retrying")
-                    subprocess.run(["systemctl", "--user", "restart", "unsloth-api"], capture_output=True); time.sleep(40); q.ensure_loaded()
+                    log(f"edit exception {type(e).__name__}: {str(e)[:100]}" + ("; restarting Studio and retrying" if imagegen.mode() == "studio" else "; retrying"))
+                    if imagegen.mode() == "studio":
+                        subprocess.run(["systemctl", "--user", "restart", "unsloth-api"], capture_output=True); time.sleep(40); gpu.wait_for_headroom("qwen_image", log); q.ensure_loaded()
+                    else: time.sleep(5)
     finally:
         stop.set(); th.join()
         if not keep_loaded:      # manual one-at-a-time keeps it for the next try (nothing else needs the GPU while you decide)
-            try: q.post("/api/inference/images/unload")
-            except Exception: pass
+            imagegen.off()
     return outs, state["peak"]
 
 
@@ -65,17 +58,10 @@ def refine_face(src, out_png, prompt, log, size=C.FACE_SIZE):
     cols = np.nonzero(m[top:top + hb].any(0))[0]; cx = int(cols.mean()); cy = top + hb // 2
     side = int(1.7 * hb); x0 = max(0, cx - side // 2); y0 = max(0, cy - side // 2); x1 = min(W, x0 + side); y1 = min(H, y0 + side)
     crop = im.crop((x0, y0, x1, y1)); cw, ch = crop.size
-    gpu.free_all(log, keep="studio"); gpu.wait_for_headroom("qwen_image", log); q.ensure_loaded()
-    for attempt in range(3):     # a cancel left over from the previous job makes the first request fail: ask again
-        r = q.post("/api/inference/images/generate", timeout=900, json={"prompt": prompt, "init_image": q.to_b64(crop.resize((size, size), Image.LANCZOS)),
-                   "workflow": "edit", "width": size, "height": size, "steps": 30, "seed": 4242, "reference_resolution": 1024})
-        if r.status_code == 200 or "cancelled" not in r.text: break
-        time.sleep(3); q.ensure_loaded()
-    try: q.post("/api/inference/images/unload")
-    except Exception: pass
-    if r.status_code != 200: raise RuntimeError(f"face refine failed: {r.status_code} {r.text[:120]}")
-    iid = r.json()["images"][0]["id"]
-    face = Image.open(io.BytesIO(requests.get(f"{q.API}/api/inference/images/gallery/{iid}/file", timeout=300).content)).convert("RGB")
+    imagegen.on(log)
+    try: face = imagegen.edit(crop.resize((size, size), Image.LANCZOS), prompt, 4242, size, 1024, log)
+    except Exception as e: raise RuntimeError(f"face refine failed: {str(e)[:120]}")
+    finally: imagegen.off()
     # paste back with a feathered edge so the seam is invisible
     face_s = face.resize((cw, ch), Image.LANCZOS)
     yy, xx = np.mgrid[0:ch, 0:cw]; edge = np.minimum.reduce([xx, yy, cw - 1 - xx, ch - 1 - yy]).astype(np.float32)
@@ -128,26 +114,19 @@ def refine_hands(src, out_png, prompt, log, size=1024):
     rows = np.nonzero(m.any(1))[0]; top = rows.min(); bh = rows.max() - top
     band = m[top + int(0.10 * bh): top + int(0.62 * bh)]           # arm height (the hands are the outermost points there in a T/A-pose)
     cols = np.nonzero(band.any(0))[0]; side = int(0.13 * bh); out = im.copy(); pairs = []
-    gpu.free_all(log, keep="studio"); gpu.wait_for_headroom("qwen_image", log); q.ensure_loaded()
+    imagegen.on(log)
     try:
         for k, (tip, direction) in enumerate(((cols.min(), 1), (cols.max(), -1))):
             ys = np.nonzero(band[:, tip])[0]; cy = top + int(0.10 * bh) + int(np.median(ys)) if len(ys) else top + bh // 3
             cx = int(tip + direction * 0.42 * side)                   # the box reaches from the fingertips back to the wrist
             x0, y0 = max(0, cx - side // 2), max(0, cy - side // 2); x1, y1 = min(W, x0 + side), min(H, y0 + side)
             crop = im.crop((x0, y0, x1, y1)); cw, ch = crop.size
-            for attempt in range(3):
-                r = q.post("/api/inference/images/generate", timeout=900, json={"prompt": prompt, "init_image": q.to_b64(crop.resize((size, size), Image.LANCZOS)),
-                           "workflow": "edit", "width": size, "height": size, "steps": 30, "seed": 4343 + k, "reference_resolution": 1024})
-                if r.status_code == 200 or "cancelled" not in r.text: break
-                time.sleep(3); q.ensure_loaded()
-            if r.status_code != 200: log(f"hand close-up {k + 1} failed: {r.status_code}"); continue
-            iid = r.json()["images"][0]["id"]
-            hand = Image.open(io.BytesIO(requests.get(f"{q.API}/api/inference/images/gallery/{iid}/file", timeout=300).content)).convert("RGB")
+            try: hand = imagegen.edit(crop.resize((size, size), Image.LANCZOS), prompt, 4343 + k, size, 1024, log)
+            except Exception as e: log(f"hand close-up {k + 1} failed: {str(e)[:100]}"); continue
             hs = hand.resize((cw, ch), Image.LANCZOS)
             out.paste(_paste_hand(crop, hs, direction), (x0, y0))
             b_ = out_png[:-4] + f"_hand{k + 1}_before.png"; a_ = out_png[:-4] + f"_hand{k + 1}_after.png"; crop.save(b_); hand.save(a_); pairs.append((b_, a_))
     finally:
-        try: q.post("/api/inference/images/unload")
-        except Exception: pass
+        imagegen.off()
     out.save(out_png); log(f"hands refined: {len(pairs)} close-up(s) at {side}px, pasted back")
     return out_png, pairs

@@ -12,13 +12,14 @@ TURBO_SIGMAS = "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0
 
 
 def graph(ref_names, prompt, seed, size, res=512):
+    w, h = (size, size) if isinstance(size, int) else size
     g = {"1": {"class_type": "UNETLoader", "inputs": {"unet_name": MODEL, "weight_dtype": "default"}},
          "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": TEXT, "type": "qwen_image", "device": "default"}},
          "3": {"class_type": "VAELoader", "inputs": {"vae_name": VAE}},
          "1b": {"class_type": "LoraLoaderModelOnly", "inputs": {"model": ["1", 0], "lora_name": LORA, "strength_model": 1.0}},
          "4": {"class_type": "QwenImage21Cache", "inputs": {"model": ["1b", 0], "device": "auto", "dtype": "default"}},
          "9": {"class_type": "TextEncodeQwenImage21", "inputs": {"clip": ["2", 0], "prompt": prompt, "negative_prompt": "", "resolution": res, "vae": ["3", 0]}},
-         "10": {"class_type": "EmptyLatentImage", "inputs": {"width": size, "height": size, "batch_size": 1}},
+         "10": {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}},
          "20": {"class_type": "ManualSigmas", "inputs": {"sigmas": TURBO_SIGMAS}}, "21": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
          "11": {"class_type": "SamplerCustom", "inputs": {"model": ["4", 0], "add_noise": True, "noise_seed": seed, "cfg": 1.0, "positive": ["9", 0], "negative": ["9", 1],
                                                        "sampler": ["21", 0], "sigmas": ["20", 0], "latent_image": ["10", 0]}},
@@ -41,6 +42,28 @@ def _run(g, timeout=900):
             return res
         time.sleep(2)
     raise RuntimeError("Turbo redraw timed out")
+
+
+def up(log):
+    """Start ComfyUI for a run of redraws (everything else is unloaded first). The caller ends with down()."""
+    gpu.free_all(log, keep="comfy"); gpu.wait_for_headroom("qwen_image", log); gpu.comfy_start(log)
+
+
+def down():
+    gpu.comfy_free()          # drop the models from VRAM (the next step needs the room); the server itself stays up
+
+
+def edit_image(image, prompt, seed, size, res, log):
+    """One redraw of `image` (PIL, the reference to edit) at `size` (int or (w, h)); ComfyUI must be up (up()). res: the reference resolution (512 or 1024). Returns a PIL image."""
+    from PIL import Image as _I
+    u = uuid.uuid4().hex[:6]; nm = f"qt_{u}.png"; image.convert("RGB").save(C.COMFY_UI / "input" / nm)
+    try:
+        r = _run(graph([nm], prompt, seed, size, res=res), timeout=900)
+        im = r["outputs"]["13"]["images"][0]
+        return _I.open(C.COMFY_UI / "output" / im["subfolder"] / im["filename"]).convert("RGB")
+    finally:
+        try: os.remove(C.COMFY_UI / "input" / nm)
+        except OSError: pass
 
 
 def edit_many(image, prompt, seeds, size, out_dir, log, tag="redraw"):

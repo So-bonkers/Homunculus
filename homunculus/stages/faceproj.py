@@ -17,26 +17,17 @@ def _bl(*args, angle=0, prev=(), region="head", view=None, fit="height", coverag
     return r.stdout + r.stderr
 
 def _qwen_edit(img, prompt, size, seed, log):
-    """One image edit with the already-loaded Qwen-Image (the caller loads and unloads). img: PIL image at `size` (w, h)."""
-    import io, requests
-    from . import edit as E
-    for attempt in range(3):          # Studio can still carry a cancel from the previous job: ask again
-        r = E.q.post("/api/inference/images/generate", timeout=900, json={"prompt": prompt, "init_image": E.q.to_b64(img), "reference_resolution": 1024,
-                     "workflow": "edit", "width": size[0], "height": size[1], "steps": 30, "seed": seed})
-        if r.status_code == 200 or "cancelled" not in r.text: break
-        time.sleep(3); E.q.ensure_loaded()
-    if r.status_code != 200: raise RuntimeError(f"edit failed: {r.status_code} {r.text[:120]}")
-    return Image.open(io.BytesIO(requests.get(f"{E.q.API}/api/inference/images/gallery/{r.json()['images'][0]['id']}/file", timeout=300).content)).convert("RGB")
+    """One image edit with the already-loaded image model (the caller calls _qwen_on and _qwen_off). img: PIL image at `size` (w, h)."""
+    from . import imagegen
+    return imagegen.edit(img, prompt, seed, size, 1024, log)
 
 def _qwen_on(log):
-    from . import edit as E
-    from .. import gpu
-    gpu.free_all(log, keep="studio"); gpu.wait_for_headroom("qwen_image", log); E.q.ensure_loaded()
+    from . import imagegen
+    imagegen.on(log)
 
 def _qwen_off():
-    from . import edit as E
-    try: E.q.post("/api/inference/images/unload")
-    except Exception: pass
+    from . import imagegen
+    imagegen.off()
 
 def _agreement(new_rgb, mesh_rgb, tol=60.0, blur=6.0):
     """1 where the new image roughly agrees in colour with what the mesh already shows (Lab distance after blurring both),

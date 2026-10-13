@@ -148,7 +148,7 @@ Homunculus is a thin orchestrator around other projects, so setup is mostly inst
 
 | role | model | size | licence | link |
 |---|---|---|---|---|
-| Redraw / face repaint / texture clean-up | **Qwen-Image 2.1 edit** (`qwen-image-2.1-F16.gguf`) via Unsloth Studio | 14.2 GB | Qwen Research | [unsloth/Qwen-Image-2.1-GGUF](https://huggingface.co/unsloth/Qwen-Image-2.1-GGUF) |
+| Redraw / face repaint / texture clean-up / Repair / Retexture | **Qwen-Image 2.1 Turbo** in ComfyUI (the int8 base + the turbo LoRA, 8 steps, about 6 s a picture after the load; `HOMUNCULUS_IMAGE_TURBO=0` goes back to the next row) and, as the fallback, **Qwen-Image 2.1 edit** (`qwen-image-2.1-F16.gguf`, 30 steps) via Unsloth Studio | 14.2 GB | Qwen Research | [unsloth/Qwen-Image-2.1-GGUF](https://huggingface.co/unsloth/Qwen-Image-2.1-GGUF) |
 | Planner + judge 1 | **Qwen3.8 27B** vision (`UD-Q4_K_M` + `mmproj-F16`) | 16.5 + 0.9 GB | Apache-2.0 | [unsloth/Qwen3.8-27B-GGUF](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF) |
 | Judge 2 | **Gemma 4 26B-A4B** QAT (`UD-Q4_K_XL` + `mmproj-F16`) | 14.2 + 1.2 GB | Apache-2.0 | [unsloth/gemma-4-26B-A4B-it-qat-GGUF](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF) |
 | Judge 3 | **Qwen3.6 35B-A3B** MTP (`UD-IQ4_NL` + `mmproj-F16`) | 18.5 + 0.9 GB | Apache-2.0 | [unsloth/Qwen3.6-35B-A3B-MTP-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF) |

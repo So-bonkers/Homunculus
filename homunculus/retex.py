@@ -71,21 +71,15 @@ def do_generate(J, req):
     if not (d / "view.png").exists(): raise RuntimeError("could not render the view")
     view = Image.open(d / "view.png").convert("RGB"); W, H = _size(req["camera"]["aspect"]); notes = (req.get("notes") or "").strip()
     prompt = PROMPT.format(notes=(notes + ". ") if notes else "")
-    q = E.q; gpu.free_all(J.log, keep="studio"); gpu.wait_for_headroom("qwen_image", J.log); q.ensure_loaded(); outs = []
+    from .stages import imagegen
+    imagegen.on(J.log); outs = []
     try:
         for sd in (7, 19):
-            for attempt in range(3):
-                r = q.post("/api/inference/images/generate", timeout=900, json={"prompt": prompt, "init_image": q.to_b64(view.resize((W, H), Image.LANCZOS)), "workflow": "edit",
-                           "width": W, "height": H, "steps": 30, "seed": sd, "reference_resolution": 512})
-                if r.status_code == 200 or "cancelled" not in r.text: break
-                time.sleep(3); q.ensure_loaded()
-            if r.status_code != 200: J.log(f"seed {sd} failed: {r.status_code} {r.text[:100]}"); continue
-            iid = r.json()["images"][0]["id"]
-            img = Image.open(io.BytesIO(requests.get(f"{q.API}/api/inference/images/gallery/{iid}/file", timeout=300).content)).convert("RGB").resize(view.size, Image.LANCZOS)
+            try: img = imagegen.edit(view.resize((W, H), Image.LANCZOS), prompt, sd, (W, H), 512, J.log).resize(view.size, Image.LANCZOS)
+            except Exception as e: J.log(f"seed {sd} failed: {str(e)[:100]}"); continue
             p = d / f"generated_{sd}.png"; img.save(p); outs.append(J.rel(p)); J.log(f"generated a view (seed {sd})", generated=outs)
     finally:
-        try: q.post("/api/inference/images/unload")
-        except Exception: pass
+        imagegen.off()
     if not outs: raise RuntimeError("the image model returned nothing")
     shutil.copy(C.RUNS / outs[0], d / "generated.png")
     J.S.update(status="done", step="done", view=J.rel(d / "view.png"), generated=outs, ref=outs[0]); J.save()

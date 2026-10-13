@@ -71,31 +71,19 @@ def _bl(args, timeout=900):
 
 
 def _redraw(J, crop_png, out_dir, seeds, notes, prompt):
-    """Qwen-Image redraws the close-up once per seed (the model stays loaded between seeds). Returns the image paths."""
-    import requests
-    q = E.q; os.makedirs(out_dir, exist_ok=True)
+    """The image model redraws the close-up once per seed (Turbo in ComfyUI, or Studio's 30-step model as the fallback; it stays loaded between seeds). Returns the image paths."""
+    from .stages import imagegen
+    os.makedirs(out_dir, exist_ok=True)
     im = Image.open(crop_png).convert("RGB").resize((SIZE, SIZE), Image.LANCZOS)
-    if C.REPAIR_TURBO:      # the 8-step Turbo model in ComfyUI; the 30-step model in Studio below is the fallback
-        try:
-            from .stages import qwen_turbo
-            got = qwen_turbo.edit_many(im, prompt + (" " + notes if notes else ""), seeds, SIZE, out_dir, J.log)
-            if got: return [got[sd] for sd in seeds if sd in got]
-        except Exception as e: J.log(f"Turbo redraw unavailable ({type(e).__name__}: {str(e)[:140]}); using the 30-step model in Studio")
-    gpu.free_all(J.log, keep="studio"); gpu.wait_for_headroom("qwen_image", J.log); q.ensure_loaded(); outs = []
+    imagegen.on(J.log); outs = []
     try:
         for sd in seeds:
-            for attempt in range(3):
-                r = q.post("/api/inference/images/generate", timeout=900, json={"prompt": prompt + (" " + notes if notes else ""), "init_image": q.to_b64(im), "workflow": "edit",
-                           "width": SIZE, "height": SIZE, "steps": 30, "seed": sd, "reference_resolution": 512})
-                if r.status_code == 200 or "cancelled" not in r.text: break
-                time.sleep(3); q.ensure_loaded()
-            if r.status_code != 200: J.log(f"redraw seed {sd} failed: {r.status_code} {r.text[:100]}"); continue
-            iid = r.json()["images"][0]["id"]
-            img = Image.open(io.BytesIO(requests.get(f"{q.API}/api/inference/images/gallery/{iid}/file", timeout=300).content)).convert("RGB")
-            p = os.path.join(out_dir, f"redraw_{sd}.png"); img.save(p); outs.append(p)
+            t0 = time.time()
+            try: img = imagegen.edit(im, prompt + (" " + notes if notes else ""), sd, SIZE, 512, J.log)
+            except Exception as e: J.log(f"redraw seed {sd} failed: {str(e)[:100]}"); continue
+            p = os.path.join(out_dir, f"redraw_{sd}.png"); img.save(p); outs.append(p); J.log(f"redraw seed {sd}: {time.time() - t0:.0f}s ({imagegen.mode()})")
     finally:
-        try: q.post("/api/inference/images/unload")
-        except Exception: pass
+        imagegen.off()
     return outs
 
 
