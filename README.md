@@ -8,10 +8,7 @@ Give Homunculus a picture of a character (or a turnaround sheet, or an existing 
 
 https://github.com/user-attachments/assets/a6c291a1-b4cb-4171-97e5-f90ad6a3fa6d
 
-
-[![Miles Jackson: a Homunculus character dancing Thriller (click to play, with sound)](docs/media/miles_jackson_poster.jpg)](docs/media/miles_jackson.mp4)
-
-*A Miles Morales character built by a Homunculus run from one picture, exported with the run's Mixamo zip, animated with Mixamo's Thriller clips, joined and rendered with a moving camera by `tools/join_clips.py` and `tools/render_dance.py`, then cut to music. Click the picture for the video ([docs/media/miles_jackson.mp4](docs/media/miles_jackson.mp4), 2 min, with sound).*
+*A Miles Morales character built by a Homunculus run from one picture, exported with the run's Mixamo zip, animated with Mixamo's Thriller clips, joined and rendered with a moving camera by `tools/join_clips.py` and `tools/render_dance.py`, then cut to music. The video is 2 minutes, with sound ([docs/media/miles_jackson.mp4](docs/media/miles_jackson.mp4)).*
 
 ## How it works
 
