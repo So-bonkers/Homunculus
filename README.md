@@ -1,267 +1,252 @@
-# Homunculus: picture → rigged, animated 3D character, fully local
+# Homunculus
 
-Give it **one picture** of a character (or an existing **3D model**) and it gives back a **textured, rigged 3D character with a 52-bone Mixamo skeleton, fingers included, plus animation clips you describe in plain text** ("walks forward", "dances salsa", "does a spinning kick"). Everything runs on your own machine, on one 24 GB GPU, one heavy model at a time. Local vision-language models plan the work and judge each result; a web app orchestrates it and lets you step in at every decision.
+**One picture in, a rigged and animated 3D character out. Fully local, on one 24 GB GPU.**
 
-![A finished run: input, redraw, 3D model, rig test, animation](docs/media/contact_sheet.jpg)
+Give Homunculus a picture of a character (or a turnaround sheet, or an existing 3D model) and it builds a textured 3D model, rigs it with a 52-bone Mixamo skeleton (fingers included) and animates it: copy a dance straight from a video, describe a motion in plain words, or bring Mixamo and mocap clips. A local web app runs the pipeline, shows every step, and lets you (or local vision-language models, or nobody at all) decide at each gate. Current version: **v1.6** ([tags](https://github.com/So-bonkers/Homunculus/tags)).
 
-## What it does
+## Showcase: *Miles Jackson*
 
-`picture → upscale → plan → redraw (rig-friendly T-pose) → 3D shape → quick colour → auto-rig → rig check → text-to-animation → final texture → report`
+<!-- To play inline on GitHub, the video has to be uploaded through GitHub's editor: edit this file on github.com, drag docs/media/miles_jackson.mp4 onto this line, and GitHub replaces it with a github.com/user-attachments link that plays with sound. -->
+
+[![Miles Jackson: a Homunculus character dancing Thriller (click to play, with sound)](docs/media/miles_jackson_poster.jpg)](docs/media/miles_jackson.mp4)
+
+*A Miles Morales character built by a Homunculus run from one picture, exported with the run's Mixamo zip, animated with Mixamo's Thriller clips, joined and rendered with a moving camera by `tools/join_clips.py` and `tools/render_dance.py`, then cut to music. Click the picture for the video ([docs/media/miles_jackson.mp4](docs/media/miles_jackson.mp4), 2 min, with sound).*
+
+## How it works
+
+```mermaid
+flowchart LR
+    A([picture]) --> U[Upscale] --> P[Plan] --> R[Redraw<br/>T-pose] --> K{Pick} --> PR[Prepare]
+    PR --> V[Views<br/>depth phase] --> S[3D shape] --> SC{Shape check} --> C[Colour]
+    C --> RG[Auto-rig] --> RC{Rig check} --> AN[Animate] --> T[Texture] --> RP([report])
+    SH([turnaround sheet]) -. four real views .-> S
+    M([3D model]) -. your geometry .-> C
+    SC -. torn hands .-> RE[Repair] -.-> C
+    VID([dance video]) -. GVHMR .-> AN
+```
+
+Diamonds are review gates: three local judges, you, or nobody (`--no-llm`).
 
 | stage | what happens | model / tool |
 |---|---|---|
-| Ingest, Upscale | record the input; 4× upscale (photo / anime / 3D-render models chosen from the style) | RealESRGAN, 4x-UltraSharp (ComfyUI) |
-| Plan | a VLM describes the character and fills the redraw prompt | Qwen3.8-VL 27B |
-| Redraw, Pick | redraw as a clean full-body T-pose with open hands, several candidates, then pick (judges and/or you) | Qwen-Image 2.1 edit + a 3-judge panel (Qwen3.8, Gemma, Qwen3.6) |
-| Prepare | clean-up and upscale the winner; redraw the face close-up at full resolution before 3D | RealESRGAN, Qwen-Image |
-| Views | single-picture runs: a quick proxy shape, a depth map of it, and the character's back drawn under that depth map, so the shape model sees two views that agree; a view is kept only if its outline matches the proxy (`--depth-views off` skips it; [docs/DEPTH_VIEWS.md](docs/DEPTH_VIEWS.md)) | Pixal3D, Qwen-Image 2.1 Turbo + depth ControlNet (ComfyUI) |
-| 3D shape, Shape check | best of 3 shapes; silhouette carve removes fins/plates outside the picture's outline; judges check | Pixal3D (ComfyUI) |
-| Colour | quick front projection onto the mesh so the rig is built and checked on a coloured model (CPU, seconds) | Blender |
-| Auto-rig, Rig check | 52-bone Mixamo skeleton with skin weights; pose-test renders judged | Make-It-Animatable |
-| Animate | a video of someone dancing → motion for *your* skeleton (the default: `--anim-video clip.mp4 --anim-from 30 --anim-to 50`, [docs/VIDEO_MOTION.md](docs/VIDEO_MOTION.md)); text prompts → motion clips, 2 takes each, alone or in addition (`--anim`) | GVHMR, UniMate |
-| Texture | face fit, multi-view clean-up, put on the rig and on every clip | Blender + Qwen-Image |
-| Report | contact sheet + report.md | – |
-
-A run that starts from a **turnaround sheet** (four views of the character in one picture) skips Redraw and Pick, builds the shape from all four views with the multiview Pixal3D and projects the four real pictures as the texture; see [docs/TURNAROUND.md](docs/TURNAROUND.md).
-
-### Sample animations
-
-Prompts typed as plain text. Same motion, two different characters. *(The Spider-Man-style previews come from the preset library; clips on the male model render untextured.)*
-
-| prompt | male | female |
-|---|---|---|
-| walks forward | ![](docs/media/walk_male.gif) | ![](docs/media/walk_female.gif) |
-| does a spinning kick | ![](docs/media/spinning-kick_male.gif) | ![](docs/media/spinning-kick_female.gif) |
-| dances hip hop, bouncing and swinging the arms | ![](docs/media/hip-hop_male.gif) | ![](docs/media/hip-hop_female.gif) |
-| dances salsa, stepping side to side and swaying the hips | ![](docs/media/salsa_male.gif) | ![](docs/media/salsa_female.gif) |
-| slashes forward with a sword | ![](docs/media/sword_male.gif) | ![](docs/media/sword_female.gif) |
-| jumps forward | ![](docs/media/jump_male.gif) | ![](docs/media/jump_female.gif) |
-
-And on a character the pipeline built from a single picture (a fantasy knight, finished run, final texture applied to every clip):
-
-| walks forward | runs forward | fights, throwing a punch and then a kick | dances hip hop |
-|---|---|---|---|
-| ![](docs/media/run_walks_forward.gif) | ![](docs/media/run_runs_forward.gif) | ![](docs/media/run_fights_throwing_a_punch_.gif) | ![](docs/media/run_dances_hip_hop_bouncing_.gif) |
-
-UniMate is an early research model: simple locomotion and gestures are good; acrobatics (backflips, handstands) and anything involving props are hit and miss. Clips are 1.6 s, 30 fps. The GIFs were rendered with Blender's workbench renderer (`tools/make_samples.sh`).
-
-## The stages in pictures
-
-Snapshots the app saves at each important moment of one real run (*knight_full*, from a single picture). They appear live in the run page's Activity tab.
-
-| stage | snapshot |
-|---|---|
-| **1 · Upscale** the input 4× with the model that fits its style | ![](docs/media/stages/1-upscale.jpg) |
-| **2 · Plan**: a VLM describes the character and writes the redraw prompt | ![](docs/media/stages/2-plan.jpg) |
-| **3 · Redraw + pick**: rig-friendly T-pose candidates, the judges (and you) choose | ![](docs/media/stages/3-redraw-pick.jpg) |
-| **4 · Face close-up** redrawn at full resolution *before* the 3D step | ![](docs/media/stages/4-face-closeup.jpg) |
-| **5 · 3D shape check**: three Pixal3D shapes rendered from several sides and judged | ![](docs/media/stages/5-3d-shape-check.jpg) |
-| **6 · Quick colour** projected onto the mesh so the rig is built on a coloured model | ![](docs/media/stages/6-quick-colour.jpg) |
-| **7 · Rig check**: test poses of the 52-bone skeleton, judged for tearing | ![](docs/media/stages/7-rig-check.jpg) |
-| **8 · Animate**: UniMate clips for your prompts, driven on this rig | ![](docs/media/stages/8-animate.jpg) |
-| **9 · Final texture**: face fit plus cleaned side and back views, put on the rig and every clip | ![](docs/media/stages/9-final-texture.jpg) |
-
-## The app in pictures
-
-| | |
-|---|---|
-| ![Home](docs/media/screens/01-home.jpg) **Home**: a live 3D turntable of your latest character | ![Launcher](docs/media/screens/03-launcher.jpg) **New run**: every option in one form |
-| ![Tour](docs/media/screens/02-tour-step4.jpg) **Guided tour** (the *Tour* button, offered on first visit): spotlights each control | ![Tips](docs/media/screens/05-tips.jpg) **Tips** for pictures, prompts and review modes |
-| ![Presets male](docs/media/screens/04-preset-library-preview.jpg) **Preset library** with a 3D ▶ preview on a male character… | ![Presets female](docs/media/screens/04b-preset-preview-female.jpg) …and on a female one, with the creators credited |
-| ![Runs](docs/media/screens/06-runs.jpg) **Runs** with live status, Stop and Fork | ![Pipeline](docs/media/screens/07-run-pipeline.jpg) **Run page**: the pipeline as a node graph, then Activity, downloads and the planner's notes |
-| ![Animate](docs/media/screens/09-run-animate.jpg) **Animate** tab: type or pick prompts, play the clips | ![3D](docs/media/screens/10-run-3d-model.jpg) **3D model** viewer: final, rigged, clay, wireframe, bones |
+| Upscale | 4× upscale with the model that fits the picture's style (photo, anime, 3D render) | RealESRGAN, 4x-UltraSharp |
+| Plan | a vision-language model describes the character and writes the redraw prompt | Qwen3.8-VL 27B |
+| Redraw, Pick | the character redrawn as a clean full-body T-pose with open hands, several candidates, one picked | Qwen-Image 2.1 Turbo |
+| Prepare | clean-up and upscale of the chosen redraw; optional face close-up at full resolution | RealESRGAN, Qwen-Image 2.1 Turbo |
+| **Views** (depth phase) | single-picture runs: a quick proxy shape, its depth map from behind, and the character's back drawn under that depth map; kept only if its outline matches the proxy, so the shape model sees two views that agree | Pixal3D, Qwen-Image 2.1 Turbo + depth ControlNet |
+| 3D shape, Shape check | shape candidates from the front (and back) view, a silhouette carve, a check (judges, you, or none) | Pixal3D (multiview) |
+| Colour | the picture projected onto the mesh, so the rig is built and checked on a coloured model; on sheet runs, surfaces no view sees are filled from their painted neighbours | Blender |
+| Auto-rig, Rig check | 52-bone Mixamo skeleton with skin weights; pose tests, wrist-bend check | Make-It-Animatable |
+| Animate | **the dance in a video** (default) and/or **text prompts**; finger poses from a pose library | GVHMR, UniMate |
+| Texture | face fit from your own picture, the finished texture put on the rig and on every clip | Blender |
 
 ## Features
 
-- **One local web app** (http://127.0.0.1:8765): upload a picture or 3D model, choose every option, start, watch and review. Live node graph of the 14 stages, snapshots at every important moment, 3D viewer (textured / rigged / clay / wireframe / bones), activity timeline, log, downloads (FBX, GLB, Mixamo zip).
-- **You or the judges decide:** Auto (judges only), Override (a 60 s window to overrule them), Manual (you are the judge: candidates come one at a time with *Use this / Try another*). Your call stops the remaining judges.
-- **Broken-hands gate and wrist check:** when the 3D shape is final, the hands are checked for torn or cut-off fingers (they leave open edges in the surface: 0 per 1000 vertices on a healthy hand, about 40 on torn glove fingers). *Repair automatically* (default) runs the repair before rigging (about 12 extra minutes: Turbo redraws, a Pixal3D donor, the planar graft; with `--review manual` you choose the redraw yourself), *Warn me* only points you to the Repair tab, *Off* skips it (`--auto-repair alert|auto|off`). After rigging, the rig check bends each wrist and measures whether the hand stays attached to the forearm. The check does not see fingers that are fused but closed.
-- **Hand poses for the fingers:** the motion models do not drive fingers, so every clip gets its fingers set from a small pose library chosen from the prompt (fist for a punch, open for a wave, grip for a sword, point, thumbs up, relaxed otherwise). Deterministic, no model, works with any motion source; *Set hand poses* in the Animate tab applies it to clips you already have (`python -m homunculus.animate <run> --hands`).
-- **The face of your own picture:** the face texture is taken from your original picture (upscaled), not from the redraw the image model made: the two pictures' face landmarks are matched against each other and the original face is blended into a copy of the redraw, which is then fitted to the model. Falls back to the redraw's face when a face is not readable in either picture. Option *Face texture from* in the launcher and the Fork dialog, `--face-source original|redraw` on the command line.
-- **Simple texture (default):** the texture comes from your upscaled picture / the chosen redraw alone: projected onto the model with the face fitted by landmarks. The extra generated images of the older *Full* mode (a face close-up redraw as the reference, Qwen-cleaned side and back views) can make a model look worse than the picture it came from, so they are opt-in (`--texture full`, or Texture: Full in the launcher and the Fork dialog).
-- **Your picture as is:** with *Use my picture as is* the redraw is skipped and the texture is projected from your own picture (upscaled, never redrawn); the face close-up redraw only helps the 3D shape.
-- **Looks:** keep the picture's style or restyle (3D film, Game, Anime 3D, Clay, Chibi); *All · I pick* makes one candidate per look.
-- **Fork** any stopped run from any stage with new instructions or settings, keeping the original untouched.
-- **Turnaround sheet in** (`--sheet`, or *My picture is a turnaround sheet* in the launcher): give it one picture with the same character four times (front, left, right, back; a T-pose; from ChatGPT, a 3D render, a drawing). It cuts the four figures out, frames them at one scale and builds the 3D shape with the **multiview Pixal3D** (`Pixal3DMultiViewConditioning`) instead of guessing the back and sides from one picture; no redraw is made. The texture is projected from the four real views onto the surfaces that face them, so the back and sides are real, not Pixal3D's guess. Sheet runs are streamlined (one shape, Qwen3.8 as the only judge, no Pixal3D texture sampling): the mesh stage took 633 s instead of 1083 s on one test. See [docs/TURNAROUND.md](docs/TURNAROUND.md) for what a good sheet looks like and what was measured.
-- **Starting from a 3D model** (STL, OBJ, PLY, GLB, FBX): no picture needed; the model is oriented, painted from its own renders and rigged. A model that isn't in a T-pose is put into one first (SkinTokens + a Blender bake).
-- **Text-to-animation** with a typed prompt box and a **preset library** of 190 prompts in 10 categories, each with a 3D **preview** on a male and a female character.
-- **Rigger choice** (Make-It-Animatable default or normal-aware weights) with automatic fallback.
-- **Retexture a part:** brush part of a finished model, then either describe it and let the image model generate that view, or use a reference picture lined up with the model; the picture is projected onto the brushed area on the CPU and can then go onto the rig and every clip. See [docs/RETEXTURE.md](docs/RETEXTURE.md); wishes for later (several characters, props, non-human objects, high-poly) are in [docs/ROADMAP.md](docs/ROADMAP.md).
-- **GLB only, other formats on demand:** the pipeline writes GLB only, so no disk goes to copies you never use. When you are happy with a result, *Accept* offers FBX, USD, OBJ and STL (made from the GLBs, textures shared) and, optionally, deletes the heavy intermediates (about 4.5 GB on a typical run). The package download includes what you picked.
-- **One package per character:** the *Package* button downloads one zip with the rigged FBX/GLB, the textures, every animation clip (GLB + FBX, named after the prompt) and a README with licence notes.
-- **System check:** the *Check* button (or `python -m homunculus.doctor`) tests Studio, ComfyUI and its models, Blender, Make-It-Animatable, UniMate, GPU memory, disk and the Python packages, and says how to fix what is missing.
-- **Delete runs:** the *Delete* button on a run card or run page removes the run and everything made for it (the run folder, the uploaded input, the Mixamo export and ComfyUI's Pixal3D outputs) after showing exactly what goes and how big it is. Runs that are running are protected; files are matched by exact names so another run's files are never touched.
-- **Repair any broken part:** paint over whatever came out wrong (cut-off or fused fingers, a crumpled helmet top, a melted foot), or press *Hands*, *Head*, *Crown* or *Feet*, say what it is in a few words, and the pipeline redraws that part from the side it faces, builds its 3D shape again with Pixal3D and joins it where the broken part met the rest. Several parts can go in one job (each with its own label, view and checks), and the new part is never smaller than what it replaces. Hands also get a five-finger check. Tested on a turnaround-sheet run: hands came out right, repaired feet were worse than the originals (so repair only parts that are really broken); see [docs/REPAIR.md](docs/REPAIR.md) for how it works and what it cannot do yet.
-- **Face fidelity:** early face close-up, face reshape, landmark fit, multi-view texture clean-up.
-- **Safe on one GPU:** a lock file allows one GPU job at a time, a VRAM watchdog cancels at 22.5 GB, and the pipeline unloads every other model before a stage; Studio unloads are verified.
-- **Resumable and notified:** every stage is checkpointed in `runs/<name>/state.json`; desktop notifications say when a run needs you or why it stopped.
-- **Clickable launcher:** `homunculus.html` starts the server and opens the app.
+**Ways in**
+- **One picture**: any style (photo, anime, 3D render). *Use my picture as is* skips the redraw; *Looks* restyles it (3D film, Game, Anime 3D, Clay, Chibi), or makes one candidate per look for you to pick.
+- **A turnaround sheet** (`--sheet`): one picture with the character four times (front, left, back, right). The shape is built from all four views with the multiview Pixal3D, and the four real pictures become the texture, so the back and sides are real instead of guessed. Optional pictures from above and below (`--sheet-top`, `--sheet-bottom`) for the top of the head and the soles. [docs/TURNAROUND.md](docs/TURNAROUND.md)
+- **A 3D model** (STL, OBJ, PLY, GLB, FBX): oriented, painted from its own renders and rigged; a model that is not in a T-pose is put into one first (SkinTokens + a Blender bake).
 
-## Hardware it was built and tested on
+**Making the model right**
+- **Depth phase before the shape:** the back of a single-picture character is drawn under the depth map of a proxy shape and checked against its outline, so Pixal3D does not have to guess it. [docs/DEPTH_VIEWS.md](docs/DEPTH_VIEWS.md)
+- **Repair any part:** paint over what came out wrong (fused fingers, a crumpled helmet top, a melted foot), say what it is, choose the redraw you like; the part is rebuilt with Pixal3D and grafted in with a clean planar cut, every loop at the seam bridged. Torn hands found by the geometric hand check are repaired automatically before rigging (`--auto-repair auto|alert|off`). [docs/REPAIR.md](docs/REPAIR.md)
+- **Retexture a part:** brush an area, then describe it or give a reference picture; it is projected onto the model, the rig and every clip. [docs/RETEXTURE.md](docs/RETEXTURE.md)
+- **Your own face:** the face texture comes from your picture (upscaled and fitted by landmarks), not from the redraw.
 
-| | |
-|---|---|
-| GPU | AMD Radeon RX 7900 XTX class (Navi 31), **24 GB VRAM** (ROCm 7.2, PyTorch 2.14) |
-| CPU / RAM | AMD Ryzen 9 5950X (16 cores) / 60 GB |
-| OS | Ubuntu 26.04 LTS (Linux 7.0), Blender 5.2 |
-| Budget | the whole pipeline is kept under **22.5 GB VRAM**, one heavy model at a time; the desktop runs on the same GPU |
+**Animation**
+- **Dance from a video** (the default source): one person dancing, a steady or moving camera. GVHMR reads the body motion, the camera's own motion is tracked from the background and taken out, and the dance is retargeted onto your rig, with a preview and a side-by-side with the video. In the app: Animate tab, *Copy a dance from a video*; on the command line: `--anim-video clip.mp4 --anim-from 30 --anim-to 50`. [docs/VIDEO_MOTION.md](docs/VIDEO_MOTION.md)
+- **Text to animation** with UniMate: type a motion ("walks forward") or pick from a library of 190 prompts in 10 categories, each with a 3D preview.
+- **Fingers** set from a pose library matched to the motion (fist for a punch, grip for a sword, open for a wave).
+- **Mixamo and mocap:** a Mixamo zip export, and tools to join Mixamo clips, retarget BVH mocap (CMU) and SMPL dance datasets (AIST++, FineDance) onto any rig, and render a clip to MP4 with a moving camera (see *Tools* below).
 
-It is only tested on this one machine. NVIDIA should work for the PyTorch parts (the VRAM probe reads `/sys/class/drm`, see `config.py`, and would need adapting) but is untested.
+**Running it**
+- **One local web app** at http://127.0.0.1:8765: start runs, watch every stage live, review, view the model in 3D (textured, rigged, clay, wireframe, bones), repair, retexture, animate, export.
+- **Who decides:** three local judges (Qwen3.8, Gemma 4, Qwen3.6), you (*Override*: a window to overrule them; *Manual*: you are the judge), or nobody: `--no-llm` runs without any language model and accepts what is built, for you to judge.
+- **Fork** any stopped run from any stage with new instructions or settings; the original stays untouched.
+- **Safe on one GPU:** one GPU job at a time (a lock), a VRAM watchdog, every other model unloaded before a heavy stage.
+- **Resumable and notified:** every stage is checkpointed; desktop notifications say when a run needs you or why it stopped.
+- **Accept and export:** GLB while you work; FBX, USD, OBJ and STL on *Accept*, plus a package zip with the rig, textures and every clip.
+- **System check:** the *Check* button (`python -m homunculus.doctor`) tests every service, model and package and says how to fix what is missing.
 
 ## How long it takes
 
-Measured on one finished image run, *knight_full* (a fantasy knight from a 576×1024 picture, 5 animation prompts × 2 takes, Look = As is, 60 s review windows left to expire):
+Single measurements on the machine below, not averages.
 
-| stage | time | notes |
+| run | time | stage by stage |
 |---|---|---|
-| Ingest | 0 s | |
-| Upscale | 16 s | RealESRGAN 4× |
-| Plan | 37 s | VLM loaded and queried |
-| Redraw + Pick | 7 min 20 s | 4 Qwen-Image candidates, judge panel, 60 s review window |
-| Prepare | 2 min 37 s | clean-up/upscale + face close-up redraw |
-| 3D shape + Shape check | 20 min 47 s | 3 Pixal3D candidates, carve, judges (60 s window), texture bake, face reshape |
-| Colour | 23 s | CPU |
-| Auto-rig + Rig check | 3 min 30 s | MIA + pose renders + judges (60 s window) |
-| Animate | 4 min 30 s | 5 prompts × 2 takes (UniMate: ~1 min for the sample + ~2 min to drive the character, plus loading) |
-| Texture | 12 min 41 s | face fit + 5 extra views through Qwen-Image |
-| Report | 1 s | |
-| **Total** | **52 min 47 s** | |
+| **Single picture**, depth phase, `--no-llm` (an F1 driver, 2026-10-13) | **21 min** | views 3 min 4 s (back view kept, outline IoU 0.88) · 3D shape 15 min 44 s (3 candidates from front + back) · colour 24 s · rig 71 s · texture 27 s |
+| **Turnaround sheet** (the same driver, 2026-10-13) | **17 min** | 3D shape 11 min 5 s · colour 54 s · rig 3 min · texture 9 s |
+| **Dance from a video**, a 10 s slice of a freestyle video with a moving, zooming camera | **2 min 19 s** | GVHMR + camera tracking + retarget about 80 s, then the preview render |
+| A Turbo redraw (576×1024) | **6 s** | after a one-time load of about 25 s |
 
-A run from a **turnaround sheet** (one shape, one judge, no Pixal3D texture; a pair of single measurements): mesh stage 633 s (791 s when the judge rejected the first shape and a second was built), colour 21 to 57 s, rig 75 to 199 s, animate 86 to 128 s (one prompt, 2 takes), final texture 18 to 28 s (it reuses the colour stage's projection).
-
-Other timings: a UniMate batch of 30 prompts × 2 takes takes about 15 minutes, so the whole preset library (190 prompts × 2 takes) is **~90 minutes per character**. These are single measurements, not averages; the Pixal3D and texture stages vary the most with how many candidates the judges reject. A run that is stopped for the judges' retries takes longer. The STL route has no timing yet.
-
-## Setup
-
-Homunculus is a thin orchestrator around other projects, so setup is mostly installing and downloading those. `./setup.sh [all|app|comfy|mia|unimate|skintokens]` does the scriptable parts; it is written from the author's working machine and **has not been run from a clean install**, so treat it as an executable checklist.
-
-**You need:** Linux, a GPU with **24 GB** VRAM (tested on AMD/ROCm; NVIDIA should work for the PyTorch parts), ~**100 GB** of free disk for the models and environments, [uv](https://docs.astral.sh/uv/), git, Node.js (only for `preset_clips`), ffmpeg (only for sample GIFs), [Blender](https://www.blender.org/download/) on your `PATH` (tested with 5.2), the [Hugging Face CLI](https://huggingface.co/docs/huggingface_hub/guides/cli) (`uv tool install huggingface_hub`) and [Unsloth Studio](https://unsloth.ai/docs/new/studio).
-
-1. **Clone and install the app:** `git clone https://github.com/So-bonkers/Homunculus && cd Homunculus && ./setup.sh app`
-2. **Unsloth Studio** ([install guide](https://unsloth.ai/docs/new/studio), [GitHub](https://github.com/unslothai/unsloth)) serves Qwen-Image and the three judges. Run its API on `127.0.0.1:8888` (`unsloth studio --api-only -H 127.0.0.1 -p 8888`, ideally as a user service called `unsloth-api`). The models below load by name the first time the pipeline asks for them, so you do not need to download them by hand (to pre-fetch: `hf download <repo> <file>`).
-3. **ComfyUI + Pixal3D + upscalers:** `./setup.sh comfy` (it also fetches the 11 GB multiview checkpoint that turnaround-sheet runs need; `python -m homunculus.doctor` says whether it is there)
-4. **Make-It-Animatable:** `./setup.sh mia`
-5. **UniMate:** `./setup.sh unimate`, then install UniMate's requirements into `unimate/.venv` (its README lists them)
-6. **SkinTokens** (optional, only for 3D models that are not in a T-pose): `./setup.sh skintokens`, then build it with CMake
-7. `./launch.sh`, drop a picture, press **Start run**.
-
-### Every model and where to get it
-
-| role | model | size | licence | link |
-|---|---|---|---|---|
-| Redraw / face repaint / texture clean-up / Repair / Retexture | **Qwen-Image 2.1 Turbo** in ComfyUI (the int8 base + the turbo LoRA, 8 steps, about 6 s a picture after the load; `HOMUNCULUS_IMAGE_TURBO=0` goes back to the next row) and, as the fallback, **Qwen-Image 2.1 edit** (`qwen-image-2.1-F16.gguf`, 30 steps) via Unsloth Studio | 14.2 GB | Qwen Research | [unsloth/Qwen-Image-2.1-GGUF](https://huggingface.co/unsloth/Qwen-Image-2.1-GGUF) |
-| Planner + judge 1 | **Qwen3.8 27B** vision (`UD-Q4_K_M` + `mmproj-F16`) | 16.5 + 0.9 GB | Apache-2.0 | [unsloth/Qwen3.8-27B-GGUF](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF) |
-| Judge 2 | **Gemma 4 26B-A4B** QAT (`UD-Q4_K_XL` + `mmproj-F16`) | 14.2 + 1.2 GB | Apache-2.0 | [unsloth/gemma-4-26B-A4B-it-qat-GGUF](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF) |
-| Judge 3 | **Qwen3.6 35B-A3B** MTP (`UD-IQ4_NL` + `mmproj-F16`) | 18.5 + 0.9 GB | Apache-2.0 | [unsloth/Qwen3.6-35B-A3B-MTP-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF) |
-| Image → 3D shape | **Pixal3D** `pixal3d_bf16` + DINOv3 encoder + two TRELLIS-2 VAEs, run in ComfyUI; `pixal3d_multiview_bf16` for turnaround-sheet runs (the int8 variant, 5.2 GB, also works) | 11 + 1.2 + 2 GB (+ 11 GB multiview) | MIT | [Comfy-Org/Pixal3D](https://huggingface.co/Comfy-Org/Pixal3D) · [ComfyUI](https://github.com/comfyanonymous/ComfyUI) |
-| Upscaler (photos) | **RealESRGAN x4plus** | 67 MB | BSD-3 | [release v0.1.0](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth) · [project](https://github.com/xinntao/Real-ESRGAN) |
-| Upscaler (anime) | **RealESRGAN x4plus anime 6B** | 18 MB | BSD-3 | [release v0.2.2.4](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth) |
-| Upscaler (3D renders) | **4x-UltraSharp** | 67 MB | CC BY-NC-SA 4.0 | [Kim2091/UltraSharp](https://huggingface.co/Kim2091/UltraSharp) |
-| Auto-rig | **Make-It-Animatable** weights (`output/best/new`) + Mixamo template data | 2.3 GB | Apache-2.0 | [jasongzy/Make-It-Animatable](https://huggingface.co/jasongzy/Make-It-Animatable) · [jasongzy/Mixamo](https://huggingface.co/datasets/jasongzy/Mixamo) · [code](https://github.com/jasongzy/Make-It-Animatable) |
-| Text → motion | **UniMate** `unimate_uniml3d_f60_v3` (one checkpoint) | 1.2 GB | **CC BY-NC 4.0** | [Linzhan/UniMate](https://huggingface.co/Linzhan/UniMate) · [code](https://github.com/Friedrich-M/UniMate) |
-| T-pose for odd-posed 3D models | **SkinTokens** F16 GGUF | 1.2 GB | MIT | [LocalAI-io/SkinTokens-GGUF](https://huggingface.co/LocalAI-io/SkinTokens-GGUF) · [skin-tokens.cpp](https://github.com/localai-org/skin-tokens.cpp) |
-| FBX → GLB converter used by MIA | **FBX2glTF** | small | see repo | [release v0.9.7](https://github.com/facebookincubator/FBX2glTF/releases/tag/v0.9.7) |
-| Face landmarks | **MediaPipe Face Landmarker** (included in `models/`) | 3.6 MB | Apache-2.0 | [guide](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) |
-
-Licences are taken from each model card at the time of writing; read them before commercial use. The judge models are interchangeable: change `JUDGES` and `VLM_MODEL` in `homunculus/config.py`. UniRig ([VAST-AI-Research/UniRig](https://github.com/VAST-AI-Research/UniRig)) and Puppeteer ([Seed3D/Puppeteer](https://github.com/Seed3D/Puppeteer)) were evaluated as alternative riggers but are not used.
+The oldest full measurement (2026-10-07: a knight from one picture, the 30-step image model, three judges with 60 s review windows, 5 text prompts × 2 takes, the old texture views) took 52 min 47 s. Judges and review windows add minutes per gate; the 3D shape stage varies the most.
 
 ## Quick start
 
 ```bash
 git clone https://github.com/So-bonkers/Homunculus && cd Homunculus
-# install everything first: see Setup above
+./setup.sh app             # then the models and services: see Setup
 ./launch.sh                # starts the app and opens http://127.0.0.1:8765
 ```
 
-You also need **Unsloth Studio** (it serves Qwen-Image 2.1 edit and the VLM judges on `127.0.0.1:8888`; `./launch.sh` starts its API as the user unit `unsloth-api` when nothing answers there; `systemctl --user restart unsloth-api` is what the pipeline suggests when it stalls) and Blender on your `PATH`. Then drop a picture on the home page, press **Start run**. From a terminal:
+Drop a picture on the home page and press **Start run**. From a terminal:
 
 ```bash
-.venv/bin/python -m homunculus.orchestrate ~/Downloads/my_picture.jpg --name myhero \
-    --anim "walks forward" --anim "dances salsa, stepping side to side and swaying the hips"
+# a picture, animated with the dance from 0:30 to 0:50 of a video
+.venv/bin/python -m homunculus.orchestrate ~/Downloads/hero.png --name hero \
+    --anim-video ~/Downloads/dance.mp4 --anim-from 30 --anim-to 50
+
+# a turnaround sheet, no language model anywhere, you judge the result
+.venv/bin/python -m homunculus.orchestrate ~/Downloads/sheet.png --name hero_sheet --sheet --no-llm --face off
+
+# text-prompt animation instead
+.venv/bin/python -m homunculus.orchestrate ~/Downloads/hero.png --name hero2 --anim "walks forward" --anim "jumps in place"
 ```
 
-Close other GPU-heavy applications first. Output: `runs/myhero/07_rig/myhero_final.fbx` (+ `.glb`), clips in `runs/myhero/09_animate/clips/`, `contact_sheet.png`, `report.md`.
+Output: `runs/<name>/07_rig/<name>_final.glb` (FBX on Accept), clips in `runs/<name>/09_animate/clips/`, `contact_sheet.png` and `report.md`. Close other GPU-heavy applications first.
 
-Double-clicking **`homunculus.html`** also works: it opens the app if the server is up, otherwise starts it (the first time your browser asks which app opens `homunculus://` links; choose *homunculus launcher*).
+### Handy options
+
+| you want to… | add |
+|---|---|
+| continue after a crash or reboot | the same command again (finished stages are skipped) |
+| redo from a stage | `--from mesh` (stages: `ingest upscale plan edit pick upscale_edit views mesh mesh_check color rig rig_check animate texture report`) |
+| redo one stage | `--only rig` |
+| judge everything yourself | `--review manual` (`override` gives you a window to overrule the judges, `off` lets them decide) |
+| run without any language model | `--no-llm` (set `--face on` or `off` yourself: nothing decides it) |
+| skip the depth phase | `--depth-views off` |
+| keep the picture's own style, no redraw | `--direct` |
+| restyle the character | `--look stylized\|game\|anime3d\|clay\|chibi` (`choose` = one candidate per look, you pick) |
+| a turnaround sheet with top and bottom pictures | `--sheet --sheet-top top.png --sheet-bottom bottom.png` |
+| a bare torso (avoids sleeve cuffs tearing at the wrists) | `--outfit shirtless` |
+| a zip for Mixamo's free auto-rigger and animations | `--zip` → `exports/mixamo_<name>.zip` |
+
+## Tools
+
+Stand-alone scripts in `tools/`, used by the pipeline or on their own:
+
+| tool | what it does |
+|---|---|
+| `retarget_bvh.py` | retarget a BVH (CMU mocap, SMPL datasets) or a Mixamo-rigged FBX/GLB animation onto any Mixamo-skeleton character, with a sanity report (hip height, foot slide) |
+| `smpl_to_bvh.py` | AIST++ (`.pkl`), FineDance (`.npy`) and GVHMR (`.npz`) SMPL motion to BVH |
+| `video_to_smpl.py`, `track_camera.py`, `compensate_camera.py` | video → SMPL motion with GVHMR, and the camera's own motion taken out |
+| `join_clips.py` | Mixamo clips on one character, as single clips and one joined clip (GLB + FBX) |
+| `render_dance.py`, `make_mp4.py` | render an animated character to MP4 with a moving camera (or `--fixed`), Blender in parallel |
+| `depth_guided_views.py` | the depth-guided view experiments behind the depth phase |
 
 ## The app
-Everything happens in one local web app. The server only runs while you work with the pipeline: a run starts it, or use `./web.sh start` / `./web.sh stop` / `./web.sh open [name]`.
-- **Home:** a live 3D turntable of your latest character, the **New run** launcher (drop an image, choose outfit, review mode and window, image style, start-from stage and the Mixamo zip, then **Start run**) and the library of runs with live status and **Stop** buttons. Runs started here run as their own background unit, so closing the browser or restarting the server doesn't stop them; start the same name again to resume.
-- **Run page** (`/#/run/<name>`): the pipeline as a node graph (drag to pan, Ctrl/⌘+scroll to zoom, click a stage for its details and snapshots), a **Your call** panel at every judge decision (large candidates, enlarge, choose / accept / reject, notes, countdown), and tabs for the **Activity** timeline, an interactive **3D model** viewer (textured / rigged, clay, wireframe, bones) and the live **Log**. Downloads (FBX, GLB, Mixamo zip) are in the side panel.
-- **Look = All · I pick (the default):** the first redraw makes one image per look (As is + the five styles below). The run waits for you to pick one, in any review mode except Off (Off uses As is). That image becomes the chosen redraw, and its look is used for the rest of the run. **Redraw all looks** makes a new set (your notes go into it).
-- **Look:** restyle the character in the redraw: *As is* (keep the picture's style), *3D film* (Pixar-like), *Game* (Unreal-like realistic), *Anime 3D* (cel-shaded), *Clay* (claymation / vinyl toy) or *Chibi* (big head; risky for the auto-rigger). The judges then score identity by hair, outfit and colours instead of the exact face. On the command line: `--look choose|asis|stylized|game|anime3d|clay|chibi`.
-- **Looks tab** (run page): **Generate look previews** makes one redraw per look from that run's input (about a minute each; it queues behind a running run), shown next to the raw input and the run's own redraw. **Fork with this look** restarts from Redraw with that look. Command line: `.venv/bin/python -m homunculus.look_preview <name>`.
-- **Manual review = you are the judge:** redraws and 3D shapes come one at a time (**Use this** / **Try another**, with your notes going into the next try), the rig is yours to accept or reject, and the AI judges are skipped entirely. The redraw model stays loaded between tries, so each new redraw starts right away.
-- **Your call beats the judges:** in Override or Manual review, the review panel opens as soon as the candidates exist. If you choose, accept, reject or ask for a redo before the judges finish, the remaining judges are skipped (the running one is stopped and unloaded) and your decision is used. "Keep judges' decision" lets them finish. With review Off the judges always decide.
-- **Fork** (on a run that isn't running): pick a stage to restart from, add instructions (they go into the redraw prompt and to every judge from then on), change outfit / review / zip, and start either a **new run** (only the finished stages before that point are copied; the original stays untouched) or **restart the same run**.
-- `runs/<name>/progress.html` is now just a shortcut that opens the run page.
 
-## Hands
-Hand-specific steps are **off** (`HAND_REFINE_EARLY` and `HAND_VIEWS` in `homunculus/config.py`): no hand close-up redraw before the 3D step, no hand renders or finger counting in the shape check (the judges are told not to judge hands), and no hand/fist close-ups in the rig check (4 pose images instead of 7). The redraw prompt still asks for an open-hand pose, and the code stays in place if you ever switch them back on.
+*A new interface is being built (React, a dark studio layout); the screenshots below show the current one.*
 
-## Order of the stages, rigger and animation
-`ingest → upscale → plan → redraw → pick → prepare → 3D shape → shape check → colour → auto-rig → rig check → animate → texture → report`
-- **Colour** (before rigging, CPU, ~20 s) projects the redraw's front onto the mesh, so the rig is built and checked on a coloured model. **Texture** (last) is the full one (fitted face, extra views); it is put on the rig and on every animation clip.
-- **Rigger:** pick it in the launcher or the Fork dialog (`--rigger mia|mia_normal`): Make-It-Animatable with its default or its normal-aware skin weights. The one you pick is tried first; the other is the fallback.
-- **Animate** uses [UniMate](https://github.com/Friedrich-M/UniMate) (text to motion for any rig, run locally from `unimate/`, own python 3.10 environment). Type prompts in the launcher ("Animations", one per line) or any time later in the run page's **Animate** tab; each gives clips of 1.6 s that play in the 3D viewer and download as GLB and FBX with the final texture. Wherever you type prompts (launcher, Fork dialog, Animate tab) there is a **Preset library** of 190 ready-made prompts in 10 categories (walk & run, jump & move, idle, combat, ranged & magic, dance, gestures, sports, everyday & work, hero & drama): click a prompt to add or remove it, search across all of them, or press 🎲 Surprise me. Every preset can be **previewed**: a ▶ on the prompt plays it in a small 3D player with a **Male / Female** switch (2 takes each, Add / Remove right there, credits under the player); see *Preset previews* below. Prompts describe one motion, not the character ("walks forward"; the "An object ..." wording UniMate was trained on is added for you). Command line: `--anim "walks forward" --anim "jumps in place" --anim-reps 2`, or for a finished run `python -m homunculus.animate <run> --prompt "..."`.
-- **Licence:** UniMate's code is MIT, but its **weights are CC BY-NC 4.0 (non-commercial)** and part of its training data has provenance questions: fine for experiments, check before commercial use.
-
-### Preset previews
-
-The ▶ previews in the prompt library are clips generated once by `python -m homunculus.preset_clips` (resumable, waits for the GPU lock, ~90 min per character) and written to `homunculus/static/presets/`. They are **not stored in git** (about 3 GB); the library works without them, just without the ▶ buttons. Characters: male "miles Morales spiderman rigged" by J.azali, female "Spider Gwen Low Poly" by So7ion, both CC BY 4.0 (see [THIRD_PARTY.md](THIRD_PARTY.md)). The female model has no skeleton, so the job rigs it with Make-It-Animatable first. Edit `homunculus/static/prompt_library.js` and rerun to animate new presets.
-
-## Starting from a 3D model (STL, OBJ, PLY, GLB, FBX)
-Drop the model into the launcher instead of a picture (command line: give the model file as the input). There is no reference picture, so:
-1. **Prepare:** parts are welded, loose debris and a separate display base removed, heavy meshes reduced to ~300k triangles, the model scaled to 1.8 m with UVs and a blank texture.
-2. **Orient and describe:** the planner looks at four grey views to find up and the front (you can pick the front on the run page), then invents colours and materials for it.
-3. **Paint:** the image model paints the exact grey front render (one per look by default); paintings whose outline moved are flagged, since the painting is projected back onto your mesh pixel for pixel.
-   **Not in a T-pose?** If the planner sees a humanoid that is not in a T/A-pose (arms hanging, an action pose), the model is first rigged with SkinTokens (`riggers/`, any pose in, ~3 min on the GPU), the skeleton's joints are rotated into a T-pose, and that pose is baked into the mesh (`blender_tpose.py`), so the painting, rig and animation all see a T-posed model. Limits: humanoids only; capes, long hair and loose cloth get dragged along with the arms; SkinTokens' skeleton has no finger bones (the hands keep their own shape); a model without legs stays without legs. Switch off with `TPOSE_POSED = False`.
-4. **Texture, rig, rig check:** as for picture runs; your geometry is kept as it is (no Pixal3D, no face reshape). Action poses get a warning: the auto-rigger expects a T/A-pose.
-
-## How the face and texture are made (new runs)
-1. **Sharp face before 3D:** the chosen redraw's face is redrawn as a close-up at full resolution *before* Pixal3D, so the mesh gets real eye sockets, nose and lips.
-2. **Face reshape (before rigging):** the mesh's eyes, nose and mouth are moved (front of the face only, at most a few mm) to where the reference has them. If the mesh face is featureless, features are first painted onto a render of it to find where they belong.
-3. **Texture (before rigging, so the rig is built on the finished textured model):** the redraw's front is projected onto the clothes and body; the face is fitted with landmarks (or painted onto the mesh render, then the reference warped onto it); then the model is turned (head ±35°, body ±60°, back), the image model cleans each view's render without changing its layout, and each view is projected back where it sees the surface best. A view whose outline the image model changed is skipped.
-Switches in `homunculus/config.py`: `FACE_REFINE_EARLY`, `FACE_RESHAPE`, `TEXTURE_VIEWS`, `FACE_FIT`.
-
-## Handy options
-
-| you want to… | do this |
+| | |
 |---|---|
-| continue after a crash or reboot | run the exact same command again (finished steps are skipped) |
-| redo from a step, e.g. the 3D model | add `--from mesh` (steps: `ingest upscale plan edit pick upscale_edit views mesh mesh_check texture rig rig_check report`) |
-| redo one step only | add `--only rig_check` |
-| animate with the dance in a video | add `--anim-video clip.mp4 --anim-from 30 --anim-to 50` (one person; at most 180 s; text prompts with `--anim` still work, alone or in addition) |
-| run without any language model (no planner, no shape or rig judges; you judge the result) | add `--no-llm` (and `--face on` or `off`: nothing decides it) |
-| skip the depth phase before the 3D shape | add `--depth-views off` |
-| tell it the picture is anime/cartoon art | add `--style anime` (or `photo`, `3d_render`) |
-| review / override the judges | after every judge decision (redraw pick, 3D shape check, rig check) the progress page at `http://127.0.0.1:8765/<name>/progress.html` shows a yellow **Review** box with the renders and the judges' verdict. You can **Use #k** / **None of these – redraw again** (pick), **Accept – continue** / **Reject – try again** (shape, rig), or keep the judges' decision, and type **observations** that are added to the next redraw prompt and shown to the judges. `--review override` (default): you have 60 s (`--review-grace 300` for longer) before the judges' decision stands. `--review manual`: the run waits for you. `--review off`: fully automatic. |
-| get a zip to upload to Mixamo (their free auto-rigger and animations) | add `--zip` → `exports/mixamo_<name>.zip` (OBJ + MTL + texture; Mixamo rejects Blender's FBX, so use this). For a finished run: `.venv/bin/python -m homunculus.export_zip <name>` |
-| shirtless character (bare torso and arms; avoids sleeve-cuff layers that tear at the wrists) | add `--outfit shirtless` |
-| unclothed character (keep the bare body and anatomy, no clothing or censoring added) | add `--outfit nude` (default `--outfit keep` redraws the outfit from the image). Only for generated or fictional adult characters. |
-| change the redraw wording itself | edit the templates in `homunculus/prompts.py` (`EDIT`, `OUTFIT`, `HANDS`, `STYLE`). The prompt actually used for a run is saved in `runs/<name>/02_plan/edit_prompt.txt`. |
-| run it in the background (survives closing the terminal) | `systemd-run --user --unit=homunculus-myhero --working-directory=$HOME/homunculus --setenv=DISPLAY=$DISPLAY --setenv=WAYLAND_DISPLAY=$WAYLAND_DISPLAY --setenv=DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS .venv/bin/python -m homunculus.orchestrate ~/Downloads/my_picture.jpg --name myhero`, then watch `runs/myhero/progress.html` (the `--setenv` parts let it open the page and send notifications) |
+| ![Home](docs/media/screens/01-home.jpg) **Home**: a live 3D turntable of your latest character | ![Launcher](docs/media/screens/03-launcher.jpg) **New run**: every option in one form |
+| ![Runs](docs/media/screens/06-runs.jpg) **Runs** with live status, Stop and Fork | ![Pipeline](docs/media/screens/07-run-pipeline.jpg) **Run page**: the pipeline as a node graph, activity, downloads |
+| ![Animate](docs/media/screens/09-run-animate.jpg) **Animate**: prompts, presets, clips | ![3D](docs/media/screens/10-run-3d-model.jpg) **3D model**: final, rigged, clay, wireframe, bones |
 
-## Tips for good results
-- **Framing:** one person, full body, facing the camera.
-- **Pose:** arms away from the body and hands open work best. The pipeline redraws everyone into this "A-pose" anyway, but a closer start keeps the face more faithful.
-- **Size:** small or blurry pictures are fine (it upscales first). Text overlays and busy backgrounds get removed for you.
+<details>
+<summary>Snapshots of the stages, from one run</summary>
 
-## When something goes wrong
-- **The terminal shows an error and stops:** look at the end of `runs/<name>/run.log`, then rerun the same command.
-- **Studio stopped answering:** `systemctl --user restart unsloth-api`, then rerun.
-- **The pose test shows torn or stretched skin:** rerun with `--from edit` for a new redraw.
-- **A stale GPU lock after a crash:** delete `runs/.homunculus.lock` if no run is alive.
+| stage | snapshot |
+|---|---|
+| Upscale | ![](docs/media/stages/1-upscale.jpg) |
+| Plan | ![](docs/media/stages/2-plan.jpg) |
+| Redraw + pick | ![](docs/media/stages/3-redraw-pick.jpg) |
+| Face close-up | ![](docs/media/stages/4-face-closeup.jpg) |
+| 3D shape check | ![](docs/media/stages/5-3d-shape-check.jpg) |
+| Quick colour | ![](docs/media/stages/6-quick-colour.jpg) |
+| Rig check | ![](docs/media/stages/7-rig-check.jpg) |
+| Animate | ![](docs/media/stages/8-animate.jpg) |
+| Final texture | ![](docs/media/stages/9-final-texture.jpg) |
 
-## Limitations (honest list)
-- Tested on one AMD machine; `setup.sh` has not been run from a clean install, and some model sources (Pixal3D bf16, the SkinTokens GGUF, the UniMate checkpoint) are only described, not scripted.
+</details>
+
+<details>
+<summary>Text-to-animation samples (UniMate)</summary>
+
+| prompt | male | female |
+|---|---|---|
+| walks forward | ![](docs/media/walk_male.gif) | ![](docs/media/walk_female.gif) |
+| does a spinning kick | ![](docs/media/spinning-kick_male.gif) | ![](docs/media/spinning-kick_female.gif) |
+| dances hip hop | ![](docs/media/hip-hop_male.gif) | ![](docs/media/hip-hop_female.gif) |
+| dances salsa | ![](docs/media/salsa_male.gif) | ![](docs/media/salsa_female.gif) |
+| slashes forward with a sword | ![](docs/media/sword_male.gif) | ![](docs/media/sword_female.gif) |
+| jumps forward | ![](docs/media/jump_male.gif) | ![](docs/media/jump_female.gif) |
+
+UniMate is an early research model: walking, running and simple gestures are good; acrobatics and props are hit and miss. Clips are 1.6 s at 30 fps.
+
+</details>
+
+## Hardware it was built and tested on
+
+| | |
+|---|---|
+| GPU | AMD Radeon RX 7900 XTX class (Navi 31), **24 GB VRAM**, ROCm 7.2, PyTorch 2.14 |
+| CPU / RAM | AMD Ryzen 9 5950X (16 cores) / 60 GB |
+| OS | Ubuntu 26.04 LTS (Linux 7.0), Blender 5.2 |
+| Budget | the pipeline stays under **22.5 GB VRAM**, one heavy model at a time, with the desktop on the same GPU |
+
+Only tested on this machine. NVIDIA should work for the PyTorch parts (the VRAM probe reads `/sys/class/drm` and would need adapting) but is untested.
+
+## Setup
+
+Homunculus orchestrates other projects, so setup is mostly installing and downloading them. `./setup.sh [all|app|comfy|mia|unimate|skintokens]` scripts what it can; it was written on the author's machine and **has not been run from a clean install**, so treat it as a checklist.
+
+**You need:** Linux, a 24 GB GPU, about **215 GB** of free disk (measured here: ComfyUI's models 57 GB, the rigger 30 GB, GVHMR 25 GB, UniMate 21 GB, Python environments 17 GB, the Studio models about 65 GB), [uv](https://docs.astral.sh/uv/), git, ffmpeg, [Blender](https://www.blender.org/download/) on your `PATH` (tested with 5.2), the [Hugging Face CLI](https://huggingface.co/docs/huggingface_hub/guides/cli) and [Unsloth Studio](https://unsloth.ai/docs/new/studio). Node.js only to rebuild the web interface or the preset previews.
+
+1. **The app:** `./setup.sh app`
+2. **Unsloth Studio** serves the planner and the judges (and the fallback image model) on `127.0.0.1:8888`: `unsloth studio --api-only -H 127.0.0.1 -p 8888`, ideally as the user service `unsloth-api`. Models load by name the first time they are needed. Not needed for `--no-llm` runs.
+3. **ComfyUI, Pixal3D, the upscalers and Qwen-Image 2.1 Turbo:** `./setup.sh comfy` (the Doctor lists any model file that is missing)
+4. **Make-It-Animatable:** `./setup.sh mia`
+5. **UniMate:** `./setup.sh unimate`, then UniMate's requirements into `unimate/.venv`
+6. **Dance from video (GVHMR):** its own environment in `gvhmr/`, plus the SMPL and SMPL-X body models (free, non-commercial registration): step by step in [docs/VIDEO_MOTION.md](docs/VIDEO_MOTION.md)
+7. **SkinTokens** (optional, only for 3D models not in a T-pose): `./setup.sh skintokens`, then build it with CMake
+8. `./launch.sh`, drop a picture, **Start run**.
+
+### Every model and where to get it
+
+| role | model | licence | link |
+|---|---|---|---|
+| Every redraw (redraw, close-ups, Repair, Retexture, the depth phase) | **Qwen-Image 2.1** in ComfyUI: `qwen_image_2.1_int8_convrot` (7.3 GB), the text encoder `qwen3vl_8b_int8_convrot` (9.4 GB), the VAE, the **turbo LoRA** `qwen_image_2.1_turbo_lora_avg_rank_178_bf16` (0.9 GB, 8 steps) and the **Fun ControlNet Union** `qwen_image_2.1_fun_controlnet_union_int8_convrot` (3.8 GB, the depth phase); about 22 GB | Qwen Research | [Comfy-Org/Qwen-Image-2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1) |
+| Fallback image model | **Qwen-Image 2.1 edit** `qwen-image-2.1-F16.gguf` via Unsloth Studio (30 steps; `HOMUNCULUS_IMAGE_TURBO=0` uses it everywhere) | Qwen Research | [unsloth/Qwen-Image-2.1-GGUF](https://huggingface.co/unsloth/Qwen-Image-2.1-GGUF) |
+| Planner + judge 1 | **Qwen3.8 27B** vision (`UD-Q4_K_M` + `mmproj-F16`) | Apache-2.0 | [unsloth/Qwen3.8-27B-GGUF](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF) |
+| Judge 2 | **Gemma 4 26B-A4B** QAT (`UD-Q4_K_XL` + `mmproj-F16`) | Apache-2.0 | [unsloth/gemma-4-26B-A4B-it-qat-GGUF](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF) |
+| Judge 3 | **Qwen3.6 35B-A3B** MTP (`UD-IQ4_NL` + `mmproj-F16`) | Apache-2.0 | [unsloth/Qwen3.6-35B-A3B-MTP-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF) |
+| Picture → 3D shape | **Pixal3D** (`pixal3d_bf16`, `pixal3d_multiview_bf16` or its int8 variant) + DINOv3 + two TRELLIS-2 VAEs, in ComfyUI | MIT | [Comfy-Org/Pixal3D](https://huggingface.co/Comfy-Org/Pixal3D) · [ComfyUI](https://github.com/comfyanonymous/ComfyUI) |
+| Upscalers | **RealESRGAN x4plus**, **x4plus anime 6B**, **4x-UltraSharp** | BSD-3 / BSD-3 / CC BY-NC-SA 4.0 | [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) · [UltraSharp](https://huggingface.co/Kim2091/UltraSharp) |
+| Auto-rig | **Make-It-Animatable** + Mixamo template data | Apache-2.0 | [jasongzy/Make-It-Animatable](https://huggingface.co/jasongzy/Make-It-Animatable) · [code](https://github.com/jasongzy/Make-It-Animatable) |
+| Video → motion | **GVHMR** (+ HMR2, ViTPose, YOLOv8) and the **SMPL / SMPL-X** body models | see repo; SMPL and SMPL-X: **non-commercial** | [zju3dv/GVHMR](https://github.com/zju3dv/GVHMR) · [SMPL](https://smpl.is.tue.mpg.de/) · [SMPL-X](https://smpl-x.is.tue.mpg.de/) |
+| Text → motion | **UniMate** `unimate_uniml3d_f60_v3` | **CC BY-NC 4.0** | [Linzhan/UniMate](https://huggingface.co/Linzhan/UniMate) · [code](https://github.com/Friedrich-M/UniMate) |
+| T-pose for posed 3D models | **SkinTokens** F16 GGUF | MIT | [LocalAI-io/SkinTokens-GGUF](https://huggingface.co/LocalAI-io/SkinTokens-GGUF) |
+| Face landmarks | **MediaPipe Face Landmarker** (in `models/`) | Apache-2.0 | [guide](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) |
+
+Licences are taken from each model card at the time of writing; read them before any commercial use. Several parts are non-commercial (UniMate's weights, the SMPL body models, 4x-UltraSharp), and the mocap datasets (AIST++, FineDance) have their own terms.
+
+## Documentation
+
+| | |
+|---|---|
+| [TURNAROUND.md](docs/TURNAROUND.md) | turnaround-sheet runs: what a good sheet looks like, what was measured |
+| [DEPTH_VIEWS.md](docs/DEPTH_VIEWS.md) | the depth phase: how the back view is made and checked, what did not work (sides, top, bottom) |
+| [REPAIR.md](docs/REPAIR.md) | Repair: regions, redraws, the graft and its seam |
+| [RETEXTURE.md](docs/RETEXTURE.md) | retexturing a brushed part |
+| [VIDEO_MOTION.md](docs/VIDEO_MOTION.md) | dance from a video: setup and what to expect |
+| [PAIN_POINTS.md](docs/PAIN_POINTS.md) | the open problems, honestly |
+| [ROADMAP.md](docs/ROADMAP.md) | ideas for later: several characters, props, non-human objects, high-poly |
+
+## Limitations
+
+- Tested on one AMD machine; `setup.sh` has not been run from a clean install.
 - One character at a time; humanoids only for the rig, the T-pose bake and the animation.
-- Hands are not rebuilt: the hand close-up steps are off, and Pixal3D's fingers are as good as they come out of the shape model.
-- UniMate output quality varies (see above); its weights are non-commercial.
-- UniRig and Puppeteer were evaluated as alternative riggers but are not wired into the pipeline.
+- Hands: fused-but-closed fingers are not detected automatically (Repair fixes them when you paint them).
+- Generated side, top and bottom views are not usable yet: the depth phase draws the back only.
+- Video motion is body only (no fingers), depth comes from one camera, fast spins and floor work are weaker.
+- Text-to-motion quality varies, and several model weights are non-commercial (see above).
 
 ## Project layout
-`homunculus/` orchestrator, stages, web server and static app · `comfy/` ComfyUI helpers and graphs · `mia/` rigger runner and pose test · `unimate/bin/` Blender shim for UniMate · `presets/` preview characters · `tools/` sample-GIF rendering · `systemd/` the web unit · `setup.sh`, `launch.sh`, `web.sh`, `homunculus.html`.
+
+`homunculus/` the orchestrator, stages, web server and app · `comfy/` ComfyUI helpers and graphs · `mia/` the rigger · `unimate/` text-to-motion shim · `gvhmr/` video-to-motion environment (not in git) · `tools/` mocap, retargeting and rendering · `docs/` · `setup.sh`, `launch.sh`, `web.sh`.
 
 ## Credits and licences
-Code: GPL-3.0-or-later ([LICENSE](LICENSE)): anyone may use and modify it, and distributed modifications must stay open under the same licence. Third-party tools, models and the two CC BY preview characters, with their required attribution: [THIRD_PARTY.md](THIRD_PARTY.md).
+
+Code: GPL-3.0-or-later ([LICENSE](LICENSE)). Third-party tools, models and the two CC BY preview characters, with their required attribution: [THIRD_PARTY.md](THIRD_PARTY.md).
