@@ -231,6 +231,7 @@ Licences are taken from each model card at the time of writing; read them before
 | [REPAIR.md](docs/REPAIR.md) | Repair: regions, redraws, the graft and its seam |
 | [RETEXTURE.md](docs/RETEXTURE.md) | retexturing a brushed part |
 | [VIDEO_MOTION.md](docs/VIDEO_MOTION.md) | dance from a video: setup and what to expect |
+| [research/](docs/research/00_synthesis.md) | a survey of the field (image to 3D, rigging, human motion, group choreography, image generation, applications) and what it means for this project |
 | [DECISIONS.md](docs/DECISIONS.md) | why the project is the way it is: decisions, their reasons, and open questions |
 | [PAIN_POINTS.md](docs/PAIN_POINTS.md) | the open problems, honestly |
 | [ROADMAP.md](docs/ROADMAP.md) | ideas for later: several characters, props, non-human objects, high-poly |

@@ -22,7 +22,8 @@ Stated by the author on 2026-10-13, in this order of priority:
 | O-1 | Make `/ui` the default at `/` and retire the classic interface? | Yes, once the new one has been used for real runs for a while; the classic one has screenshots in `docs/media/screens/` that are no longer linked |
 | O-2 | Keep Studio (the 30-step model) as a fallback for image generation at all? | Keep until Turbo has run a few dozen jobs without needing it |
 | O-3 | Top and bottom generated views | Not solved (they come out as front views); do not spend time here until the model changes |
-| O-4 | Several characters in one scene: one scene file, or one clip per character composited? | Not decided; needs the application research first (see Direction, 3) |
+| O-4 | Several characters in one scene: one scene file, or one clip per character composited? | Research (2026-10-13, [research/00_synthesis.md](research/00_synthesis.md)) suggests one clip per character composited by a scene builder (all characters share the Mixamo skeleton), with beat-locked offsets and formations; not yet decided by the author |
+| O-5 | Is Homunculus ever a product? | Today it is research/hobby use only: GVHMR (non-profit only, verified), SMPL, UniMate weights (CC BY-NC) and Qwen-Image 2.1 (research licence) block commercial use; Pixal3D's licence is unresolved. Decide before building for outside users; the swaps are listed in the synthesis |
 
 ## Process
 
