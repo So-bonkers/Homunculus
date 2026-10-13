@@ -13,10 +13,17 @@ def ensure(glb):
     if os.path.getsize(glb) <= LIMIT: return glb
     prev = glb[:-4] + "_preview.glb"; marker = prev + ".working"
     if os.path.exists(prev) and os.path.getsize(prev) > 1000: return prev
-    if os.path.exists(marker) and time.time() - os.path.getmtime(marker) < 2400: return None      # already being made, or waiting its turn (up to a few in a queue)
+    if os.path.exists(marker):      # already being made, or waiting its turn: the marker holds the pid of the shell that runs it; a job that was killed leaves a marker nobody owns
+        try: alive = os.path.exists(f"/proc/{int(open(marker).read().strip())}")
+        except ValueError: alive = time.time() - os.path.getmtime(marker) < 60       # just created, the pid is not written yet
+        except OSError: alive = False
+        if alive: return None
+        try: os.remove(marker)
+        except OSError: pass
     try:
-        open(marker, "w").write(str(time.time()))
-        subprocess.Popen(f'flock "{LOCK}" "{C.BLENDER}" -b --python "{C.ROOT / "homunculus" / "blender_preview.py"}" -- "{glb}" "{prev}" 150000 >/dev/null 2>&1; rm -f "{marker}"', shell=True, start_new_session=True,
+        open(marker, "w").write("starting")
+        pr = subprocess.Popen(f'flock "{LOCK}" "{C.BLENDER}" -b --python "{C.ROOT / "homunculus" / "blender_preview.py"}" -- "{glb}" "{prev}" 150000 >/dev/null 2>&1; rm -f "{marker}"', shell=True, start_new_session=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        open(marker, "w").write(str(pr.pid))
     except Exception: pass
     return None
