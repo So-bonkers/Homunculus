@@ -861,6 +861,7 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("image"); ap.add_argument("--name", required=True)
     ap.add_argument("--from", dest="frm", choices=STAGES); ap.add_argument("--only", choices=STAGES); ap.add_argument("--style", choices=list(C.UPSCALERS))
     ap.add_argument("--no-open", action="store_true", help="don't open the live progress page in the browser")
+    ap.add_argument("--depth-views", dest="depth_views", choices=["on", "off"], help="single-picture runs: the depth phase before the 3D shape (default on): a proxy shape, depth maps of it, the back and side views drawn under them with Qwen-Image Turbo, kept only where their outline agrees")
     ap.add_argument("--no-llm", dest="no_llm", action="store_true", help="no language model in the run: no planner (neutral plan; set --face yourself), no shape judges, no rig judges. Everything that is built is accepted; you judge the result")
     ap.add_argument("--review", choices=["off", "override", "manual"], default=None,
                     help="human review after every judge decision (pick, 3D shape, rig): override = judges decide, you can override on the page "
@@ -907,13 +908,14 @@ def main():
     if a.review_grace is not None: R.state["review_grace"] = a.review_grace
     R.state["zip"] = bool(a.zip)
     if R.state.get("sheet"): C.ALL_JUDGES = list(C.JUDGES); C.JUDGES = list(C.SHEET_JUDGES)      # sheet runs: one judge (still unloads all of them)
+    if a.depth_views: R.state["depth_views"] = a.depth_views
     if a.no_llm: R.state["no_llm"] = True; R.state["review_mode"] = "off"
     if a.rigger: R.state["rigger"] = a.rigger
     if a.anim is not None: R.state["anim_prompts"] = [p.strip() for p in a.anim if p.strip()]
     if a.anim_reps: R.state["anim_reps"] = a.anim_reps
+    if a.anim_video: R.state["anim_video"] = {"path": os.path.abspath(a.anim_video), "from": a.anim_from, "to": a.anim_to}
     if a.direct: R.state["direct"] = True; R.state["look"] = "asis"
     if a.sheet_equal_height: R.state["sheet_equal_height"] = True; R.save()
-    if a.anim_video: R.state["anim_video"] = {"path": os.path.abspath(a.anim_video), "from": a.anim_from, "to": a.anim_to}
     for n in ("top", "bottom"):
         if getattr(a, f"sheet_{n}"): R.state.setdefault("sheet_extra", {})[n] = os.path.abspath(getattr(a, f"sheet_{n}")); R.save()
     if a.sheet: R.state["sheet"] = True; R.state["sheet_order"] = a.sheet; R.state["direct"] = True; R.state["look"] = "asis"
@@ -923,7 +925,6 @@ def main():
     R.save(); server.ensure_service()
     todo = [a.only] if a.only else STAGES[STAGES.index(a.frm):] if a.frm else STAGES
     if a.frm or a.only:
-    if a.depth_views: R.state["depth_views"] = a.depth_views
         for s in todo: R.state["stages"].pop(s, None)
         if any(s in todo for s in ("edit", "pick")):
             R.state.update(edit_round=0, fix_notes="", hands=C.DEFAULT_POSE, edit_gen=R.state.get("edit_gen", 0) + 1); R.state.pop("edit_round_limit", None); R.A["edit_candidates"] = []
