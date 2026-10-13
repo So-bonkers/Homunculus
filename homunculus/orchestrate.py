@@ -757,7 +757,7 @@ def hand_gate(R):
         rc, lines, _ = repair._bl(["hands", R.A["mesh_glb"], jd / "hands.json"]); strokes = json.load(open(jd / "hands.json"))["strokes"]
         xs = [s_[0] for s_ in strokes]; mid = (min(xs) + max(xs)) / 2
         strokes = [s_ for s_ in strokes if ("left" in bad and s_[0] > mid) or ("right" in bad and s_[0] < mid)]      # only the broken side(s); the character's left is +X
-        old = R.A["mesh_glb"]; repair.run_job(R, job, [{"strokes": strokes, "label": "the hands", "view": "front"}], "", manual=False)      # unattended: the checks decide
+        old = R.A["mesh_glb"]; repair.run_job(R, job, [{"strokes": strokes, "label": "the hands", "view": "front"}], "", manual=manual(R))      # unattended: the checks decide; --review manual: you choose the redraw
         tex = jd / "repaired_textured.glb"
         if not tex.exists(): raise RuntimeError("the repair produced no textured mesh")
         new = os.path.join(os.path.dirname(old), "mesh_repaired.glb"); shutil.copy(tex, new)

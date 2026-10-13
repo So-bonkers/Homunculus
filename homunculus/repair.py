@@ -126,6 +126,7 @@ def _choose(J, k, cands, crop, label=""):
         score = {p: _overlap(p, crop) for p in cands}; J.log(f"region {k}: shape overlap with the close-up " + ", ".join(f"{os.path.basename(p)[7:-4]}={v:.2f}" for p, v in score.items()) + f" (a repair overlaps 0.5 to {UNCHANGED}; more is the original handed back)")
         ok = [p for p in cands if 0.5 <= score[p] < UNCHANGED]; rank = lambda p: (score[p] >= UNCHANGED, abs(score[p] - 0.85))
     if len(ok) <= 1: return (ok or sorted(cands, key=rank))[0], score, bool(ok)
+    if J.R.state.get("no_llm"): return ok[0], score, True          # --no-llm: no model picks; the first redraw that passed
     what = (label.strip() if label and label.strip() else "a part of the character")
     try:
         vlm.load(J.log)
