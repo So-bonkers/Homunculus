@@ -55,13 +55,13 @@ Diamonds are review gates: three local judges, you, or nobody (`--no-llm`).
 - **Your own face:** the face texture comes from your picture (upscaled and fitted by landmarks), not from the redraw.
 
 **Animation**
-- **Dance from a video** (the default source): one person dancing, a steady or moving camera. GVHMR reads the body motion, the camera's own motion is tracked from the background and taken out, and the dance is retargeted onto your rig, with a preview and a side-by-side with the video. In the app: the **Animate** page (any finished character + a new video, no new run: the job shows its stages with a report each, the time left, then the video and your character playing together), or a run's Animate tab; on the command line: `--anim-video clip.mp4 --anim-from 30 --anim-to 50`. [docs/VIDEO_MOTION.md](docs/VIDEO_MOTION.md)
+- **Dance from a video** (the default source): one person dancing, a steady or moving camera. GVHMR reads the body motion, the camera's own motion is tracked from the background and taken out, and the dance is retargeted onto your rig, with a preview and a side-by-side with the video. In the app: the **Animate** page (`/ui#/animate`: any finished character + a new video, no new run: the job shows its stages with a report each, the time left, then the video and your character playing together), or a run's Animate tab; on the command line: `--anim-video clip.mp4 --anim-from 30 --anim-to 50`. [docs/VIDEO_MOTION.md](docs/VIDEO_MOTION.md)
 - **Text to animation** with UniMate: type a motion ("walks forward") or pick from a library of 190 prompts in 10 categories, each with a 3D preview.
 - **Fingers** set from a pose library matched to the motion (fist for a punch, grip for a sword, open for a wave).
 - **Mixamo and mocap:** a Mixamo zip export, and tools to join Mixamo clips, retarget BVH mocap (CMU) and SMPL dance datasets (AIST++, FineDance) onto any rig, and render a clip to MP4 with a moving camera (see *Tools* below).
 
 **Running it**
-- **One local web app** at http://127.0.0.1:8765: start runs, watch every stage live, review, view the model in 3D (textured, rigged, clay, wireframe, bones), repair, retexture, animate, export.
+- **One local web app** at http://127.0.0.1:8765/ui: start runs, watch every stage live, review, view the model in 3D (textured, rigged, clay, wireframe, bones), repair, retexture, animate, export.
 - **Who decides:** three local judges (Qwen3.8, Gemma 4, Qwen3.6), you (*Override*: a window to overrule them; *Manual*: you are the judge), or nobody: `--no-llm` runs without any language model and accepts what is built, for you to judge.
 - **Fork** any stopped run from any stage with new instructions or settings; the original stays untouched.
 - **Safe on one GPU:** one GPU job at a time (a lock), a VRAM watchdog, every other model unloaded before a heavy stage.
@@ -137,13 +137,15 @@ Stand-alone scripts in `tools/`, used by the pipeline or on their own:
 
 ## The app
 
-*A new interface is being built (React, a dark studio layout); the screenshots below show the current one.*
+Open **http://127.0.0.1:8765/ui** (the classic interface is still at http://127.0.0.1:8765/). A dark studio layout in React: every run live, the pipeline as a rail of 15 stages, a review panel when a gate needs you, a 3D viewer, Repair and Retexture brushes, a command palette (<kbd>Ctrl</kbd>+<kbd>K</kbd>), and a 21-step guided tour (the compass in the top bar; offered on the first visit).
 
 | | |
 |---|---|
-| ![Home](docs/media/screens/01-home.jpg) **Home**: a live 3D turntable of your latest character | ![Launcher](docs/media/screens/03-launcher.jpg) **New run**: every option in one form |
-| ![Runs](docs/media/screens/06-runs.jpg) **Runs** with live status, Stop and Fork | ![Pipeline](docs/media/screens/07-run-pipeline.jpg) **Run page**: the pipeline as a node graph, activity, downloads |
-| ![Animate](docs/media/screens/09-run-animate.jpg) **Animate**: prompts, presets, clips | ![3D](docs/media/screens/10-run-3d-model.jpg) **3D model**: final, rigged, clay, wireframe, bones |
+| ![Home](docs/media/screens/ui-home.jpg) **Home**: a live 3D turntable of your latest character | ![New run](docs/media/screens/ui-new-run.jpg) **New run**: every option in one form |
+| ![Runs](docs/media/screens/ui-runs.jpg) **Runs** with live status, Fork and Delete, and tips | ![Pipeline](docs/media/screens/ui-run-pipeline.jpg) **A run**: the pipeline, the story so far, downloads |
+| ![Animate](docs/media/screens/ui-animate.jpg) **Animate**: pick a finished character and a video; the job's stages, reports and time left, then the video and the character playing together | ![3D](docs/media/screens/ui-run-3d.jpg) **3D model**: final, rigged, clay, wireframe, bones |
+
+![Guided tour](docs/media/screens/ui-tour.jpg)
 
 <details>
 <summary>Snapshots of the stages, from one run</summary>
