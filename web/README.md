@@ -14,3 +14,5 @@ npm run dev          # hot reload on :5173, the API proxied to the Python server
 - `src/features/run/brush.ts`: brush strokes as spheres `[x, y, z, r]` in the model root's own coordinates, as the server expects.
 - The animation prompt library is read at run time from `homunculus/static/prompt_library.js` (also used by `preset_clips.py`).
 - An open app reloads itself when a new build appears (`version.json`).
+- `src/features/tour/Tour.tsx`: the guided tour. Steps point at `data-tour="…"` attributes and say which page they are on; a step whose target is missing (no runs yet) is skipped. Offered once on the first visit (`localStorage` `homunculus_tour_offered` / `homunculus_tour_done`).
+- `src/features/animate/`: the dance-from-video job view (`/api/video/<run>`, stages with estimates and reports) and `SyncPlayer`, where the reference video is the clock that poses the 3D clip every frame. Seeking needs HTTP Range answers, which `server.py` gives for run files.

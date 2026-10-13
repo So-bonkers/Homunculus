@@ -161,6 +161,9 @@ export class Viewer {
   /** Clip time (0..1) for a scrubber; seek(f) moves the clip there. */
   clipTime() { return this.action ? (this.action.time % this.action.getClip().duration) / this.action.getClip().duration : 0; }
   seek(f: number) { if (this.action && this.mixer) { this.action.time = f * this.action.getClip().duration; this.mixer.update(0); } }
+  /** Clip length in seconds (0 without a clip); setTime(t) poses the clip at t seconds (a video drives the clip this way, the action paused). */
+  clipDuration() { return this.action ? this.action.getClip().duration : 0; }
+  setTime(t: number) { if (this.action && this.mixer) { this.action.time = Math.max(0, Math.min(t, this.action.getClip().duration - 1e-3)); this.mixer.update(0); } }
 
   /** Orbit to an azimuth in degrees (0 = front, 90 = the model's right side), keeping the distance. */
   view(azDeg: number, elevation = 0.12) {

@@ -21,6 +21,14 @@ def live_runs():
     """Names of runs whose orchestrator process is alive right now (a run that was stopped or crashed is not 'in progress')."""
     return set(_live_pids())
 
+class _Part:
+    """The first n bytes of an open file, for copyfile() (a 206 answer)."""
+    def __init__(self, f, n): self.f, self.left = f, n
+    def read(self, k=-1):
+        if self.left <= 0: return b""
+        k = self.left if k is None or k < 0 else min(k, self.left); d = self.f.read(k); self.left -= len(d); return d
+    def close(self): self.f.close()
+
 class H(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
@@ -49,6 +57,8 @@ class H(SimpleHTTPRequestHandler):
                                     "accepted": S.get("accepted"), "status": st})
         if path == "/api/doctor":
             from . import doctor; return self._json(200, doctor.checks())
+        if path.startswith("/api/video/"):       # dance-from-video jobs of a run: stages, estimates, reports
+            from . import api; return self._json(200, api.video_jobs(os.path.basename(path)))
         if path.startswith("/api/retex/"):
             from . import api; return self._json(200, api.retex(os.path.basename(path)))
         if path.startswith("/api/repair/"):
@@ -104,6 +114,22 @@ class H(SimpleHTTPRequestHandler):
                  ".woff2": "font/woff2", ".woff": "font/woff", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".json": "application/json", ".glb": "model/gltf-binary", ".mp4": "video/mp4"}.get(os.path.splitext(p)[1], "application/octet-stream")
         data = open(p, "rb").read(); self.send_response(200); self.send_header("Content-Type", ctype); self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-cache" if "/vendor/" not in p else "max-age=86400"); self.end_headers(); self.wfile.write(data)
+    def send_head(self):
+        """Run files with HTTP Range support: a browser can only seek in a video (scrub a preview, play the reference in step with a clip) when the server answers byte ranges."""
+        import re
+        rng = self.headers.get("Range"); path = self.translate_path(self.path)
+        m = re.fullmatch(r"bytes=(\d*)-(\d*)", (rng or "").strip())
+        if not m or not (m.group(1) or m.group(2)) or not os.path.isfile(path): return super().send_head()
+        size = os.path.getsize(path)
+        if m.group(1): a = int(m.group(1)); b = min(int(m.group(2)) if m.group(2) else size - 1, size - 1)
+        else: a = max(0, size - int(m.group(2))); b = size - 1
+        if a >= size or b < a:
+            self.send_response(416); self.send_header("Content-Range", f"bytes */{size}"); self.end_headers(); return None
+        f = open(path, "rb"); f.seek(a)
+        self.send_response(206); self.send_header("Content-Type", self.guess_type(path)); self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Range", f"bytes {a}-{b}/{size}"); self.send_header("Content-Length", str(b - a + 1))
+        self.send_header("Last-Modified", self.date_time_string(os.path.getmtime(path))); self.end_headers()
+        return _Part(f, b - a + 1)
     def guess_type(self, path):
         return "model/gltf-binary" if str(path).endswith(".glb") else super().guess_type(path)
     def do_POST(self):

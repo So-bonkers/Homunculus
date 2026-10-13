@@ -68,10 +68,16 @@ def runs(live):
         out.append({"name": d, "status": _status(S, d in live), "live": d in live, "thumb": _thumb(d, S), "input": _url(d, S.get("artifacts", {}).get("input")),
                     "file": os.path.basename(S.get("input", "")), "done": done, "total": len(STAGES), "current": LABEL.get(cur, cur) if cur else (("Repair: " + REPAIR_STEP.get(rep.get("step"), "working")) if rep else None),
                     "repair": rep, "last": snaps[-1]["title"] if snaps else "", "t_start": S.get("t_start"), "t_total": S.get("t_total"),
-                    "updated": os.path.getmtime(C.RUNS / d / "state.json"), "outfit": S.get("outfit", "keep"),
+                    "updated": os.path.getmtime(C.RUNS / d / "state.json"), "outfit": S.get("outfit", "keep"), "rigged": bool(_url(d, S.get("artifacts", {}).get("rig_fbx"))), "dances": _dances(d),
                     "model": next((_url(d, S.get("artifacts", {}).get(k)) for k, _ in GLB_KEYS if _url(d, S.get("artifacts", {}).get(k))), None)})
     out.sort(key=lambda r: -r["updated"])
     return out
+
+
+def _dances(name):
+    """How many dance-from-video jobs a run has (the tour shows a run that has one)."""
+    try: return sum(1 for f in os.listdir(C.RUNS / name / "09_animate" / "video_jobs") if f.endswith(".json"))
+    except Exception: return 0
 
 
 def _repairing(name):
@@ -86,6 +92,28 @@ def _repairing(name):
 
 
 REPAIR_STEP = {"queued": "waiting for the GPU", "regions": "redrawing", "merge": "joining", "bake": "baking the texture"}
+
+
+def video_jobs(name):
+    """The dance-from-video jobs of a run (newest first): stages with estimates and a report each (stages/video_progress.py), report paths as URLs, and the clip when done."""
+    d0 = C.RUNS / name / "09_animate" / "video_jobs"; out = []
+    try: files = sorted((f for f in os.listdir(d0) if f.endswith(".json")), reverse=True)[:12]
+    except Exception: files = []
+    clips = {}
+    try: clips = {c["id"]: c for c in json.load(open(C.RUNS / name / "09_animate" / "animations.json")).get("clips", [])}
+    except Exception: pass
+    for f in files:
+        try: J = json.load(open(d0 / f))
+        except Exception: continue
+        if J.get("status") in ("queued", "running") and time.time() - os.path.getmtime(d0 / f) > 3 * 3600: J["status"] = "failed"; J["error"] = J.get("error") or "the job stopped answering"
+        for st in J.get("stages", []):
+            r = st.get("report")
+            if r: st["report"] = {"text": r.get("text"), "images": [u for u in (_url(name, i) for i in r.get("images") or []) if u], "video": _url(name, r.get("video"))}
+        c = clips.get(J.get("clip"))
+        J["result"] = {"id": c["id"], "url": _url(name, c.get("textured") or c.get("glb")), "ref": _url(name, c.get("ref")), "compare": _url(name, c.get("compare")),
+                       "video": _url(name, c.get("video")), "fbx": _url(name, c.get("textured_fbx") or c.get("fbx")), "thumb": _url(name, c.get("thumb"))} if c else None
+        J["now"] = time.time(); out.append(J)
+    return out
 
 
 def retex(name):
@@ -177,7 +205,8 @@ def run(name, live):
         am = json.load(open(C.RUNS / name / "09_animate" / "animations.json"))
         anims = {"status": am.get("status"), "error": am.get("error"), "clips": [
             {"id": c["id"], "prompt": c.get("prompt", ""), "rep": c.get("rep", 0), "url": _url(name, c.get("textured") or c.get("glb")), "fbx": _url(name, c.get("textured_fbx") or c.get("fbx")),
-             "thumb": _url(name, c.get("thumb")), "textured": bool(c.get("textured")), "source": c.get("source"), "video": _url(name, c.get("video")), "compare": _url(name, c.get("compare"))} for c in am.get("clips", []) if _url(name, c.get("textured") or c.get("glb"))]}
+             "thumb": _url(name, c.get("thumb")), "textured": bool(c.get("textured")), "source": c.get("source"), "video": _url(name, c.get("video")), "compare": _url(name, c.get("compare")),
+             "ref": _url(name, c.get("ref")), "range": c.get("range")} for c in am.get("clips", []) if _url(name, c.get("textured") or c.get("glb"))]}
     except Exception: pass
     looks = None
     try:

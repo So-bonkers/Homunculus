@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Command } from "cmdk";
-import { Activity, BookOpen, Boxes, CircleHelp, Library, Plus, Search, Stethoscope } from "lucide-react";
+import { Activity, BookOpen, Boxes, CircleHelp, Compass, Film, Library, Plus, Search, Stethoscope } from "lucide-react";
 import { useLive, useRuns } from "@/lib/api";
 import { Button, Dot, Kbd, Tip } from "@/components/ui";
 import { LightboxProvider, StatusPill } from "@/components/common";
@@ -12,7 +12,9 @@ import NewRun from "@/pages/NewRun";
 import RunPage from "@/pages/Run";
 import LibraryPage from "@/pages/Library";
 import SystemPage from "@/pages/System";
+import AnimatePage from "@/pages/Animate";
 import { useVersionReload } from "@/lib/version";
+import { TourProvider, useTour } from "@/features/tour/Tour";
 
 function Logo() {
   return (
@@ -41,6 +43,7 @@ function Palette({ open, setOpen, onDoctor }: { open: boolean; setOpen: (v: bool
   const { data: runs } = useRuns();
   const nav = useNavigate();
   const go = (p: string) => { setOpen(false); nav(p); };
+  const tour = useTour();
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 pt-[14vh] backdrop-blur-sm" onClick={() => setOpen(false)}>
@@ -56,7 +59,9 @@ function Palette({ open, setOpen, onDoctor }: { open: boolean; setOpen: (v: bool
             {[
               { k: "new", label: "New run", icon: Plus, run: () => go("/new") },
               { k: "runs", label: "All runs", icon: Boxes, run: () => go("/") },
+              { k: "anim", label: "Animate a character with a video", icon: Film, run: () => go("/animate") },
               { k: "lib", label: "Animation library", icon: Library, run: () => go("/library") },
+              { k: "tour", label: "Take the guided tour", icon: Compass, run: () => { setOpen(false); tour.start(); } },
               { k: "sys", label: "Check the system", icon: Stethoscope, run: () => { setOpen(false); onDoctor(); } },
               { k: "docs", label: "Documentation on GitHub", icon: BookOpen, run: () => { setOpen(false); window.open("https://github.com/So-bonkers/Homunculus#readme", "_blank"); } },
             ].map((a) => (
@@ -82,6 +87,11 @@ function Palette({ open, setOpen, onDoctor }: { open: boolean; setOpen: (v: bool
   );
 }
 
+function TourButton() {
+  const tour = useTour();
+  return <Tip content="A two-minute guided tour"><Button data-tour="tour" variant="ghost" size="icon" onClick={tour.start}><Compass /></Button></Tip>;
+}
+
 export default function App() {
   const [pal, setPal] = React.useState(false);
   const [doctor, setDoctor] = React.useState(false);
@@ -98,6 +108,7 @@ export default function App() {
 
   return (
     <LightboxProvider>
+      <TourProvider>
       <div className="flex min-h-full flex-col">
         <header className="glass sticky top-0 z-30 flex h-14 items-center gap-4 border-x-0 border-t-0 px-4 lg:px-6">
           <Link to="/" className="flex items-center gap-2.5">
@@ -105,22 +116,31 @@ export default function App() {
             <span className="text-[15px] font-semibold tracking-tight">Homunculus</span>
             <span className="rounded-md border border-line-strong px-1.5 py-0.5 font-mono text-[10px] text-ink-3">v1.6</span>
           </Link>
-          <nav className="ml-4 hidden items-center gap-1 md:flex">
+          <nav className="ml-4 hidden items-center gap-1 md:flex" data-tour="nav">
             <NavLink to="/" end className={link}>Runs</NavLink>
             <NavLink to="/new" className={link}>New run</NavLink>
+            <NavLink to="/animate" className={link}>Animate</NavLink>
             <NavLink to="/library" className={link}>Library</NavLink>
             <NavLink to="/system" className={link}>System</NavLink>
           </nav>
           <div className="ml-auto flex items-center gap-2">
             <LiveChip />
-            <button onClick={() => setPal(true)} className="hidden h-8 items-center gap-2 rounded-lg border border-line-strong bg-black/20 px-3 text-xs text-ink-3 transition hover:text-ink-2 sm:flex">
+            <button data-tour="search" onClick={() => setPal(true)} className="hidden h-8 items-center gap-2 rounded-lg border border-line-strong bg-black/20 px-3 text-xs text-ink-3 transition hover:text-ink-2 sm:flex">
               <Search className="size-3.5" /> Search <Kbd>⌘K</Kbd>
             </button>
-            <Tip content="Check that the services, models and GPU are ready"><Button variant="ghost" size="icon" onClick={() => setDoctor(true)}><Activity /></Button></Tip>
-            <Tip content="Tips for good results"><Link to="/?tips=1"><Button variant="ghost" size="icon"><CircleHelp /></Button></Link></Tip>
-            <Link to="/new"><Button variant="primary" size="sm"><Plus /> New run</Button></Link>
+            <Tip content="Check that the services, models and GPU are ready"><Button data-tour="doctor" variant="ghost" size="icon" onClick={() => setDoctor(true)}><Activity /></Button></Tip>
+            <TourButton />
+            <span className="hidden sm:inline-flex"><Tip content="Tips for good results"><Link to="/?tips=1"><Button variant="ghost" size="icon"><CircleHelp /></Button></Link></Tip></span>
+            <Link to="/new"><Button variant="primary" size="sm" aria-label="New run"><Plus /><span className="hidden sm:inline">New run</span></Button></Link>
           </div>
         </header>
+        <nav className="flex gap-1 overflow-x-auto border-b border-line px-3 py-1.5 [scrollbar-width:none] md:hidden">
+          <NavLink to="/" end className={link}>Runs</NavLink>
+          <NavLink to="/new" className={link}>New run</NavLink>
+          <NavLink to="/animate" className={link}>Animate</NavLink>
+          <NavLink to="/library" className={link}>Library</NavLink>
+          <NavLink to="/system" className={link}>System</NavLink>
+        </nav>
         <main className="flex-1">
           <Routes>
             <Route path="/" element={<Home />} />
@@ -128,6 +148,8 @@ export default function App() {
             <Route path="/tips" element={<Home />} />
             <Route path="/new" element={<NewRun />} />
             <Route path="/run/:name" element={<RunPage />} />
+            <Route path="/animate" element={<AnimatePage />} />
+            <Route path="/animate/:name" element={<AnimatePage />} />
             <Route path="/library" element={<LibraryPage />} />
             <Route path="/system" element={<SystemPage />} />
             <Route path="*" element={<Home />} />
@@ -136,6 +158,7 @@ export default function App() {
       </div>
       <Palette open={pal} setOpen={setPal} onDoctor={() => setDoctor(true)} />
       <DoctorDialog open={doctor} onOpenChange={setDoctor} />
+      </TourProvider>
     </LightboxProvider>
   );
 }

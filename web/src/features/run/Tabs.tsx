@@ -1,7 +1,10 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { Clapperboard, Download, Film, GitFork, Hand, Image as ImageIcon, Loader2, Pause, Play, Sparkles, Upload, Wand2, X } from "lucide-react";
-import { api, q, upload, useInvalidate } from "@/lib/api";
+import { api, q, upload, useInvalidate, useVideoJobs } from "@/lib/api";
+import { Link } from "react-router-dom";
+import { SyncPlayer } from "@/features/animate/SyncPlayer";
+import { VideoJobCard } from "@/features/animate/VideoJob";
 import type { Clip, RunDetail } from "@/lib/types";
 import { Badge, Button, Empty, Field, Input, Panel, Progress, Segmented, Select, Spinner, Textarea } from "@/components/ui";
 import { Img, useLightbox } from "@/components/common";
@@ -77,6 +80,25 @@ function ClipPlayer({ clips }: { clips: Clip[] }) {
   const [speed, setSpeed] = React.useState("1");
   const [t, setT] = React.useState(0);
   React.useEffect(() => { if (!v) return; const i = setInterval(() => setT(v.clipTime()), 50); return () => clearInterval(i); }, [v]);
+  const list = (
+    <div className="grid max-h-[min(64vh,640px)] content-start gap-1.5 overflow-y-auto pr-1">
+      {[...clips].reverse().map((x) => (
+        <button key={x.id} onClick={() => setId(x.id)} className={cn("flex items-center gap-3 rounded-xl border p-2 text-left transition", c?.id === x.id ? "border-accent/60 bg-accent/10" : "border-line hover:border-white/15")}>
+          <Img src={x.thumb} className="size-12 shrink-0 rounded-lg" />
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-medium">{x.prompt}</div>
+            <div className="flex items-center gap-1.5 text-[11px] text-ink-3">{x.source === "video" ? <><Film className="size-3 text-cyan" /> from a video</> : `take ${x.rep + 1}`}{x.textured && " · textured"}</div>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+  if (c?.ref) return (        // a dance from a video: the video and the character play together
+    <div className="grid gap-3 xl:grid-cols-[1fr_260px]">
+      <SyncPlayer key={c.id} model={c.url} reference={c.ref} compare={c.compare} preview={c.video} fbx={c.fbx} />
+      {list}
+    </div>
+  );
   return (
     <div className="grid gap-3 lg:grid-cols-[1fr_280px]">
       <div className="grid gap-2">
@@ -97,17 +119,7 @@ function ClipPlayer({ clips }: { clips: Clip[] }) {
           <div className="overflow-hidden rounded-xl border border-line"><div className="border-b border-line px-3 py-2 text-xs text-ink-3">Side by side with the video</div><video src={c.compare} controls preload="metadata" className="w-full" /></div>
         )}
       </div>
-      <div className="grid max-h-[min(64vh,640px)] content-start gap-1.5 overflow-y-auto pr-1">
-        {[...clips].reverse().map((x) => (
-          <button key={x.id} onClick={() => setId(x.id)} className={cn("flex items-center gap-3 rounded-xl border p-2 text-left transition", c?.id === x.id ? "border-accent/60 bg-accent/10" : "border-line hover:border-white/15")}>
-            <Img src={x.thumb} className="size-12 shrink-0 rounded-lg" />
-            <div className="min-w-0">
-              <div className="truncate text-[13px] font-medium">{x.prompt}</div>
-              <div className="flex items-center gap-1.5 text-[11px] text-ink-3">{x.source === "video" ? <><Film className="size-3 text-cyan" /> from a video</> : `take ${x.rep + 1}`}{x.textured && " · textured"}</div>
-            </div>
-          </button>
-        ))}
-      </div>
+      {list}
     </div>
   );
 }
@@ -116,6 +128,8 @@ export function AnimateTab({ d }: { d: RunDetail }) {
   const inv = useInvalidate();
   const rigged = d.stages.find((s) => s.key === "rig")?.status === "done" || d.files.some((f) => /rig/i.test(f.label));
   const A = d.animations; const busy = A?.status === "queued" || A?.status === "running";
+  const { data: vjobs } = useVideoJobs(d.name);
+  const vjob = vjobs?.find((j) => j.status === "queued" || j.status === "running" || (j.finished && d.now - j.finished < 600));
   const [prompts, setPrompts] = React.useState("");
   const [reps, setReps] = React.useState("2");
   const [vfile, setVfile] = React.useState<File | null>(null);
@@ -147,7 +161,7 @@ export function AnimateTab({ d }: { d: RunDetail }) {
       {A?.status === "failed" && A.error && <div className="rounded-xl border border-bad/30 bg-bad/8 px-4 py-3 text-[13px] text-bad">Last attempt failed: {A.error}</div>}
       <div className={cn("grid gap-4 xl:grid-cols-2", !rigged && "pointer-events-none opacity-50")}>
         <Panel className="p-5" data-tour="video">
-          <div className="mb-1 flex items-center gap-2"><Film className="size-4 text-cyan" /><h3 className="text-[15px] font-semibold">Copy a dance from a video</h3><Badge tone="cyan">default</Badge></div>
+          <div className="mb-1 flex items-center gap-2"><Film className="size-4 text-cyan" /><h3 className="text-[15px] font-semibold">Copy a dance from a video</h3><Badge tone="cyan">default</Badge><Link to={`/animate/${encodeURIComponent(d.name)}`} className="ml-auto text-[12px] text-ink-3 hover:text-ink">Animate studio →</Link></div>
           <p className="mb-4 text-[13px] text-ink-3">One person dancing, one continuous shot, whole body in view. The motion is read on the GPU (the camera's own motion taken out) and put on this rig, with a side-by-side preview. About 4 minutes for 20 seconds; body only, no fingers.</p>
           <label className={cn("flex cursor-pointer items-center gap-3 rounded-xl border-2 border-dashed px-4 py-4 transition", vfile ? "border-cyan/40 bg-cyan/5" : "border-line-strong hover:border-cyan/40")}>
             <input type="file" accept="video/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0] ?? null; setVfile(f); setVurl((u) => { if (u) URL.revokeObjectURL(u); return f ? URL.createObjectURL(f) : null; }); }} />
@@ -174,7 +188,8 @@ export function AnimateTab({ d }: { d: RunDetail }) {
           </div>
         </Panel>
       </div>
-      {busy && <div className="flex items-center gap-3 rounded-xl border border-accent/30 bg-accent/8 px-4 py-3 text-[13px]"><Spinner className="text-accent" /> A clip is being made; the Log tab has the details.</div>}
+      {vjob && <VideoJobCard key={vjob.job} j={vjob} />}
+      {busy && !(vjob && (vjob.status === "queued" || vjob.status === "running")) && <div className="flex items-center gap-3 rounded-xl border border-accent/30 bg-accent/8 px-4 py-3 text-[13px]"><Spinner className="text-accent" /> A clip is being made; the Log tab has the details.</div>}
       {A?.clips?.length ? <ClipPlayer clips={A.clips} /> : <Empty icon={<Clapperboard />} title={busy ? "Making the first clips…" : "No clips yet."}>Copy a dance from a video or type a prompt above.</Empty>}
     </div>
   );

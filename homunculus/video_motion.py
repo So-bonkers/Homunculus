@@ -1,10 +1,11 @@
 """Copy the dance of a video onto an existing run's rigged character (queued from the web app).
     python -m homunculus.video_motion <run> <video> --start 30 --end 50 [--title "my dance"] [--label "..."] [--yaw 180]
 Waits for the GPU pipeline lock, so it can be queued while a run is still going. The clip appears in the run's Animate tab."""
-import argparse, fcntl, json, os
+import argparse, fcntl, json, os, time
 from . import config as C, notify
 from .orchestrate import Run
 from .stages import animate, video_motion
+from .stages.video_progress import Progress
 
 
 def main():
@@ -13,16 +14,18 @@ def main():
     a = ap.parse_args()
     S = json.load(open(C.RUNS / a.run / "state.json")); R = Run(S["input"], a.run)
     M = animate._manifest(R); M["status"] = "queued"; M["error"] = None; animate._save(R, M)
+    job = time.strftime("%Y%m%d_%H%M%S")      # the web app follows this job as stages with estimates (stages/video_progress.py)
+    P = Progress(animate._dir(R) / "video_jobs" / f"{job}.json", job, a.run, a.title or os.path.splitext(os.path.basename(a.video))[0], a.video, a.start, a.end); P.begin("queued")
     ok, why = video_motion.available()
     if not ok:
-        M["status"] = "failed"; M["error"] = "Dance from video is not available: " + why; animate._save(R, M); notify.send(f"homunculus · {a.run}: dance from video failed", why[:200], critical=True); raise SystemExit(why)
+        M["status"] = "failed"; M["error"] = "Dance from video is not available: " + why; animate._save(R, M); P.fail("Dance from video is not available: " + why); notify.send(f"homunculus · {a.run}: dance from video failed", why[:200], critical=True); raise SystemExit(why)
     lockf = open(C.RUNS / ".homunculus.lock", "a+")
     try: fcntl.flock(lockf, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         R.log("[video] waiting for the GPU pipeline to finish its current run"); fcntl.flock(lockf, fcntl.LOCK_EX)
     lockf.seek(0); lockf.truncate(); lockf.write(f"homunculus dance from video for '{a.run}' (pid {os.getpid()})"); lockf.flush()
     R = Run(S["input"], a.run)         # re-read the state: the run that held the lock may have changed it
-    try: c = video_motion.generate(R, a.video, a.start, a.end, label=a.label, title=a.title, yaw=a.yaw)
+    try: c = video_motion.generate(R, a.video, a.start, a.end, label=a.label, title=a.title, yaw=a.yaw, progress=P)
     except Exception as e:
         notify.send(f"homunculus · {a.run}: dance from video failed", str(e)[:200], critical=True); raise
     notify.send(f"homunculus · {a.run}", f"Dance copied from the video. Open http://127.0.0.1:8765/#/run/{a.run}")

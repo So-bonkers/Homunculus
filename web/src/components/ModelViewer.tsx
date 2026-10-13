@@ -95,7 +95,7 @@ export const ModelViewer = React.forwardRef<ModelViewerHandle, Props>(function M
       )}
       {children}
       {toolbar && !hero && url && (
-        <div className="glass absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-0.5 rounded-xl p-1 shadow-2xl">
+        <div className="glass absolute bottom-3 left-1/2 flex max-w-[calc(100%-16px)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-xl p-1 shadow-2xl [scrollbar-width:none]">
           {toolbarExtra}
           {toolbarExtra && <span className="mx-1 h-5 w-px bg-white/10" />}
           <Tip content="Clay: the shape without its texture"><button className={btn(opt.clay)} onClick={() => toggle("clay")}><Sparkles /></button></Tip>

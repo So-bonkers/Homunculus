@@ -25,7 +25,7 @@ export default function SystemPage() {
         <div className="grid gap-6">
           {[...groups.map(([title, test]) => { const xs = data.filter((c) => !used.has(c.name) && test(c.name)); xs.forEach((c) => used.add(c.name)); return [title, xs] as const; }),
             ["Other", data.filter((c) => !used.has(c.name))] as const].filter(([, xs]) => xs.length).map(([title, xs]) => (
-            <Panel key={title} className="p-5">
+            <Panel key={title} className="min-w-0 p-5 [overflow-wrap:anywhere]">
               <h2 className="mb-3 text-sm font-semibold">{title}</h2>
               <DoctorList checks={xs as any} />
             </Panel>

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   AlertTriangle, ArrowLeft, Box, Clapperboard, Download, FileArchive, FileText, GitFork, Images, Package, PackageCheck, PaintBucket, Palette, ScrollText, Square, Trash2, Wrench,
@@ -100,7 +100,9 @@ export default function RunPage() {
   const { data: d, error, isLoading } = useRun(name);
   const now = useClock(d);
   const [sel, setSel] = React.useState<string | null>(null);
-  const [tab, setTab] = React.useState("activity");
+  const [sp] = useSearchParams();
+  const [tab, setTab] = React.useState(sp.get("tab") || "activity");
+  React.useEffect(() => { const t = sp.get("tab"); if (t) setTab(t); }, [sp]);        // ?tab=animate opens a tab (the tour uses it)
   const [fork, setFork] = React.useState<{ stage?: string | null; look?: string } | null>(null);
   const [accept, setAccept] = React.useState(false);
   const [del, setDel] = React.useState(false);

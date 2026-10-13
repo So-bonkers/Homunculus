@@ -17,7 +17,7 @@ function Hero({ runs }: { runs: RunSummary[] | undefined }) {
   const withModel = runs?.filter((r) => r.model) ?? [];
   const hero = withModel.find((r) => r.status === "finished") ?? withModel[0];
   return (
-    <section className="relative overflow-hidden border-b border-line">
+    <section className="relative overflow-hidden border-b border-line" data-tour="hero">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(800px_400px_at_75%_40%,rgba(139,108,255,0.16),transparent_70%)]" />
       <div className="relative mx-auto grid max-w-7xl items-center gap-10 px-4 py-14 lg:grid-cols-[1.05fr_1fr] lg:px-6 lg:py-20">
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.2, 0.8, 0.2, 1] }}>
@@ -127,11 +127,11 @@ export default function Home() {
             </div>
           </section>
         )}
-        <section>
+        <section data-tour="runs">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
             <div><h2 className="text-2xl font-semibold tracking-tight">Runs</h2><p className="mt-1 text-[13px] text-ink-3">Every character you have made on this machine.</p></div>
-            <div className="flex items-center gap-2">
-              <div className="relative"><Search className="absolute top-2.5 left-3 size-4 text-ink-3" /><Input value={qs} onChange={(e) => setQs(e.target.value)} placeholder="Find a run" className="w-48 pl-9" /></div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative"><Search className="absolute top-2.5 left-3 size-4 text-ink-3" /><Input value={qs} onChange={(e) => setQs(e.target.value)} placeholder="Find a run" className="w-40 pl-9 sm:w-48" /></div>
               <Segmented value={filter} onValueChange={setFilter} options={[{ value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "finished", label: "Finished" }, { value: "failed", label: "Failed" }]} />
             </div>
           </div>

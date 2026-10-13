@@ -10,9 +10,9 @@ import { ACCEPT_INPUT, AUTO_REPAIR, FACES, FACE_SOURCES, LOOKS, MESH_RE, NAME_RE
 import { FORKABLE, FORK_LABEL } from "@/lib/stages";
 import { cn } from "@/lib/utils";
 
-function Card({ icon: Icon, title, children, desc }: { icon: any; title: string; desc?: string; children: React.ReactNode }) {
+function Card({ icon: Icon, title, children, desc, tour }: { icon: any; title: string; desc?: string; children: React.ReactNode; tour?: string }) {
   return (
-    <Panel className="p-5">
+    <Panel className="p-5" data-tour={tour}>
       <div className="mb-4 flex items-start gap-3">
         <div className="grid size-8 place-items-center rounded-lg bg-accent/12 text-accent"><Icon className="size-4" /></div>
         <div><h3 className="text-[14px] font-semibold">{title}</h3>{desc && <p className="text-xs text-ink-3">{desc}</p>}</div>
@@ -73,7 +73,7 @@ export default function NewRun() {
       </motion.div>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
         <div className="lg:sticky lg:top-20 lg:self-start">
-          <label
+          <label data-tour="nr-drop"
             onDragEnter={(e) => { e.preventDefault(); setOver(true); }} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
             onDrop={(e) => { e.preventDefault(); setOver(false); choose(e.dataTransfer.files[0]); }}
             className={cn("group relative flex aspect-[4/5] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl2 border-2 border-dashed transition",
@@ -98,13 +98,13 @@ export default function NewRun() {
               <Input value={F.name} maxLength={40} onChange={(e) => set("name", e.target.value)} placeholder="e.g. knight" spellCheck={false} />
             </Field>
             {pct !== null && <div><Progress value={pct * 100} /><p className="mt-1 text-[11px] text-ink-3">Uploading · {Math.round(pct * 100)}%</p></div>}
-            <Button variant="primary" size="lg" onClick={start} loading={pct !== null} className="w-full"><Rocket /> {exists && !file ? "Resume run" : "Start run"}</Button>
+            <Button data-tour="nr-start" variant="primary" size="lg" onClick={start} loading={pct !== null} className="w-full"><Rocket /> {exists && !file ? "Resume run" : "Start run"}</Button>
           </div>
         </div>
 
         <div className="grid gap-4">
           {!isMesh && (
-            <Card icon={Layers} title="What you are giving it" desc="A single picture is redrawn as a clean T-pose; a clean reference or a sheet is used as it is.">
+            <Card tour="nr-input" icon={Layers} title="What you are giving it" desc="A single picture is redrawn as a clean T-pose; a clean reference or a sheet is used as it is.">
               <Switch checked={F.direct} onCheckedChange={(v) => { set("direct", v); if (v) set("sheet", false); }} label="Use my picture as is"
                 hint="Skip the redraw: for clean full-body references (T/A-pose, open hands, plain background). The texture then comes from your picture itself (upscaled, not redrawn)." />
               <Switch checked={F.sheet} onCheckedChange={(v) => { set("sheet", v); if (v) set("direct", false); }} label="My picture is a turnaround sheet"
@@ -113,7 +113,7 @@ export default function NewRun() {
             </Card>
           )}
           {!isMesh && !plain && (
-            <Card icon={Sparkles} title="Look" desc="Keep the picture's style, restyle it, or see every look and pick.">
+            <Card tour="nr-look" icon={Sparkles} title="Look" desc="Keep the picture's style, restyle it, or see every look and pick.">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {LOOKS.map((l) => (
                   <button key={l.value} onClick={() => set("look", l.value)} className={cn("rounded-xl border px-3 py-3 text-left transition", F.look === l.value ? "border-accent/60 bg-accent/12" : "border-line-strong hover:border-white/20")}>
@@ -125,7 +125,7 @@ export default function NewRun() {
               <Field label="Outfit" hint={hintOf(OUTFITS, F.outfit)}><Segmented value={F.outfit} onValueChange={(v) => set("outfit", v)} options={OUTFITS} /></Field>
             </Card>
           )}
-          <Card icon={Scale} title="Who decides" desc="At the redraw pick, the 3D shape check and the rig check.">
+          <Card tour="nr-review" icon={Scale} title="Who decides" desc="At the redraw pick, the 3D shape check and the rig check.">
             <Field label="Your review" hint={hintOf(REVIEWS, F.review)}><Segmented value={F.review} onValueChange={(v) => set("review", v)} options={REVIEWS} /></Field>
             {F.review === "override" && <Field label={`Review window · ${F.grace} s`}><Slider value={F.grace} onValueChange={(v) => set("grace", v)} min={15} max={300} step={15} /></Field>}
           </Card>
@@ -139,7 +139,7 @@ export default function NewRun() {
             <Field label="Rigger" hint={hintOf(RIGGERS, F.rigger)}><Segmented value={F.rigger} onValueChange={(v) => set("rigger", v)} options={RIGGERS} /></Field>
             <Field label="Broken hands" hint={hintOf(AUTO_REPAIR, F.auto_repair)}><Segmented value={F.auto_repair} onValueChange={(v) => set("auto_repair", v)} options={AUTO_REPAIR} /></Field>
           </Card>
-          <Card icon={Clapperboard} title="Animation" desc="Clips are made once the rig is built; add more any time on the run page.">
+          <Card tour="nr-anim" icon={Clapperboard} title="Animation" desc="Clips are made once the rig is built; add more any time on the run page.">
             <div className="flex gap-3 rounded-xl border border-cyan/20 bg-cyan/5 p-4">
               <Film className="mt-0.5 size-4 shrink-0 text-cyan" />
               <p className="text-[13px] text-ink-2"><b className="text-ink">Copy a dance from a video</b> is the main way to animate: once the rig is built, open the run's <b>Animate</b> tab, drop a video of one person dancing and pick the seconds to copy.</p>

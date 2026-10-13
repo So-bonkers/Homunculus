@@ -34,12 +34,21 @@ def _steady(track_npz):
     return bool(ang < 1.5 and zoom < 1.03) or float(np.mean(d["ok"])) < 0.5, float(ang), float(zoom), float(np.mean(d["ok"]))
 
 
+class _NoProgress:
+    def __getattr__(self, name): return lambda *a, **k: None
+
+
+def rel_(R, p): return os.path.relpath(p, R.dir)
+
+
 def _fmt_t(s):
     s = int(round(s)); return f"{s // 60}:{s % 60:02d}"
 
 
-def generate(R, video, start, end, label=None, title=None, yaw=180.0, log=None):
-    """Make one clip from video[start:end] (seconds). Returns the clip dict (also appended to 09_animate/animations.json)."""
+def generate(R, video, start, end, label=None, title=None, yaw=180.0, log=None, progress=None):
+    """Make one clip from video[start:end] (seconds). Returns the clip dict (also appended to 09_animate/animations.json).
+    progress: a stages.video_progress.Progress the web app follows (stages, estimates, a report per stage); optional."""
+    P = progress or _NoProgress()
     log = log or R.log; start, end = float(start), float(end); dur = end - start
     ok, why = available()
     if not ok: raise RuntimeError("Dance from video is not available: " + why)
@@ -52,29 +61,35 @@ def generate(R, video, start, end, label=None, title=None, yaw=180.0, log=None):
     name = label or f"From video: {title[:40]} ({_fmt_t(start)}-{_fmt_t(end)})"
     try:
         log(f"[video] {name}")
-        clip = work / "clip.mp4"
+        clip = work / "clip.mp4"; P.begin("cut")
         _sh(["ffmpeg", "-v", "error", "-y", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", video, "-vf", "fps=30", "-an", "-c:v", "libx264", "-crf", "14", clip], "cutting the video", 900)
-        log("[video] estimating the body motion (GVHMR)")
+        ref = animate._dir(R) / "clips" / f"{cid}_ref.mp4"; os.makedirs(ref.parent, exist_ok=True)     # the video's own range with its sound: the web app plays it in step with the 3D clip
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(video), "-vf", "fps=30,scale=-2:'min(720,ih)'", "-c:v", "libx264", "-crf", "23", "-pix_fmt", "yuv420p",
+                        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(ref)], capture_output=True, timeout=900)
+        frame = work / "cut.jpg"; subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{dur / 2:.2f}", "-i", str(clip), "-frames:v", "1", "-vf", "scale=-2:360", str(frame)], capture_output=True)
+        P.end("cut", text=f"{dur:.1f} s of {Path(video).name} from {_fmt_t(start)} to {_fmt_t(end)}, at 30 fps", images=[rel_(R, frame)] if frame.exists() else None, video=rel_(R, ref) if ref.exists() else None)
+        log("[video] estimating the body motion (GVHMR)"); P.begin("motion")
         gpu.free_all(log); gpu.wait_for_headroom("gvhmr", log)
         with gpu.watchdog(log):
             _sh([GV_PY, TOOLS / "video_to_smpl.py", "--video", clip, "--output_root", work / "out", "-s"], "GVHMR", 3600)
         out = work / "out" / "clip"; npz = out / "smpl_global.npz"
         if not npz.exists(): raise RuntimeError("GVHMR produced no motion (is a person visible in the video?)")
-        log("[video] following the camera")
+        P.end("motion", text=f"body motion for {int(round(dur * 30))} frames (SMPL-X, 21 joints, the root path in metres)")
+        log("[video] following the camera"); P.begin("camera")
         track = work / "cam.npz"; use = npz
         try:
             _sh([GV_PY, "-I", TOOLS / "track_camera.py", clip, track, "--bbx", out / "preprocess" / "bbx.pt"], "camera tracking", 1800)
             steady, ang, zoom, found = _steady(track)
-            if steady: log(f"[video] steady camera (moved {ang:.1f} deg, zoom x{zoom:.2f}, background found {found * 100:.0f}%): GVHMR's own path is used")
+            if steady: log(f"[video] steady camera (moved {ang:.1f} deg, zoom x{zoom:.2f}, background found {found * 100:.0f}%): GVHMR's own path is used"); P.report("camera", text=f"steady camera: moved {ang:.1f}°, zoom ×{zoom:.2f}; the dancer's own path is used")
             else:
                 _sh([GV_PY, "-I", TOOLS / "compensate_camera.py", out, track, work / "smpl_global_cam.npz"], "camera compensation", 900); use = work / "smpl_global_cam.npz"
-                log(f"[video] moving camera (up to {ang:.0f} deg, zoom x{zoom:.2f}): the dancer's path is corrected for it")
-        except Exception as e: log(f"[video] camera tracking skipped ({str(e)[:120]})")
-        log("[video] building the animation")
+                log(f"[video] moving camera (up to {ang:.0f} deg, zoom x{zoom:.2f}): the dancer's path is corrected for it"); P.report("camera", text=f"moving camera: up to {ang:.0f}°, zoom ×{zoom:.2f}; the dancer's path is corrected for it")
+        except Exception as e: log(f"[video] camera tracking skipped ({str(e)[:120]})"); P.report("camera", text=f"camera tracking skipped: {str(e)[:120]}")
+        P.end("camera"); log("[video] building the animation"); P.begin("build")
         bvh = work / "clip.bvh"
         _sh([sys.executable, "-I", TOOLS / "smpl_to_bvh.py", use, bvh, "--yaw", f"{yaw:g}"], "converting to BVH", 600)
         rt = work / "rt"
-        _sh([C.BLENDER, "-b", "--python", TOOLS / "retarget_bvh.py", "--", rig, bvh, rt, cid, "--map", "smpl", "--fps", "30"], "retargeting onto the rig", 1800)
+        rt_out = _sh([C.BLENDER, "-b", "--python", TOOLS / "retarget_bvh.py", "--", rig, bvh, rt, cid, "--map", "smpl", "--fps", "30"], "retargeting onto the rig", 1800)
         g, f = rt / f"{cid}.glb", rt / f"{cid}.fbx"
         if not g.exists(): raise RuntimeError("retargeting produced no clip")
         dst = animate._dir(R) / "clips" / f"{cid}.glb"; shutil.move(str(g), dst)
@@ -83,24 +98,30 @@ def generate(R, video, start, end, label=None, title=None, yaw=180.0, log=None):
         subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "blender_clip_thumb.py"), "--", str(dst), str(thumb)], capture_output=True, text=True, timeout=300)
         rel = lambda p: os.path.relpath(p, R.dir)
         entry = {"id": cid, "prompt": name, "rep": 0, "source": "video", "range": [start, end], "glb": rel(dst), "fbx": rel(dst.with_suffix(".fbx")) if dst.with_suffix(".fbx").exists() else None,
-                 "thumb": rel(thumb) if thumb.exists() else None, "time": time.strftime("%H:%M:%S")}
+                 "thumb": rel(thumb) if thumb.exists() else None, "ref": rel(ref) if ref.exists() else None, "time": time.strftime("%H:%M:%S")}
         M = animate._manifest(R); M["clips"] += [entry]; M["status"] = "done"; animate._save(R, M)
-        log("[video] clip ready; rendering the preview")
+        facts = [l.replace("[retarget] ", "") for l in rt_out.splitlines() if l.startswith("[retarget]") and any(k in l for k in ("hips height", "foot:", "output frames"))]
+        P.end("build", text="\n".join(facts) or None, images=[entry["thumb"]] if entry.get("thumb") else None)
+        log("[video] clip ready; rendering the preview"); P.begin("texture")
         png = (R.A.get("textured_glb") or "")[:-4] + "_basecolor.png"
-        if R.A.get("textured_glb") and os.path.exists(png): animate.retexture(R, png)
+        if R.A.get("textured_glb") and os.path.exists(png): n_tex = animate.retexture(R, png); P.end("texture", text=f"the final texture put on {n_tex} clip(s)")
+        else: P.end("texture", text="no final texture yet: the clip keeps the rig's colours")
+        P.begin("preview")
         py_ = C.ROOT / ".venv" / "bin" / "python"; py_ = py_ if py_.exists() else sys.executable
         try:        # a preview with the video's own sound, and the video next to it
             pv = animate._dir(R) / "clips" / f"{cid}_preview.mp4"; cmp_ = animate._dir(R) / "clips" / f"{cid}_compare.mp4"; tmp = work / "render.mp4"
             _sh([py_, TOOLS / "make_mp4.py", f, tmp, "--fixed", "--samples", "12"], "rendering the preview", 7200)
             _sh(["ffmpeg", "-v", "error", "-y", "-i", tmp, "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", video, "-map", "0:v", "-map", "1:a?", "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-shortest", pv], "adding the sound", 900)
+            P.end("preview", video=rel(pv)); P.begin("compare")
             _sh(["ffmpeg", "-v", "error", "-y", "-i", clip, "-i", tmp, "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", video, "-filter_complex", "[0:v]scale=-2:720,setsar=1[a];[1:v]scale=-2:720,setsar=1[b];[a][b]hstack=2[v]",
                  "-map", "[v]", "-map", "2:a?", "-c:v", "libx264", "-crf", "22", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-shortest", cmp_], "side by side", 1800)
+            P.end("compare", video=rel(cmp_))
             M = animate._manifest(R)
             for c in M["clips"]:
                 if c["id"] == cid: c["video"] = rel(pv); c["compare"] = rel(cmp_)
             animate._save(R, M)
-        except Exception as e: log(f"[video] preview render failed ({str(e)[:160]}); the clip itself is fine")
+        except Exception as e: log(f"[video] preview render failed ({str(e)[:160]}); the clip itself is fine"); P.report("preview", text=f"preview render failed ({str(e)[:160]}); the clip itself is fine")
         for p in ("out", "clip.mp4", "render.mp4", "rt"): shutil.rmtree(work / p, ignore_errors=True) if (work / p).is_dir() else (work / p).unlink(missing_ok=True)     # keeps cam.npz, the BVH and the SMPL motion (small) for later
-        log("[video] done"); return entry
+        log("[video] done"); P.finish(cid); return entry
     except Exception as e:
-        M = animate._manifest(R); M["status"] = "failed"; M["error"] = f"{type(e).__name__}: {str(e)[:300]}"; animate._save(R, M); raise
+        M = animate._manifest(R); M["status"] = "failed"; M["error"] = f"{type(e).__name__}: {str(e)[:300]}"; animate._save(R, M); P.fail(f"{type(e).__name__}: {str(e)[:300]}"); raise

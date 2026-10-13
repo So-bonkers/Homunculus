@@ -9,7 +9,7 @@ export interface RunSummary {
   name: string; status: RunStatus; live: boolean;
   thumb: string | null; input: string | null; file: string;
   done: number; total: number; current: string | null; repair: RepairPill | null; last: string | null;
-  t_start: number | null; t_total: number | null; updated: number; outfit?: string; model: string | null;
+  t_start: number | null; t_total: number | null; updated: number; outfit?: string; model: string | null; rigged?: boolean; dances?: number;
 }
 
 export interface Stage { key: string; label: string; model: string; status: StageStatus; seconds?: number | null; note?: string | null; peak_vram?: number | null }
@@ -24,7 +24,7 @@ export interface Snapshot { n: number; time: string; stage: string; label: strin
 
 export interface Clip {
   id: string; prompt: string; rep: number; url: string; fbx: string | null; thumb: string | null; textured: boolean;
-  source?: "video"; video?: string | null; compare?: string | null;
+  source?: "video"; video?: string | null; compare?: string | null; ref?: string | null; range?: [number, number] | null;
 }
 
 export interface Animations { status: "idle" | "queued" | "running" | "done" | "failed"; error: string | null; clips: Clip[] }
@@ -78,4 +78,16 @@ export interface DoctorCheck { name: string; status: "ok" | "warn" | "fail"; det
 export interface PresetManifest {
   models: Record<string, { label: string; title: string; author: string; url: string; license: string; license_url: string; clips: Record<string, string[]>; done?: number }>;
   reps?: number; total?: number; status?: string;
+}
+
+/** A dance-from-video job (09_animate/video_jobs/<job>.json): stages with estimates (seconds) and a report each. */
+export interface VideoStage {
+  key: string; label: string; status: "pending" | "running" | "done" | "failed"; estimate: number; started: number | null; ended: number | null;
+  report: { text: string | null; images: string[]; video: string | null } | null;
+}
+export interface VideoJob {
+  job: string; run: string; title: string; video: string; start: number; end: number; seconds: number;
+  status: "queued" | "running" | "done" | "failed"; error: string | null; created: number; finished: number | null; clip: string | null; now: number;
+  stages: VideoStage[];
+  result: { id: string; url: string | null; ref: string | null; compare: string | null; video: string | null; fbx: string | null; thumb: string | null } | null;
 }
