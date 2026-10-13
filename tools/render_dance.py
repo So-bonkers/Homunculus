@@ -1,6 +1,6 @@
 """Render an animated rigged character to PNG frames with a moving camera (run inside Blender; tools/make_mp4.py drives it and encodes the video).
 
-blender -b --python tools/render_dance.py -- <character.fbx> <frames_dir> [--fps 30] [--size 1280x720] [--range a b] [--seed 7] [--cuts f1,f2,..] [--fixed] [--samples 12] [--engine eevee|workbench] [--probe]
+blender -b --python tools/render_dance.py -- <character.fbx> <frames_dir> [--fps 30] [--size 1280x720] [--range a b] [--seed 7] [--cuts f1,f2,..] [--fixed] [--stage cam.npz --set room.json] [--samples 12] [--engine eevee|workbench] [--probe]
   --range a b   render output frames a..b-1 only (so several Blender processes can share one clip); the camera plan is deterministic, every process computes the same one
   --cuts        output frames at which a new shot must start (the seams of a joined clip)
   --probe       print the plan and the time of one frame, render nothing else
@@ -19,6 +19,7 @@ def opt(flag, default=None, n=1, cast=str):
     return default
 OUT_FPS = opt("--fps", 30, cast=int); W, H_PX = [int(x) for x in opt("--size", "1280x720").split("x")]; RANGE = opt("--range", None, n=2, cast=int)
 SEED = opt("--seed", 7, cast=int); CUTS = [int(x) for x in (opt("--cuts", "") or "").split(",") if x]; SAMPLES = opt("--samples", 12, cast=int); ENGINE = opt("--engine", "eevee")
+STAGE_NPZ = opt("--stage", None); SET_JSON = opt("--set", None)             # --stage: camera track from tools/align_camera.py (position, rotation, lens per frame); --set: the room (neon tubes, haze, floor), tools/sets/*.json
 FIXED = "--fixed" in argv                                    # one steady front camera for the whole clip (to compare with a video)
 if FIXED: argv.remove("--fixed")
 PROBE = "--probe" in argv
@@ -40,6 +41,9 @@ def world_bbox():
 sc.frame_set(f0); lo, hi = world_bbox(); F = 1.75 / max(hi[2] - lo[2], 1e-9)
 ROOT = bpy.data.objects.new("stage_scale", None); sc.collection.objects.link(ROOT); ROOT.scale = (F, F, F); A.parent = ROOT      # the action animates the armature's own location, rotation AND scale: scaling the armature is undone at every frame, so a parent holds the scale
 bpy.context.view_layer.update(); sc.frame_set(f0); lo, hi = world_bbox(); FLOOR = float(lo[2]); HH = float(hi[2] - lo[2])
+lows = []                                                                                    # the floor is where the lowest point of the body rests over the WHOLE clip (not frame 0: floor work, crouches), 12th percentile so frames where a foot dips through does not move it
+for fr in range(f0, f1 + 1, max(1, int(SRC_FPS // 2))): sc.frame_set(fr); lows.append(float(world_bbox()[0][2]))
+FLOOR = float(np.percentile(lows, 12)); sc.frame_set(f0)
 hips, head = A.pose.bones["mixamorig:Hips"], A.pose.bones["mixamorig:Head"]
 print(f"[render] {os.path.basename(model)}: {SRC_FPS} fps source, {f1 - f0 + 1} frames -> {N} frames at {OUT_FPS} fps = {N / OUT_FPS:.1f} s; character scaled x{F:.1f} to {HH:.2f} m; floor z {FLOOR:.3f}", flush=True)
 
@@ -93,40 +97,86 @@ def cam_for(k):
 # ---------------------------------------------------------------- the stage: floor, lights, camera
 def mat(name, col, rough=0.5):
     m = bpy.data.materials.new(name); m.use_nodes = True; b = m.node_tree.nodes["Principled BSDF"]; b.inputs["Base Color"].default_value = (*col, 1); b.inputs["Roughness"].default_value = rough; return m
-bpy.ops.mesh.primitive_plane_add(size=60, location=(0, 0, FLOOR)); fl = bpy.context.object; fl.data.materials.append(mat("floor", (0.03, 0.035, 0.05), 0.35))
-w = bpy.data.worlds.new("w"); w.use_nodes = True; w.node_tree.nodes["Background"].inputs["Color"].default_value = (0.01, 0.012, 0.02, 1); w.node_tree.nodes["Background"].inputs["Strength"].default_value = 1.0; sc.world = w
 def light(kind, loc, energy, col, size=None, rot=None):
     L = bpy.data.lights.new(kind, kind); L.energy = energy; L.color = col
     if size and kind == "AREA": L.size = size
     o = bpy.data.objects.new(kind, L); sc.collection.objects.link(o); o.location = loc
     return o
 def aim(o, target): o.rotation_euler = (Vector(target) - o.location).to_track_quat("-Z", "Y").to_euler()
-c0 = Vector((0, 0, FLOOR + 0.9 * HH / 1.75))
-key = light("AREA", (2.5, -4.0, FLOOR + 3.2), 900, (1.0, 0.93, 0.85), 3.0); aim(key, c0)
-rim1 = light("AREA", (-3.2, 3.0, FLOOR + 2.4), 700, (0.35, 0.65, 1.0), 2.0); aim(rim1, c0)
-rim2 = light("AREA", (3.2, 3.2, FLOOR + 2.4), 500, (1.0, 0.35, 0.7), 2.0); aim(rim2, c0)
-fill = light("AREA", (-3.0, -3.5, FLOOR + 1.2), 160, (0.8, 0.85, 1.0), 4.0); aim(fill, c0)
+STAGE = np.load(STAGE_NPZ) if STAGE_NPZ else None
+w = bpy.data.worlds.new("w"); w.use_nodes = True; sc.world = w
+if STAGE is not None:
+    import json
+    SETD = json.load(open(SET_JSON)) if SET_JSON else {}; Mst = STAGE["M"]; K0 = STAGE["K0"]; sA = float(STAGE["scale"]); RA = STAGE["R_align"]; tA = STAGE["t_align"]
+    def to_world(pix, z):                                                                       # a pixel of frame 0 at depth z (m, along the optical axis) -> character world (x F: the stage scales the character)
+        pc = z * np.linalg.inv(K0) @ np.array([pix[0], pix[1], 1.0]); return Vector((sA * RA @ pc + tA) * F)
+    w.node_tree.nodes["Background"].inputs["Color"].default_value = (*SETD.get("ambient", (0.004, 0.012, 0.014)), 1); w.node_tree.nodes["Background"].inputs["Strength"].default_value = 1.0
+    c0p = Vector(Mst[0][:3, 3]) * F; fwd = Vector(Mst[0][:3, :3] @ np.array([0, 0, -1.0])); fwd_h = Vector((fwd.x, fwd.y, 0)).normalized()
+    fl_m = SETD.get("floor", {}); fl_col = fl_m.get("color", (0.05, 0.06, 0.05))
+    bpy.ops.mesh.primitive_plane_add(size=80, location=(c0p.x, c0p.y, FLOOR)); fl = bpy.context.object; fl.data.materials.append(mat("floor", fl_col, fl_m.get("roughness", 0.3)))
+    fl.data.materials[0].node_tree.nodes["Principled BSDF"].inputs["Specular IOR Level"].default_value = fl_m.get("specular", 0.6)
+    bw = bpy.data.objects.new("backwall", bpy.data.meshes.new("backwall")); sc.collection.objects.link(bw)                    # a dark wall behind the room: the haze and the tubes need something to glow against
+    dwall = SETD.get("back_wall_z", 11.0) * sA * F; wc = c0p + fwd_h * dwall; wl = Vector((-fwd_h.y, fwd_h.x, 0)); hw, hh = 25.0, 8.0
+    bw.data.from_pydata([wc - wl * hw + Vector((0, 0, FLOOR - wc.z)), wc + wl * hw + Vector((0, 0, FLOOR - wc.z)), wc + wl * hw + Vector((0, 0, FLOOR - wc.z + hh)), wc - wl * hw + Vector((0, 0, FLOOR - wc.z + hh))], [], [(0, 1, 2, 3)]); bw.data.materials.append(mat("wall", SETD.get("wall_color", (0.012, 0.03, 0.03)), 0.9))
+    for tb in SETD.get("tubes", []):
+        pa, pb = to_world(tb["a"], tb["z"]), to_world(tb["b"], tb["z"]); mid = (pa + pb) / 2; dirv = (pb - pa); L = dirv.length; col = tb["color"]
+        bpy.ops.mesh.primitive_cylinder_add(radius=tb.get("radius", 0.022), depth=L, location=mid); cy = bpy.context.object; cy.rotation_euler = dirv.to_track_quat("Z", "Y").to_euler()
+        em = bpy.data.materials.new("tube"); em.use_nodes = True; nt_ = em.node_tree; nt_.nodes.remove(nt_.nodes["Principled BSDF"]); eo = nt_.nodes.new("ShaderNodeEmission"); eo.inputs["Color"].default_value = (*col, 1); eo.inputs["Strength"].default_value = SETD.get("tube_emission", 3.0)
+        nt_.links.new(eo.outputs[0], nt_.nodes["Material Output"].inputs["Surface"]); cy.data.materials.append(em)
+        NL = 3                                                                                     # a tube glows in every direction: round lights along it (an area light is a half-space and cuts hard beams into the haze)
+        for j in range(NL):
+            Lt = bpy.data.lights.new("tube", "POINT"); Lt.energy = tb.get("power", 250) / NL; Lt.color = col; Lt.shadow_soft_size = max(0.05, L / 8); lo_ = bpy.data.objects.new("tube", Lt); sc.collection.objects.link(lo_); lo_.location = pa + dirv * ((j + 0.5) / NL)
+    c0 = Vector((0, 0, FLOOR + 0.9 * HH / 1.75)); fillL = light("AREA", Vector(Mst[0][:3, 3]) * F + Vector((0, 0, 0.3)), SETD.get("fill_power", 60), (0.75, 0.9, 1.0), 3.0); aim(fillL, c0)
+    hz = SETD.get("haze", 0.0)
+    if hz > 0:
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(c0p.x + fwd_h.x * dwall * 0.5, c0p.y + fwd_h.y * dwall * 0.5, FLOOR + 3.6)); vc = bpy.context.object; vc.scale = (30, 30, 7); vc.display_type = "WIRE"
+        vm = bpy.data.materials.new("haze"); vm.use_nodes = True; nv = vm.node_tree; [nv.nodes.remove(n_) for n_ in list(nv.nodes) if n_.type != "OUTPUT_MATERIAL"]; sv = nv.nodes.new("ShaderNodeVolumeScatter"); sv.inputs["Density"].default_value = hz; sv.inputs["Anisotropy"].default_value = 0.35; sv.inputs["Color"].default_value = (*SETD.get("haze_color", (0.45, 0.9, 0.9)), 1)
+        nv.links.new(sv.outputs[0], nv.nodes["Material Output"].inputs["Volume"]); vc.data.materials.append(vm)
+else:
+    bpy.ops.mesh.primitive_plane_add(size=60, location=(0, 0, FLOOR)); fl = bpy.context.object
+    fm = mat("floor", (0.02, 0.023, 0.032), 0.75); fm.use_nodes = True; nt = fm.node_tree; pb = nt.nodes["Principled BSDF"]; pb.inputs["Specular IOR Level"].default_value = 0.04      # matt, so the lights do not show up as big blobs
+    tc = nt.nodes.new("ShaderNodeTexCoord"); sep = nt.nodes.new("ShaderNodeSeparateXYZ"); nt.links.new(tc.outputs["Object"], sep.inputs[0])
+    cmb = nt.nodes.new("ShaderNodeCombineXYZ"); nt.links.new(sep.outputs["X"], cmb.inputs["X"]); nt.links.new(sep.outputs["Y"], cmb.inputs["Y"])
+    ln = nt.nodes.new("ShaderNodeVectorMath"); ln.operation = "LENGTH"; nt.links.new(cmb.outputs[0], ln.inputs[0])
+    mr = nt.nodes.new("ShaderNodeMapRange"); mr.inputs["From Min"].default_value = 0.8 * HH; mr.inputs["From Max"].default_value = 3.0 * HH; mr.clamp = True; nt.links.new(ln.outputs["Value"], mr.inputs["Value"])     # the floor fades into the backdrop colour: no horizon line
+    tr = nt.nodes.new("ShaderNodeBsdfTransparent"); mx = nt.nodes.new("ShaderNodeMixShader"); nt.links.new(mr.outputs["Result"], mx.inputs["Fac"]); nt.links.new(pb.outputs["BSDF"], mx.inputs[1]); nt.links.new(tr.outputs["BSDF"], mx.inputs[2])
+    nt.links.new(mx.outputs["Shader"], nt.nodes["Material Output"].inputs["Surface"]); fl.data.materials.append(fm)
+    w.node_tree.nodes["Background"].inputs["Color"].default_value = (0.01, 0.012, 0.02, 1); w.node_tree.nodes["Background"].inputs["Strength"].default_value = 1.0
+    c0 = Vector((0, 0, FLOOR + 0.9 * HH / 1.75))
+    key = light("AREA", (2.5, -4.0, FLOOR + 3.2), 900, (1.0, 0.93, 0.85), 3.0); aim(key, c0)
+    rim1 = light("AREA", (-3.2, 3.0, FLOOR + 2.4), 700, (0.35, 0.65, 1.0), 2.0); aim(rim1, c0)
+    rim2 = light("AREA", (3.2, 3.2, FLOOR + 2.4), 500, (1.0, 0.35, 0.7), 2.0); aim(rim2, c0)
+    fill = light("AREA", (-3.0, -3.5, FLOOR + 1.2), 160, (0.8, 0.85, 1.0), 4.0); aim(fill, c0)
+    top = light("AREA", (0, 0, FLOOR + 3.0), 420, (1.0, 1.0, 1.0), 0.8); top.rotation_euler = (0, 0, 0)                      # straight down, small: a soft contact shadow under the feet
 cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam")); sc.collection.objects.link(cam); sc.camera = cam; cam.data.sensor_width = 36
 sc.render.resolution_x, sc.render.resolution_y, sc.render.resolution_percentage = W, H_PX, 100; sc.render.image_settings.file_format = "PNG"; sc.render.image_settings.color_mode = "RGB"
 if ENGINE == "eevee":
     sc.render.engine = "BLENDER_EEVEE"; sc.eevee.taa_render_samples = SAMPLES
-    for attr, val in (("use_shadows", True), ("use_raytracing", False), ("use_gtao", True)):
+    for attr, val in (("use_shadows", True), ("use_raytracing", STAGE_NPZ is not None), ("use_gtao", True)):
         if hasattr(sc.eevee, attr): setattr(sc.eevee, attr, val)
 else:
     sc.render.engine = "BLENDER_WORKBENCH"; sh = sc.display.shading; sh.light = "STUDIO"; sh.color_type = "TEXTURE"; sh.show_shadows = True; sc.world.color = (0.05, 0.05, 0.08)
 try: sc.view_settings.look = "AgX - Medium High Contrast"
 except Exception: pass
 sc.view_settings.exposure = 0.3
+if STAGE_NPZ:                                                                                      # AgX turns bright saturated light (neon) pale: the footage is not
+    sc.view_settings.view_transform = "Standard"; sc.view_settings.look = "None"; sc.view_settings.exposure = SETD.get("exposure", 0.0)
+cam.data.clip_end = 200.0
 
 # ---------------------------------------------------------------- render
+def set_cam(k):                                                                                   # the director's shot, or the real camera of the video (tracked) when --stage is given
+    if STAGE is not None:
+        i = min(len(STAGE["M"]) - 1, max(0, int(round(src_frame(k) - f0)))); m = Matrix(STAGE["M"][i].tolist()); m.translation = m.translation * F; cam.matrix_world = m; cam.data.lens = float(STAGE["lens"][i]); return
+    pos, tgt, focal = cam_for(k); cam.location = pos; cam.rotation_euler = (tgt - pos).to_track_quat("-Z", "Y").to_euler(); cam.data.lens = focal
+
 a, b = (RANGE if RANGE else (0, N)); a, b = max(0, a), min(N, b)
 if PROBE:
     t = time.time(); k = a
-    pos, tgt, focal = cam_for(k); cam.location = pos; cam.rotation_euler = (tgt - pos).to_track_quat("-Z", "Y").to_euler(); cam.data.lens = focal; sc.frame_set(int(round(src_frame(k))))
+    set_cam(k); sc.frame_set(int(round(src_frame(k))))
     sc.render.filepath = os.path.join(frames_dir, f"probe_{k:05d}.png"); bpy.ops.render.render(write_still=True); print(f"[render] one frame in {time.time() - t:.1f} s", flush=True); sys.exit(0)
 t0 = time.time()
 for k in range(a, b):
-    pos, tgt, focal = cam_for(k); cam.location = pos; cam.rotation_euler = (tgt - pos).to_track_quat("-Z", "Y").to_euler(); cam.data.lens = focal
+    set_cam(k)
     sc.frame_set(int(round(src_frame(k)))); sc.render.filepath = os.path.join(frames_dir, f"f{k:05d}.png"); bpy.ops.render.render(write_still=True)
     if (k - a) % 50 == 0: print(f"[render] frame {k} ({k - a + 1}/{b - a}), {(time.time() - t0) / (k - a + 1):.2f} s per frame", flush=True)
 print(f"[render] frames {a}..{b - 1} done in {time.time() - t0:.0f} s", flush=True)

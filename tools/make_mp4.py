@@ -5,10 +5,10 @@ import argparse, os, shutil, subprocess, sys, threading, time
 from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ap = argparse.ArgumentParser(); ap.add_argument("fbx"); ap.add_argument("out"); ap.add_argument("--workers", type=int, default=4); ap.add_argument("--fps", type=int, default=30); ap.add_argument("--size", default="1280x720")
-ap.add_argument("--seed", type=int, default=7); ap.add_argument("--cuts", default=""); ap.add_argument("--samples", type=int, default=12); ap.add_argument("--keep-frames", action="store_true"); ap.add_argument("--fixed", action="store_true")
+ap.add_argument("--seed", type=int, default=7); ap.add_argument("--cuts", default=""); ap.add_argument("--samples", type=int, default=12); ap.add_argument("--keep-frames", action="store_true"); ap.add_argument("--fixed", action="store_true"); ap.add_argument("--stage", default=None); ap.add_argument("--set", default=None)
 a = ap.parse_args(); out = Path(a.out).resolve(); fr = out.parent / f"_frames_{out.stem}"; shutil.rmtree(fr, ignore_errors=True); fr.mkdir(parents=True)
 BL = shutil.which("blender") or "/snap/bin/blender"
-def blender(args, **kw): return subprocess.Popen([BL, "-b", "--python", str(ROOT / "tools" / "render_dance.py"), "--", a.fbx, str(fr), "--fps", str(a.fps), "--size", a.size, "--seed", str(a.seed), "--samples", str(a.samples), *( ["--fixed"] if a.fixed else []), *( ["--cuts", a.cuts] if a.cuts else []), *args], **kw)
+def blender(args, **kw): return subprocess.Popen([BL, "-b", "--python", str(ROOT / "tools" / "render_dance.py"), "--", a.fbx, str(fr), "--fps", str(a.fps), "--size", a.size, "--seed", str(a.seed), "--samples", str(a.samples), *( ["--fixed"] if a.fixed else []), *( ["--stage", a.stage] if a.stage else []), *( ["--set", a.set] if a.set else []), *( ["--cuts", a.cuts] if a.cuts else []), *args], **kw)
 probe = subprocess.run([BL, "-b", "--python", str(ROOT / "tools" / "render_dance.py"), "--", a.fbx, str(fr), "--fps", str(a.fps), "--probe", "--range", "0", "1", "--size", "320x180", "--seed", str(a.seed)], capture_output=True, text=True)
 line = next(l for l in probe.stdout.splitlines() if "frames at" in l); N = int(line.split("->")[1].split("frames")[0]); print(f"{out.name}: {N} frames at {a.fps} fps ({N / a.fps:.1f} s), {a.workers} workers", flush=True)
 for f in fr.glob("probe_*.png"): f.unlink()

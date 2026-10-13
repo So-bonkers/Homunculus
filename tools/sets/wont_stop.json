@@ -1,0 +1,146 @@
+{
+ "note": "Room of the Nikolai Balbon 'Won't Stop' freestyle, read off frame 0 of the video (1280x720): each tube is two pixels and a distance in metres from the camera along its optical axis (from the tube lengths, 1-1.2 m, and the dancer at about 5.4 m).",
+ "ambient": [
+  0.002,
+  0.009,
+  0.011
+ ],
+ "back_wall_z": 11.5,
+ "wall_color": [
+  0.008,
+  0.02,
+  0.022
+ ],
+ "floor": {
+  "color": [
+   0.05,
+   0.07,
+   0.05
+  ],
+  "roughness": 0.2,
+  "specular": 1.0
+ },
+ "haze": 0.009,
+ "fill_power": 90,
+ "tubes": [
+  {
+   "name": "cyan_left",
+   "a": [
+    97,
+    0
+   ],
+   "b": [
+    40,
+    270
+   ],
+   "z": 5.0,
+   "color": [
+    0.1,
+    0.7,
+    1.0
+   ],
+   "power": 300,
+   "radius": 0.025
+  },
+  {
+   "name": "cyan_right",
+   "a": [
+    1110,
+    5
+   ],
+   "b": [
+    1280,
+    98
+   ],
+   "z": 5.0,
+   "color": [
+    0.1,
+    0.7,
+    1.0
+   ],
+   "power": 240,
+   "radius": 0.025
+  },
+  {
+   "name": "green_left",
+   "a": [
+    270,
+    290
+   ],
+   "b": [
+    440,
+    243
+   ],
+   "z": 8.5,
+   "color": [
+    0.1,
+    1.0,
+    0.15
+   ],
+   "power": 462
+  },
+  {
+   "name": "green_right",
+   "a": [
+    1045,
+    222
+   ],
+   "b": [
+    938,
+    432
+   ],
+   "z": 7.5,
+   "color": [
+    0.1,
+    1.0,
+    0.15
+   ],
+   "power": 594
+  },
+  {
+   "name": "couch_strip",
+   "a": [
+    568,
+    519
+   ],
+   "b": [
+    740,
+    521
+   ],
+   "z": 7.3,
+   "color": [
+    0.1,
+    1.0,
+    0.15
+   ],
+   "power": 158,
+   "radius": 0.015
+  },
+  {
+   "name": "cyan_back",
+   "a": [
+    630,
+    348
+   ],
+   "b": [
+    645,
+    390
+   ],
+   "z": 7.8,
+   "color": [
+    0.1,
+    0.7,
+    1.0
+   ],
+   "power": 36,
+   "radius": 0.015
+  }
+ ],
+ "tube_emission": 2.5,
+ "exposure": 0.0,
+ "haze_color": [
+  0.4,
+  0.9,
+  0.85
+ ]
+}
