@@ -1,6 +1,6 @@
 """Convert SMPL dance motion (AIST++ .pkl, FineDance .npy (6D rotations)) to a BVH file that tools/retarget_bvh.py reads with --map smpl.
 
-    python3 -I tools/smpl_to_bvh.py <clip.pkl|clip.npy> <out.bvh> [--format aist|finedance|gvhmr] [--fps N] [--trans-scale S]
+    python3 -I tools/smpl_to_bvh.py <clip.pkl|clip.npy> <out.bvh> [--format aist|finedance|gvhmr] [--fps N] [--trans-scale S] [--yaw DEG] [--floor-track SECONDS]
 
 The SMPL model files need a licence and are not used: the rest pose is an idealised SMPL T-pose (limbs along the axes, adult proportions); only the bone DIRECTIONS matter to the retargeting, which works
 with world orientations (see retarget_bvh.py). SMPL rest joints are axis aligned, so each joint's local axis-angle IS the BVH local rotation.
@@ -15,6 +15,7 @@ NAMES = ["Pelvis", "L_Hip", "R_Hip", "Spine1", "L_Knee", "R_Knee", "Spine2", "L_
 PARENT = [-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 12, 13, 14, 16, 17, 18, 19, 20, 21]
 OFF = {"L_Hip": (0.06, -0.09, -0.01), "Spine1": (0, 0.11, 0), "L_Knee": (0, -0.39, 0), "Spine2": (0, 0.13, 0), "L_Ankle": (0, -0.40, 0), "Spine3": (0, 0.05, 0), "L_Foot": (0, -0.06, 0.12),
        "Neck": (0, 0.21, 0), "Head": (0, 0.10, 0), "L_Collar": (0.045, 0.10, 0), "L_Shoulder": (0.10, 0, 0), "L_Elbow": (0.26, 0, 0), "L_Wrist": (0.25, 0, 0), "L_Hand": (0.08, 0, 0)}
+HOP_DEADZONE = 0.30                                                                                   # m: the lowest body point closer than this to the local floor is put ON the floor
 END = {"Head": (0, 0.12, 0), "L_Foot": (0, 0, 0.09), "R_Foot": (0, 0, 0.09), "L_Hand": (0.04, 0, 0), "R_Hand": (-0.04, 0, 0)}
 
 
@@ -55,9 +56,9 @@ def fk(rots, root):
 
 
 def write_bvh(path, euler, root, fps):
-    out = ["HIERARCHY"]
+    out = ["HIERARCHY"]; order = []                                                                  # joints in the order the hierarchy lists them (depth first): the MOTION columns must follow it
     def node(j, ind):
-        n = NAMES[j]; pad = "\t" * ind; o = offset(n); kids = [k for k in range(24) if PARENT[k] == j]
+        order.append(j); n = NAMES[j]; pad = "\t" * ind; o = offset(n); kids = [k for k in range(24) if PARENT[k] == j]
         out.append(f"{pad}{'ROOT' if j == 0 else 'JOINT'} {n}\n{pad}{{\n{pad}\tOFFSET {o[0]:.5f} {o[1]:.5f} {o[2]:.5f}")
         out.append(f"{pad}\tCHANNELS {'6 Xposition Yposition Zposition ' if j == 0 else '3 '}Zrotation Xrotation Yrotation")
         for k in kids: node(k, ind + 1)
@@ -67,7 +68,7 @@ def write_bvh(path, euler, root, fps):
     node(0, 0)
     out.append(f"MOTION\nFrames: {len(root)}\nFrame Time: {1.0 / fps:.8f}")
     for i in range(len(root)):
-        row = [*root[i]] + [x for j in range(24) for x in euler[i, j]]
+        row = [*root[i]] + [x for j in order for x in euler[i, j]]
         out.append(" ".join(f"{v:.5f}" for v in row))
     open(path, "w").write("\n".join(out) + "\n")
 
@@ -77,9 +78,11 @@ def main():
     def opt(f, d, c=str):
         if f in a: i = a.index(f); v = a[i + 1]; del a[i:i + 2]; return c(v)
         return d
-    fmt = opt("--format", None); fps = opt("--fps", None, float); ts = opt("--trans-scale", None, float)
+    fmt = opt("--format", None); fps = opt("--fps", None, float); ts = opt("--trans-scale", None, float); yaw = opt("--yaw", 0.0, float); ftrack = opt("--floor-track", None, float)
     src, dst = a[0], a[1]; fmt = fmt or ("aist" if src.endswith(".pkl") else "gvhmr" if src.endswith(".npz") else "finedance")
     poses, trans, sfps = load(src, fmt); fps = fps or sfps; n = len(poses)
+    if yaw:                                                                                         # turn the whole dance about the vertical axis (video heading is not recoverable from the clip alone)
+        Ry = Rot.from_euler("y", yaw, degrees=True); poses[:, 0] = (Ry * Rot.from_rotvec(poses[:, 0])).as_rotvec(); trans = Ry.apply(trans)
     rots = [Rot.from_rotvec(poses[:, j]) for j in range(24)]
     local = fk(rots, np.zeros((n, 3)))                                                              # pose with the pelvis at the origin
     up = float(np.mean(local[:, 15, 1] - np.minimum(local[:, 10, 1], local[:, 11, 1])))              # head above the feet?
@@ -94,6 +97,14 @@ def main():
     c = float(np.corrcoef(ty, -feet)[0, 1]) if ty.std() > 1e-6 and feet.std() > 1e-6 else 0.0              # a lowered pelvis (squat) raises the feet relative to it; jumps are free
     sy = 1.0 if c > 0.2 else -1.0 if c < -0.2 else 0.0
     root = np.zeros((n, 3)); root[:, [0, 2]] = horiz * ts; root[:, 1] = sy * ty - np.percentile(feet + sy * ty, 2)
+    ftrack = (6.0 if fmt == "gvhmr" else 0.0) if ftrack is None else ftrack                      # video motion is noisy in height (0.5 m drift over 150 s, +-0.2 m between steps): the lowest body point is on the floor unless it is a real jump
+    if ftrack > 0 and sy != 0:
+        margin = np.array([.10, .10, .10, .10, .07, .07, .10, .06, .06, .10, 0, 0, .07, .06, .06, .10, .06, .06, .05, .05, .04, .04, .03, .03])      # joint centre -> body surface, so lying on the back or a hand on the floor counts
+        low = (local[:, :, 1] - margin).min(1) + sy * ty; w = max(1, int(round(ftrack * (fps or 30) / 2)))
+        from scipy.ndimage import gaussian_filter1d
+        base = gaussian_filter1d(np.array([np.percentile(low[max(0, i - w):i + w + 1], 8) for i in range(n)]), w / 3, mode="nearest")     # local floor
+        d = gaussian_filter1d(low, 2, mode="nearest") - base; hop = np.maximum(d - HOP_DEADZONE, 0)     # height above the floor that survives: jumps, minus the dead zone
+        root[:, 1] = sy * ty - (gaussian_filter1d(low, 2, mode="nearest") - hop)
     eul = np.stack([rots[j].as_euler("ZXY", degrees=True) for j in range(24)], 1)
     write_bvh(dst, eul, root, fps)
     print(f"[smpl_to_bvh] {src}: {n} frames at {fps:g} fps = {n / fps:.1f} s; head above feet by {up:.2f} m on average (negative = y is not up); translation scale {ts:g} "
