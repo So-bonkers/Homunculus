@@ -465,10 +465,24 @@ def st_edit_and_pick(R):
     if not R.state.get("ranked_edits"): raise RuntimeError("the redraw step produced no usable images")
     R.A["chosen_edit"] = R.state["ranked_edits"][0]; return "no candidate passed; using best-ranked (flagged)"
 
+def own_back_view(R):
+    """--back-view: the user's picture of the character from behind is the back view of the shape model: upscaled like the front, then both framed at one scale (equal figure heights),
+    as in the depth phase. Nothing is generated, and the proxy shape (about 3 minutes) is not needed."""
+    src = R.state["back_view"]; d = R.p("04b_views"); os.makedirs(d, exist_ok=True)
+    raw = os.path.join(d, "back_given" + os.path.splitext(src)[1]); shutil.copy(src, raw)
+    style = prompts.LOOK_UPSCALE.get(R.state.get("look", "asis")) or R.state["vlm"]["plan"].get("style", "photo")
+    up = comfy.upscale(raw, os.path.join(d, "back_upscaled.png"), C.UPSCALERS.get(style, C.UPSCALERS["photo"]), R.log)
+    views = turnaround.frame({"front": R.A["edit_upscaled"], "back": up}, d, R.log, equal_height=True)
+    R.A["gen_views"] = views; R.save()
+    progress.snap(R, "views", "your back picture and the front, framed at one scale (nothing generated)", [turnaround.sheet_image(views, os.path.join(d, "framed_views.png")), up],
+                  ["the views the shape model sees (front, back)", "your back picture, upscaled"])
+    return "front + your back view"
+
 def st_views(R):
     """The depth phase before the 3D shape: back and side views drawn under a depth map of a proxy shape (stages/depthviews.py), so the shape model sees views that agree. Single-picture runs only."""
     if mesh_mode(R): return "skipped: mesh input"
     if R.state.get("sheet"): return "skipped: the turnaround sheet already is the views"
+    if R.state.get("back_view"): return own_back_view(R)
     on = R.state.get("depth_views")
     if on is None: on = "on" if C.DEPTH_VIEWS else "off"
     if on == "off": R.A.pop("gen_views", None); return "skipped (--depth-views off)"
@@ -862,6 +876,7 @@ def main():
     ap.add_argument("--from", dest="frm", choices=STAGES); ap.add_argument("--only", choices=STAGES); ap.add_argument("--style", choices=list(C.UPSCALERS))
     ap.add_argument("--no-open", action="store_true", help="don't open the live progress page in the browser")
     ap.add_argument("--depth-views", dest="depth_views", choices=["on", "off"], help="single-picture runs: the depth phase before the 3D shape (default on): a proxy shape, depth maps of it, the back and side views drawn under them with Qwen-Image Turbo, kept only where their outline agrees")
+    ap.add_argument("--back-view", dest="back_view", metavar="PICTURE", help="single-picture runs: your own picture of the same character from behind (same pose, same costume, plain background), used as the back view for the 3D shape instead of one drawn under a depth map (the depth phase is skipped)")
     ap.add_argument("--no-llm", dest="no_llm", action="store_true", help="no language model in the run: no planner (neutral plan; set --face yourself), no shape judges, no rig judges. Everything that is built is accepted; you judge the result")
     ap.add_argument("--review", choices=["off", "override", "manual"], default=None,
                     help="human review after every judge decision (pick, 3D shape, rig): override = judges decide, you can override on the page "
@@ -909,6 +924,9 @@ def main():
     R.state["zip"] = bool(a.zip)
     if R.state.get("sheet"): C.ALL_JUDGES = list(C.JUDGES); C.JUDGES = list(C.SHEET_JUDGES)      # sheet runs: one judge (still unloads all of them)
     if a.depth_views: R.state["depth_views"] = a.depth_views
+    if a.back_view:
+        if not os.path.exists(a.back_view): raise SystemExit(f"--back-view: no such picture: {a.back_view}")
+        R.state["back_view"] = os.path.abspath(a.back_view)
     if a.no_llm: R.state["no_llm"] = True; R.state["review_mode"] = "off"
     if a.rigger: R.state["rigger"] = a.rigger
     if a.anim is not None: R.state["anim_prompts"] = [p.strip() for p in a.anim if p.strip()]

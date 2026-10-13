@@ -19,3 +19,12 @@ About 3 minutes in all on the Radeon. The stage page shows the views the shape m
 
 ## Files it needs
 Qwen-Image 2.1 int8, its text encoder and VAE, the turbo LoRA and the Fun ControlNet Union in ComfyUI's model folders (the Doctor lists any that are missing; without them the stage is skipped and redraws fall back to Unsloth Studio).
+
+## Your own back picture (`--back-view`)
+If you already have a picture of the same character from behind (same pose and costume, plain background; made by any image generator or drawn), give it and the depth phase is skipped:
+
+```bash
+.venv/bin/python -m homunculus.orchestrate front.png --name hero --direct --back-view back.png
+```
+
+The back picture is upscaled like the front, both are cut out and framed at one scale with equal figure heights, and the multiview shape model gets front + back. Nothing is generated and the proxy shape (about 3 minutes) is not made: the whole stage took 21 s on the Kinjaz dancer. Make the two pictures the same size and framing (portrait, the figure centred, the same pose), because only the figure's height is normalised.
