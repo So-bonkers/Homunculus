@@ -112,6 +112,7 @@ class H(SimpleHTTPRequestHandler):
         if path == "/api/fork": return self.fork_run()
         if path == "/api/looks": return self.look_previews()
         if path == "/api/animate": return self.animate_job()
+        if path == "/api/animate_video": return self.animate_video_job()
         if path == "/api/repair": return self.repair_job()
         if path == "/api/repair_use": return self.repair_use()
         if path == "/api/repair_choose": return self.repair_choose()
@@ -381,6 +382,49 @@ class H(SimpleHTTPRequestHandler):
             if r.returncode:
                 busy = "already" in (r.stderr or "")
                 return self._json(409 if busy else 500, {"error": "Animation clips are already being generated for this run." if busy else (r.stderr or r.stdout)[-300:]})
+            self._json(200, {"ok": True})
+        except Exception as e:
+            self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
+    def animate_video_job(self):
+        """Copy the dance of a video onto a rigged run. The video is the request body, the options are in the query: ?run=&fname=&start=&end=[&title=]. An empty body re-uses the
+        video uploaded last time under that file name (to try another range). The job waits for the GPU lock and appends a clip to runs/<run>/09_animate/animations.json."""
+        import re, subprocess, sys
+        from urllib.parse import urlparse, parse_qs
+        try:
+            q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
+            run = os.path.basename(q.get("run", "")); fname = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(q.get("fname", "video.mp4")))
+            if os.path.splitext(fname)[1].lower() not in (".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"): return self._json(400, {"error": "Use a video file (.mp4, .mov, .mkv, .webm, .avi)."})
+            try: start, end = float(q.get("start", 0)), float(q.get("end", 0))
+            except ValueError: return self._json(400, {"error": "Start and end must be numbers of seconds."})
+            from .stages import video_motion as VM
+            if not (0 <= start < end) or end - start > VM.MAX_SECONDS: return self._json(400, {"error": f"Choose a range between 1 and {VM.MAX_SECONDS} seconds."})
+            ok, why = VM.available()
+            if not ok: return self._json(400, {"error": "Dance from video is not set up on this machine: " + why})
+            if not (C.RUNS / run / "state.json").exists(): return self._json(404, {"error": "No such run."})
+            S = json.load(open(C.RUNS / run / "state.json"))
+            if not (S.get("artifacts") or {}).get("rig_fbx"): return self._json(400, {"error": "This run has no rig yet; animate after the Auto-rig stage."})
+            n = int(self.headers.get("Content-Length", 0))
+            if n > 1500 * 1024 * 1024: return self._json(400, {"error": "Video larger than 1.5 GB."})
+            up = C.ROOT / "uploads"; up.mkdir(exist_ok=True); vid = up / f"{run}_motion_{fname}"
+            if n:
+                with open(vid, "wb") as f:      # videos are big: stream them to disk
+                    left = n
+                    while left > 0:
+                        chunk = self.rfile.read(min(1 << 20, left))
+                        if not chunk: break
+                        f.write(chunk); left -= len(chunk)
+            elif not vid.exists(): return self._json(400, {"error": "No video uploaded."})
+            unit = f"homunculus-vid-{run}"
+            subprocess.run(["systemctl", "--user", "reset-failed", f"{unit}.service"], capture_output=True)
+            title = (q.get("title") or os.path.splitext(fname)[0])[:80]
+            cmd = [sys.executable, "-m", "homunculus.video_motion", run, str(vid), "--start", f"{start:g}", "--end", f"{end:g}", "--title", title]
+            r = subprocess.run(["systemd-run", "--user", f"--unit={unit}", "--collect", f"--working-directory={C.ROOT}", "-p", "KillSignal=SIGINT",
+                                *[f"--setenv={k}={os.environ[k]}" for k in ("DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR") if os.environ.get(k)],
+                                *cmd], capture_output=True, text=True)
+            if r.returncode:
+                busy = "already" in (r.stderr or "")
+                return self._json(409 if busy else 500, {"error": "A dance is already being copied for this run." if busy else (r.stderr or r.stdout)[-300:]})
             self._json(200, {"ok": True})
         except Exception as e:
             self._json(500, {"error": f"{type(e).__name__}: {e}"})

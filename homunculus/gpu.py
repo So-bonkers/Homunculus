@@ -70,7 +70,7 @@ def free_all(log, keep=None):
         last = now
     log(f"GPU freed (keep={keep}); VRAM {vram_gb():.1f} GB")
 
-NEED_GB = {"qwen_image": 17.5, "vlm": 17.5, "pixal3d": 19.5, "upscale": 16.0, "mia": 8.0, "unimate": 6.0, "skintokens": 5.0}   # observed peak incl. ~1.5 GB desktop baseline
+NEED_GB = {"qwen_image": 17.5, "vlm": 17.5, "pixal3d": 19.5, "upscale": 16.0, "mia": 8.0, "unimate": 6.0, "gvhmr": 8.0, "skintokens": 5.0}   # observed peak incl. ~1.5 GB desktop baseline
 
 def comfy_free():
     """Ask a running ComfyUI to drop its cached models (it keeps the upscaler/Pixal3D weights otherwise)."""

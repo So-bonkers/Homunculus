@@ -691,7 +691,7 @@ async function runPage(name) {
     } else if (tab === "animate") {
       const A = d.animations, rigged = !!d.stages.find((x) => x.key === "rig" && x.status === "done") || d.files.some((f) => /rig/i.test(f.label));
       const s = JSON.stringify(["an", A, rigged, d.live]); if (s === sig.tab) return; sig.tab = s;
-      const typed = $("#aprompts")?.value || ""; if (viewer) { viewer.dispose(); viewer = null; }
+      const typed = $("#aprompts")?.value || "", vs = $("#vstart")?.value || "0", ve = $("#vend")?.value || "20"; if (viewer) { viewer.dispose(); viewer = null; }
       const busy = A && ["queued", "running"].includes(A.status);
       T.innerHTML = `<div class="anim-form"><div><b>Text to animation</b><span>Describe one motion per line, in plain words (“walks forward”, “raises both arms and cheers”). UniMate animates your rigged character locally; clips take under a minute.</span></div>
         <textarea class="notes" id="aprompts" rows="3" placeholder="walks forward&#10;waves with the right hand&#10;jumps in place" ${rigged ? "" : "disabled"}></textarea><div id="apresets" class="presetbox"></div>
@@ -699,13 +699,24 @@ async function runPage(name) {
           <button class="btn btn-glow" id="agen" ${rigged && !busy ? "" : "disabled"}>${busy ? (A.status === "queued" ? "Queued: waits for the GPU" : "Generating…") : "Generate clips"}</button>
           ${A && A.clips.length ? `<button class="btn btn-ghost" id="ahands" title="Set the fingers of every clip from the prompt: fists for a punch, an open hand for a wave, a grip for a sword. No GPU needed.">Set hand poses</button>` : ""}
           <span class="rv-msg" id="amsg">${rigged ? "" : "Available once the rig is built."}${A?.status === "failed" ? " Last attempt failed: " + esc(A.error || "see the log") : ""}</span></div></div>
+        <div class="anim-form vid-form"><div><b>Copy a dance from a video</b><span>Upload a video of one person dancing and pick the part to copy: one continuous shot, whole body in view. The motion is estimated on the GPU and put on your rigged character, with a preview next to the video. About 4 minutes for 20 seconds. Body only, no fingers.</span></div>
+          <input type="file" class="input" id="vfile" accept="video/*" ${rigged ? "" : "disabled"}>
+          <div class="rv-act"><label class="inl">From <input class="input" id="vstart" type="number" min="0" step="0.5" value="${esc(vs)}" style="width:84px;height:36px"> s</label><label class="inl">to <input class="input" id="vend" type="number" min="1" step="0.5" value="${esc(ve)}" style="width:84px;height:36px"> s</label>
+            <button class="btn btn-glow" id="vgen" ${rigged && !busy ? "" : "disabled"}>Copy the dance</button><span class="rv-msg" id="vmsg">${busy ? "A clip is being made; the Log tab has the details." : ""}</span></div></div>
         ${A && A.clips.length ? `<div class="viewer anim-view" id="avw"><div class="vload" id="avl"><div style="text-align:center">Loading clip<div class="p"><i></i></div></div></div>
             <div class="vbar"><button data-o="play" class="on">Pause</button><button data-o="slow">0.5×</button><button data-o="norm" class="on">1×</button><button data-o="bones">Bones</button></div></div>
-          <div class="clips">${A.clips.map((c, i) => `<button class="clip" data-c="${i}"><b>${esc(c.prompt)}</b><small>take ${c.rep + 1}${c.textured ? " · textured" : ""}</small></button>`).join("")}</div>
+          <div class="clips">${A.clips.map((c, i) => `<button class="clip" data-c="${i}"><b>${esc(c.prompt)}</b><small>${c.source === "video" ? "from a video" : "take " + (c.rep + 1)}${c.textured ? " · textured" : ""}</small></button>`).join("")}</div>
           <div class="clipdl" id="clipdl"></div>`
           : `<div class="empty" style="margin-top:20px">${busy ? "Generating the first clips…" : "No clips yet. Type a prompt above."}</div>`}`;
       $("#aprompts").value = typed; presetPicker($("#aprompts"), $("#apresets"));
       $("#ahands") && ($("#ahands").onclick = async () => { $("#ahands").disabled = true; try { const r = await fetch("/api/animate", { method: "POST", body: JSON.stringify({ run: name, hands: true }) }); const jj = await r.json(); toast(r.ok ? "Setting hand poses on the clips…" : jj.error || "Could not start", !r.ok); } catch { toast("Could not reach the server", true); } setTimeout(() => { const b = $("#ahands"); b && (b.disabled = false); }, 4000); });
+      $("#vgen").onclick = async () => {
+        const f = $("#vfile").files[0], a = +$("#vstart").value, b = +$("#vend").value, m = $("#vmsg");
+        if (!f) { m.textContent = "Choose a video file."; return; } if (!(b > a)) { m.textContent = "The end must be after the start."; return; }
+        $("#vgen").disabled = true; m.textContent = `Uploading ${(f.size / 1048576).toFixed(0)} MB…`;
+        try { const r = await fetch("/api/animate_video?" + new URLSearchParams({ run: name, fname: f.name, start: a, end: b, title: f.name.replace(/\.[^.]+$/, "") }), { method: "POST", body: f }); const jj = await r.json();
+          toast(r.ok ? "Copying the dance… the clip appears here when it is ready" : jj.error || "Could not start", !r.ok); m.textContent = r.ok ? "" : jj.error || ""; if (!r.ok) $("#vgen").disabled = false; }
+        catch { toast("Could not reach the server", true); $("#vgen").disabled = false; m.textContent = ""; } };
       $("#agen").onclick = async () => {
         const ps = $("#aprompts").value.split("\n").map((x) => x.trim()).filter(Boolean); if (!ps.length) { $("#amsg").textContent = "Type at least one prompt."; return; }
         $("#agen").disabled = true;
@@ -717,7 +728,7 @@ async function runPage(name) {
         viewer = createViewer($("#avw"), {}); const st = { play: true, speed: 1, bones: false };
         const show = async (i) => { $$(".clip", T).forEach((x) => x.classList.toggle("on", +x.dataset.c === i)); $("#avl").hidden = false; const c = A.clips[i];
           try { await viewer.load(c.url); } catch { $("#avl").innerHTML = "Could not load this clip."; return; } $("#avl").hidden = true; viewer.set(st);
-          $("#clipdl").innerHTML = `<a class="btn btn-ghost btn-sm" href="${esc(c.url)}" download>GLB</a>${c.fbx ? `<a class="btn btn-ghost btn-sm" href="${esc(c.fbx)}" download>FBX</a>` : ""}`; };
+          $("#clipdl").innerHTML = `<a class="btn btn-ghost btn-sm" href="${esc(c.url)}" download>GLB</a>${c.fbx ? `<a class="btn btn-ghost btn-sm" href="${esc(c.fbx)}" download>FBX</a>` : ""}${c.video ? `<a class="btn btn-ghost btn-sm" href="${esc(c.video)}" download>Preview video</a>` : ""}${c.compare ? `<video controls preload="metadata" src="${esc(c.compare)}" style="display:block;width:100%;margin-top:12px;border-radius:12px"></video>` : ""}`; };
         $(".clips", T).onclick = (e) => { const b = e.target.closest(".clip"); if (b) show(+b.dataset.c); };
         $(".anim-view .vbar", T).onclick = (e) => { const b = e.target.closest("button"); if (!b) return; const o = b.dataset.o;
           if (o === "play") { st.play = !st.play; b.textContent = st.play ? "Pause" : "Play"; b.classList.toggle("on", st.play); viewer.set({ play: st.play }); }

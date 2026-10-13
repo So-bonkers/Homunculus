@@ -1,5 +1,7 @@
 # Dance from a video
 
+**In the web app:** open a rigged run, Animate tab, "Copy a dance from a video": choose the video, the start and end second (one continuous shot, whole body in view), Copy the dance. The job waits for the GPU like the other jobs and adds a clip to the run (with a preview render and the video next to it). It does everything below, plus the camera step (a moving camera is tracked from the background and taken out of the dancer's path; a steady one is left alone). The rest of this page is the same pipeline by hand.
+
 Video of one dancer -> SMPL motion (GVHMR) -> BVH (`tools/smpl_to_bvh.py`) -> your rigged character (`tools/retarget_bvh.py --map smpl`) -> preview (`tools/make_mp4.py --fixed`).
 
 ## One-time setup (everything lives in `gvhmr/`, which git ignores)
@@ -20,4 +22,6 @@ blender -b --python tools/retarget_bvh.py -- <character.fbx> gvhmr/work/clip.bvh
 A 20 s clip took about two and a half minutes on the Radeon (YOLO tracking, ViTPose, HMR2 features, then the model itself: under 2 s).
 
 ## What to expect
+The dance's heading is not recoverable from the clip: if the character faces away from the render camera, pass `--yaw 180` (any angle) to `smpl_to_bvh.py`. For the first test clip, where the dancer faces the camera at the start, 180 is right.
+
 Body only (no fingers), depth is guessed from one camera, feet slide (0.6-0.7 body heights per second while low in the first test), fast spins and floor work are weaker. Tested on one 20 s freestyle slice (dark clothes, coloured light, steady camera): the arm and leg poses matched the footage at five checked moments.

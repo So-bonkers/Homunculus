@@ -177,7 +177,7 @@ def run(name, live):
         am = json.load(open(C.RUNS / name / "09_animate" / "animations.json"))
         anims = {"status": am.get("status"), "error": am.get("error"), "clips": [
             {"id": c["id"], "prompt": c.get("prompt", ""), "rep": c.get("rep", 0), "url": _url(name, c.get("textured") or c.get("glb")), "fbx": _url(name, c.get("textured_fbx") or c.get("fbx")),
-             "thumb": _url(name, c.get("thumb")), "textured": bool(c.get("textured"))} for c in am.get("clips", []) if _url(name, c.get("textured") or c.get("glb"))]}
+             "thumb": _url(name, c.get("thumb")), "textured": bool(c.get("textured")), "source": c.get("source"), "video": _url(name, c.get("video")), "compare": _url(name, c.get("compare"))} for c in am.get("clips", []) if _url(name, c.get("textured") or c.get("glb"))]}
     except Exception: pass
     looks = None
     try:

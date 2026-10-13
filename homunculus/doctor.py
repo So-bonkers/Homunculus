@@ -58,6 +58,8 @@ def checks():
     add("Make-It-Animatable", "ok" if _exists(C.MIA_REPO / "output" / "best" / "new") and _exists(C.MIA_PY) else "fail", str(C.MIA_REPO), "./setup.sh mia")
     ck = C.ROOT / "unimate" / "outputs" / "unimate_uniml3d_f60_v3_preview" / "checkpoints" / "checkpoint_step_100000.pt"
     add("UniMate (animation)", "ok" if _exists(ck, 1e8) and _exists(C.ROOT / "unimate" / ".venv" / "bin" / "python") else "warn", "checkpoint + environment", "./setup.sh unimate (animation prompts are skipped without it)")
+    from .stages import video_motion as _vm; _ok, _why = _vm.available()
+    add("GVHMR (dance from a video)", "ok" if _ok else "warn", "gvhmr/ environment + checkpoints" if _ok else _why, "docs/VIDEO_MOTION.md (the 'Copy a dance from a video' form is disabled without it)")
     add("SkinTokens (T-pose for posed 3D models)", "ok" if _exists(C.ROOT / "riggers" / "skintokens" / "build" / "bin" / "skintokens-cli") else "warn", "optional", "./setup.sh skintokens (only needed for 3D models that are not in a T-pose)")
     # python deps
     for mod in ("numpy", "PIL", "scipy", "cv2", "mediapipe", "requests", "rembg"):
