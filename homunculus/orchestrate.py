@@ -723,14 +723,26 @@ def st_texture(R):
     return os.path.basename(out)
 
 def st_animate(R):
-    """Text-to-animation (UniMate) on the rigged model: the prompts typed on the website (one clip per prompt and repetition)."""
-    ps = [p for p in (R.state.get("anim_prompts") or []) if str(p).strip()]
-    if not ps: return "no animation prompts (add some on the run page: Animate tab)"
-    from .stages import animate
-    clips = animate.generate(R, ps, reps=int(R.state.get("anim_reps", 2)))
-    thumbs = [c["thumb"] for c in clips if c.get("thumb")][:8]
-    progress.snap(R, "animate", f"{len(clips)} animation clip(s) generated", thumbs, [c["prompt"][:40] for c in clips if c.get("thumb")][:8])
-    return f"{len(clips)} clip(s) for {len(ps)} prompt(s)"
+    """Animation for the rigged model. A video of someone dancing (--anim-video, with --anim-from / --anim-to in seconds) is the primary source: GVHMR reads the body motion, the camera's own motion is taken out,
+    and it is retargeted onto this rig (stages/video_motion.py). Text prompts (UniMate, --anim) work too, alone or in addition."""
+    ps = [p for p in (R.state.get("anim_prompts") or []) if str(p).strip()]; v = R.state.get("anim_video"); clips, notes = [], []
+    if not v and not ps: return "no animation: add a video of a dance (--anim-video clip.mp4 --anim-from 30 --anim-to 50, or on the run page: Animate tab) and/or text prompts (--anim)"
+    if v:
+        from .stages import video_motion
+        ok, why = video_motion.available()
+        if not ok: R.log(f"[animate] dance from video is not available: {why}"); notes.append("video skipped: " + why)
+        else:
+            try:
+                start = float(v.get("from") or 0); end = float(v.get("to") or (start + 20))
+                clips.append(video_motion.generate(R, v["path"], start, end, title=v.get("title")))
+            except Exception as e:
+                R.log(f"[animate] dance from video failed ({type(e).__name__}: {str(e)[:200]})"); notes.append(f"video failed: {str(e)[:80]}")
+    if ps:
+        from .stages import animate
+        clips += animate.generate(R, ps, reps=int(R.state.get("anim_reps", 2)))
+    thumbs = [str(R.dir / c["thumb"]) if c.get("thumb") and not os.path.isabs(c["thumb"]) else c.get("thumb") for c in clips if c.get("thumb")][:8]
+    if clips: progress.snap(R, "animate", f"{len(clips)} animation clip(s) ready", thumbs, [str(c.get("prompt", ""))[:40] for c in clips if c.get("thumb")][:8])
+    return (f"{len(clips)} clip(s)" + (f": {'a dance from the video' if v and any(c.get('source') == 'video' for c in clips) else ''}{' + ' if v and ps else ''}{str(len(ps)) + ' text prompt(s)' if ps else ''}")) + (" - " + "; ".join(notes) if notes else "")
 
 def hand_gate(R):
     """After the 3D mesh is final: do the hands look broken? Cut-off or torn fingers leave open edges (blender_handcheck.py, CPU). --auto-repair alert (default): warn and point to the
@@ -861,8 +873,10 @@ def main():
     ap.add_argument("--sheet-top", dest="sheet_top", metavar="PICTURE", help="turnaround sheet runs: a picture of the character from directly above, for the texture only (the top of the head, the shoulders, the tops of the feet). The character's front faces the BOTTOM of the picture")
     ap.add_argument("--sheet-bottom", dest="sheet_bottom", metavar="PICTURE", help="turnaround sheet runs: a picture of the character from directly below, for the texture only (the soles, the underside). The character's front faces the TOP of the picture")
     ap.add_argument("--rigger", choices=list(C.RIGGERS), help="auto-rigger: " + ", ".join(f"{k} ({v[0]})" for k, v in C.RIGGERS.items()) + f" (default {C.DEFAULT_RIGGER})")
-    ap.add_argument("--depth-views", dest="depth_views", choices=["on", "off"], help="single-picture runs: the depth phase before the 3D shape (default on): a proxy shape, depth maps of it, the back and side views drawn under them with Qwen-Image Turbo, kept only where their outline agrees")
-    ap.add_argument("--anim", action="append", metavar="PROMPT", help="animation prompt for the Animate stage (repeat for several), e.g. --anim 'walks forward'")
+    ap.add_argument("--anim-video", dest="anim_video", metavar="VIDEO", help="animate with the dance in a video (one person, a steady or moving camera): GVHMR reads the body motion and it is retargeted onto the rig; combine with --anim-from / --anim-to (seconds, at most 180 s; default 20 s from --anim-from)")
+    ap.add_argument("--anim-from", dest="anim_from", type=float, default=0.0, help="seconds into the --anim-video where the dance to copy starts")
+    ap.add_argument("--anim-to", dest="anim_to", type=float, default=None, help="seconds into the --anim-video where it ends")
+    ap.add_argument("--anim", action="append", metavar="PROMPT", help="text prompt for the Animate stage (UniMate; repeat for several), e.g. --anim 'walks forward'. The default source is a video of a dance (--anim-video); prompts work alone or in addition")
     ap.add_argument("--anim-reps", type=int, default=None, help="clips per prompt (default 2)")
     ap.add_argument("--zip", action="store_true", help="also write exports/mixamo_<name>.zip (OBJ+MTL+texture) for uploading to Mixamo")
     ap.add_argument("--review-grace", type=int, default=None, help="seconds to respond in override mode (default 60)")
@@ -899,6 +913,7 @@ def main():
     if a.anim_reps: R.state["anim_reps"] = a.anim_reps
     if a.direct: R.state["direct"] = True; R.state["look"] = "asis"
     if a.sheet_equal_height: R.state["sheet_equal_height"] = True; R.save()
+    if a.anim_video: R.state["anim_video"] = {"path": os.path.abspath(a.anim_video), "from": a.anim_from, "to": a.anim_to}
     for n in ("top", "bottom"):
         if getattr(a, f"sheet_{n}"): R.state.setdefault("sheet_extra", {})[n] = os.path.abspath(getattr(a, f"sheet_{n}")); R.save()
     if a.sheet: R.state["sheet"] = True; R.state["sheet_order"] = a.sheet; R.state["direct"] = True; R.state["look"] = "asis"
