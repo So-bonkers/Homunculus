@@ -87,10 +87,8 @@ print("[retarget] rest-pose direction difference corrected (degrees): " + ", ".j
 # scale: standing hip height above the soles, target against source
 def floor_z(obj, w, names): return min((w @ obj.data.bones[n].tail_local).z for n in names if n in obj.data.bones)
 t_feet = [b.name for b in T.data.bones if "Toe" in b.name or "Foot" in b.name]; s_feet = [sb[k].name for k in ("LeftFoot", "RightFoot", "LeftToeBase", "RightToeBase")]
-fl_t, fl_s = floor_z(T, Tw, t_feet), floor_z(S, Sw, s_feet)
-_meshes = [o for o in bpy.data.objects if o.type == "MESH" and o.name != "Icosphere"]
-if _meshes:        # the lowest point of the character's own body is the floor (bone tails of a glTF rig are not meaningful)
-    fl_t = min((o.matrix_world @ Vector(c)).z for o in _meshes for c in o.bound_box)
+fl_s = floor_z(S, Sw, s_feet)
+fl_t = min((Tw @ T.data.bones[n].head_local).z for n in t_feet)      # the lowest foot or toe JOINT (heads mean the same in an FBX and in a glTF rig; bone tails of a glTF rig do not, and an FBX mesh's own bounding box is not where its skinned body stands)
 hips_t0 = (Tw @ tb["Hips"].head_local); h_t = hips_t0.z - fl_t; h_s = (Sw @ sb["Hips"].head_local).z - fl_s
 K = h_t / h_s
 print(f"[retarget] source {SRC_FPS} fps, frames {f0}-{f1}; standing hip height target {h_t:.5f} source {h_s:.3f} -> scale {K:.6f}; target floor z {fl_t:.5f}", flush=True)
