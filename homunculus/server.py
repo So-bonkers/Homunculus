@@ -57,6 +57,7 @@ class H(SimpleHTTPRequestHandler):
             from . import api
             r = api.run(os.path.basename(path), live_runs())
             return self._json(200, r) if r else self._json(404, {"error": "no such run"})
+        if path in ("/ui", "/ui/"): return self._static("ui/index.html")          # the new interface (web/, built into static/ui/); it moves to / once it covers every feature
         if path in ("/", "/index.html", "/app", "/app/"): return self._static("app.html")
         if path.startswith("/static/"): return self._static(path[len("/static/"):])
         if self.path.startswith("/api/zip/"):
@@ -100,7 +101,7 @@ class H(SimpleHTTPRequestHandler):
         base = os.path.realpath(os.path.join(os.path.dirname(__file__), "static")); p = os.path.realpath(os.path.join(base, rel))
         if not p.startswith(base + os.sep) or not os.path.isfile(p): self.send_error(404); return
         ctype = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-                 ".woff2": "font/woff2", ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json", ".glb": "model/gltf-binary"}.get(os.path.splitext(p)[1], "application/octet-stream")
+                 ".woff2": "font/woff2", ".woff": "font/woff", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".json": "application/json", ".glb": "model/gltf-binary", ".mp4": "video/mp4"}.get(os.path.splitext(p)[1], "application/octet-stream")
         data = open(p, "rb").read(); self.send_response(200); self.send_header("Content-Type", ctype); self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-cache" if "/vendor/" not in p else "max-age=86400"); self.end_headers(); self.wfile.write(data)
     def guess_type(self, path):
