@@ -9,7 +9,7 @@ from PIL import Image
 from . import config as C, gpu, vlm, prompts, progress, digits, server, notify
 from .stages import comfy, edit, blender, rig, report, cleanup, faceproj, turnaround
 
-STAGES = ["ingest", "upscale", "plan", "edit", "pick", "upscale_edit", "mesh", "mesh_check", "color", "rig", "rig_check", "animate", "texture", "report"]
+STAGES = ["ingest", "upscale", "plan", "edit", "pick", "upscale_edit", "views", "mesh", "mesh_check", "color", "rig", "rig_check", "animate", "texture", "report"]
 
 class Run:
     def __init__(self, image, name, style=None):
@@ -230,8 +230,11 @@ def st_ingest_sheet(R):
     return "turnaround sheet: " + ", ".join(R.A["sheet_views"])
 
 def sheet_views(R):
-    """The framed turnaround views of a sheet run (None for a normal run); rebuilt from the sheet if the run folder was forked without them."""
-    if not R.state.get("sheet"): return None
+    """The framed views for the multiview shape: a sheet run's four views (rebuilt from the sheet if the run folder was forked without them), or the front plus the generated views of the depth phase
+    (None for a normal run, or when that stage kept none)."""
+    if not R.state.get("sheet"):
+        v = R.A.get("gen_views")
+        return v if v and all(os.path.exists(p) for p in v.values()) else None
     v = R.A.get("sheet_views")
     if not v or not all(os.path.exists(p) for p in v.values()):
         R.log("turnaround views missing; cutting the sheet again"); st_ingest_sheet(R); v = R.A["sheet_views"]
@@ -461,6 +464,27 @@ def st_edit_and_pick(R):
         fix = verdict.get("fix_notes", ""); R.state["fix_notes"] = fix; R.log(f"no usable candidate; fix notes: {fix}")
     if not R.state.get("ranked_edits"): raise RuntimeError("the redraw step produced no usable images")
     R.A["chosen_edit"] = R.state["ranked_edits"][0]; return "no candidate passed; using best-ranked (flagged)"
+
+def st_views(R):
+    """The depth phase before the 3D shape: back and side views drawn under a depth map of a proxy shape (stages/depthviews.py), so the shape model sees views that agree. Single-picture runs only."""
+    if mesh_mode(R): return "skipped: mesh input"
+    if R.state.get("sheet"): return "skipped: the turnaround sheet already is the views"
+    on = R.state.get("depth_views")
+    if on is None: on = "on" if C.DEPTH_VIEWS else "off"
+    if on == "off": R.A.pop("gen_views", None); return "skipped (--depth-views off)"
+    from .stages import depthviews
+    miss = depthviews.models_ok()
+    if miss: R.log(f"[views] skipped: missing in ComfyUI: {', '.join(miss)}"); R.A.pop("gen_views", None); return "skipped: model files missing (python -m homunculus.doctor)"
+    try:
+        res = depthviews.make(R.A["edit_upscaled"], R.p("04b_views"), R.state["name"], R.log)
+    except Exception as e:
+        R.log(f"[views] failed ({type(e).__name__}: {str(e)[:200]}); the shape is built from the single picture"); R.A.pop("gen_views", None); return "failed: single-picture shape"
+    if not res: R.A.pop("gen_views", None); return "no generated view agreed with the proxy: single-picture shape"
+    R.A["gen_views"] = res["views"]; R.save()
+    contact = turnaround.sheet_image(res["views"], R.p("04b_views", "framed_views.png"))
+    progress.snap(R, "views", "views drawn under the depth map of a proxy shape: " + ", ".join(f"{k} {v:.2f}" + ("" if k in res["views"] else " (dropped)") for k, v in res["iou"].items()), [contact, res["unguided_back"]],
+                  ["the views the shape model sees (front, left, back, right)", "the unguided back (reference for the guided back)"])
+    return "front + " + ", ".join(k for k in res["views"] if k != "front") + (f" (dropped: {', '.join(res['dropped'])})" if res["dropped"] else "")
 
 def st_upscale_edit(R):
     style = prompts.LOOK_UPSCALE.get(R.state.get("look", "asis")) or R.state["vlm"]["plan"].get("style", "photo")
@@ -817,7 +841,7 @@ def st_report(R):
     progress.snap(R, "report", "finished - contact sheet", [str(R.dir / "contact_sheet.png")], cell=900)
     return p
 
-RUNNERS = {"ingest": st_ingest, "upscale": st_upscale, "plan": st_plan, "edit": st_edit_and_pick, "pick": None, "upscale_edit": st_upscale_edit,
+RUNNERS = {"ingest": st_ingest, "upscale": st_upscale, "plan": st_plan, "edit": st_edit_and_pick, "pick": None, "upscale_edit": st_upscale_edit, "views": st_views,
            "mesh": st_mesh_and_check, "mesh_check": None, "color": st_color, "rig": st_rig_ladder, "rig_check": None, "animate": st_animate,
            "texture": st_texture, "report": st_report}
 
@@ -837,6 +861,7 @@ def main():
     ap.add_argument("--sheet-top", dest="sheet_top", metavar="PICTURE", help="turnaround sheet runs: a picture of the character from directly above, for the texture only (the top of the head, the shoulders, the tops of the feet). The character's front faces the BOTTOM of the picture")
     ap.add_argument("--sheet-bottom", dest="sheet_bottom", metavar="PICTURE", help="turnaround sheet runs: a picture of the character from directly below, for the texture only (the soles, the underside). The character's front faces the TOP of the picture")
     ap.add_argument("--rigger", choices=list(C.RIGGERS), help="auto-rigger: " + ", ".join(f"{k} ({v[0]})" for k, v in C.RIGGERS.items()) + f" (default {C.DEFAULT_RIGGER})")
+    ap.add_argument("--depth-views", dest="depth_views", choices=["on", "off"], help="single-picture runs: the depth phase before the 3D shape (default on): a proxy shape, depth maps of it, the back and side views drawn under them with Qwen-Image Turbo, kept only where their outline agrees")
     ap.add_argument("--anim", action="append", metavar="PROMPT", help="animation prompt for the Animate stage (repeat for several), e.g. --anim 'walks forward'")
     ap.add_argument("--anim-reps", type=int, default=None, help="clips per prompt (default 2)")
     ap.add_argument("--zip", action="store_true", help="also write exports/mixamo_<name>.zip (OBJ+MTL+texture) for uploading to Mixamo")
@@ -883,6 +908,7 @@ def main():
     R.save(); server.ensure_service()
     todo = [a.only] if a.only else STAGES[STAGES.index(a.frm):] if a.frm else STAGES
     if a.frm or a.only:
+    if a.depth_views: R.state["depth_views"] = a.depth_views
         for s in todo: R.state["stages"].pop(s, None)
         if any(s in todo for s in ("edit", "pick")):
             R.state.update(edit_round=0, fix_notes="", hands=C.DEFAULT_POSE, edit_gen=R.state.get("edit_gen", 0) + 1); R.state.pop("edit_round_limit", None); R.A["edit_candidates"] = []

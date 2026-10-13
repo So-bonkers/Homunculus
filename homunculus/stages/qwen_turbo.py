@@ -11,7 +11,10 @@ LORA = "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors"
 TURBO_SIGMAS = "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0.0"      # Qwen-Image-2.1-Turbo's shipped 8-step schedule (sample_sigmas in its model_index.json), plus the final 0
 
 
-def graph(ref_names, prompt, seed, size, res=512):
+PATCH = "qwen_image_2.1_fun_controlnet_union_int8_convrot.safetensors"      # the Fun ControlNet Union (depth / normal), a model patch
+
+
+def graph(ref_names, prompt, seed, size, res=512, control=None, strength=0.8):
     w, h = (size, size) if isinstance(size, int) else size
     g = {"1": {"class_type": "UNETLoader", "inputs": {"unet_name": MODEL, "weight_dtype": "default"}},
          "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": TEXT, "type": "qwen_image", "device": "default"}},
@@ -27,6 +30,10 @@ def graph(ref_names, prompt, seed, size, res=512):
          "13": {"class_type": "SaveImage", "inputs": {"images": ["12", 0], "filename_prefix": "qwen_turbo/v"}}}
     for i, n in enumerate(ref_names):
         g[f"r{i}"] = {"class_type": "LoadImage", "inputs": {"image": n}}; g["9"]["inputs"][f"images.image_{i + 1}"] = [f"r{i}", 0]
+    if control:      # a depth (or normal) picture steers the layout: the redraw must follow its silhouette and pose
+        g["5"] = {"class_type": "ModelPatchLoader", "inputs": {"name": PATCH}}; g["6"] = {"class_type": "LoadImage", "inputs": {"image": control}}
+        g["7"] = {"class_type": "QwenImageDiffsynthControlnet", "inputs": {"model": ["4", 0], "model_patch": ["5", 0], "vae": ["3", 0], "image": ["6", 0], "strength": strength}}
+        g["11"]["inputs"]["model"] = ["7", 0]
     return g
 
 
@@ -46,24 +53,31 @@ def _run(g, timeout=900):
 
 def up(log):
     """Start ComfyUI for a run of redraws (everything else is unloaded first). The caller ends with down()."""
-    gpu.free_all(log, keep="comfy"); gpu.wait_for_headroom("qwen_image", log); gpu.comfy_start(log)
+    gpu.free_all(log, keep="comfy")
+    if gpu.comfy_running(): gpu.comfy_free()          # Pixal3D or the upscaler may still hold its weights in VRAM
+    gpu.wait_for_headroom("qwen_image", log); gpu.comfy_start(log)
 
 
 def down():
     gpu.comfy_free()          # drop the models from VRAM (the next step needs the room); the server itself stays up
 
 
-def edit_image(image, prompt, seed, size, res, log):
-    """One redraw of `image` (PIL, the reference to edit) at `size` (int or (w, h)); ComfyUI must be up (up()). res: the reference resolution (512 or 1024). Returns a PIL image."""
+def edit_image(image, prompt, seed, size, res, log, control=None, strength=0.8, refs=()):
+    """One redraw of `image` (PIL, the reference to edit; `refs`: more reference pictures) at `size` (int or (w, h)); ComfyUI must be up (up()). res: the reference resolution (512 or 1024).
+    control: a depth or normal picture (PIL) that the result must follow. Returns a PIL image."""
     from PIL import Image as _I
-    u = uuid.uuid4().hex[:6]; nm = f"qt_{u}.png"; image.convert("RGB").save(C.COMFY_UI / "input" / nm)
+    u = uuid.uuid4().hex[:6]; made = []
+    def put(im, tag):
+        nm = f"qt_{u}_{tag}.png"; im.convert("RGB").save(C.COMFY_UI / "input" / nm); made.append(nm); return nm
     try:
-        r = _run(graph([nm], prompt, seed, size, res=res), timeout=900)
+        names = [put(image, "a")] + [put(r, f"r{i}") for i, r in enumerate(refs)]
+        r = _run(graph(names, prompt, seed, size, res=res, control=put(control, "c") if control is not None else None, strength=strength), timeout=900)
         im = r["outputs"]["13"]["images"][0]
         return _I.open(C.COMFY_UI / "output" / im["subfolder"] / im["filename"]).convert("RGB")
     finally:
-        try: os.remove(C.COMFY_UI / "input" / nm)
-        except OSError: pass
+        for nm in made:
+            try: os.remove(C.COMFY_UI / "input" / nm)
+            except OSError: pass
 
 
 def edit_many(image, prompt, seeds, size, out_dir, log, tag="redraw"):

@@ -23,13 +23,13 @@ const LOOK_HINT = { choose: "First redraw: one image per look (As is + 5 styles)
 const RIGGERS = [["mia", "Make-It-Animatable"], ["mia_normal", "MIA · normal weights"]];
 const RIGGER_HINT = { mia: "Default skin weights: a good all-round rig (52 Mixamo bones with fingers).",
   mia_normal: "Binds the skin using the surface normals; try it if the default tears at thick armour, cloth or the shoulders." };
-const FORKABLE = ["upscale", "plan", "edit", "upscale_edit", "mesh", "color", "rig", "animate", "texture", "report"];
-const FORK_OF = { ingest: null, upscale: "upscale", plan: "plan", edit: "edit", pick: "edit", upscale_edit: "upscale_edit", mesh: "mesh", mesh_check: "mesh",
+const FORKABLE = ["upscale", "plan", "edit", "upscale_edit", "views", "mesh", "color", "rig", "animate", "texture", "report"];
+const FORK_OF = { ingest: null, upscale: "upscale", plan: "plan", edit: "edit", pick: "edit", upscale_edit: "upscale_edit", views: "views", mesh: "mesh", mesh_check: "mesh",
   color: "color", rig: "rig", rig_check: "rig", animate: "animate", texture: "texture", report: "report" };
-const FORK_LABEL = { upscale: "Upscale", plan: "Plan", edit: "Redraw", upscale_edit: "Prepare", mesh: "3D shape", color: "Colour", rig: "Auto-rig", animate: "Animate", texture: "Texture", report: "Report" };
+const FORK_LABEL = { upscale: "Upscale", plan: "Plan", edit: "Redraw", upscale_edit: "Prepare", views: "Views", mesh: "3D shape", color: "Colour", rig: "Auto-rig", animate: "Animate", texture: "Texture", report: "Report" };
 const LABEL_OF = (k) => FORK_LABEL[k] || k;
 const FORK_HINT = { upscale: "Everything is redone from the upscaled input.", plan: "The planner looks at the picture again and writes a new redraw prompt.",
-  edit: "New redraws. Your instructions go straight into the redraw prompt.", upscale_edit: "Keeps the chosen redraw, prepares it again for 3D.",
+  edit: "New redraws. Your instructions go straight into the redraw prompt.", upscale_edit: "Keeps the chosen redraw, prepares it again for 3D.", views: "Keeps the redraw; draws the back and side views again under a depth map, then the 3D shapes.",
   mesh: "Keeps the redraw; new 3D shapes. Instructions steer the judges.", color: "Keeps the 3D model; redoes the quick colours, then rigs, animates and textures.",
   rig: "Keeps the coloured model; rigs it again (pick another rigger in the dialog).", animate: "Keeps the rig; generates the animation clips again from the prompts you give.",
   texture: "Keeps the rig and the clips; redoes the final texture and puts it on all of them.", report: "Only rebuilds the report and downloads." };
@@ -336,7 +336,7 @@ async function home(scrollTo) {
           <div class="row2">
             <div class="field"><span class="flabel">Image style</span><select class="input" id="style"><option value="">Auto-detect</option><option value="photo">Photo</option><option value="anime">Anime</option><option value="3d_render">3D render</option></select></div>
             <div class="field"><span class="flabel">Clips per prompt</span><select class="input" id="animreps"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></div>
-            <div class="field"><span class="flabel">Start from</span><select class="input" id="frm"><option value="">Beginning / resume</option>${["upscale", "plan", "edit", "upscale_edit", "mesh", "color", "rig", "animate", "texture", "report"].map((s) => `<option>${s}</option>`).join("")}</select></div>
+            <div class="field"><span class="flabel">Start from</span><select class="input" id="frm"><option value="">Beginning / resume</option>${["upscale", "plan", "edit", "upscale_edit", "views", "mesh", "color", "rig", "animate", "texture", "report"].map((s) => `<option>${s}</option>`).join("")}</select></div>
           </div>
         </details>
         <div class="go"><button type="button" class="btn btn-glow" id="go">Start run</button><div class="bar" id="upbar" hidden><i></i></div><span class="hint" id="gomsg" style="margin:0"></span></div>
@@ -468,8 +468,8 @@ async function home(scrollTo) {
 /* ======================================================================= RUN */
 // ReactFlow-style pipeline graph: two rows, snaking, with retry loops.
 const NW = 180, NH = 68, GX = 64, RY = 160;
-const ORDER = ["ingest", "upscale", "plan", "edit", "pick", "upscale_edit", "mesh", "mesh_check", "color", "rig", "rig_check", "animate", "texture", "report"];
-const PER = 7;       // nodes per row: the second row runs right to left
+const ORDER = ["ingest", "upscale", "plan", "edit", "pick", "upscale_edit", "views", "mesh", "mesh_check", "color", "rig", "rig_check", "animate", "texture", "report"];
+const PER = 8;       // nodes per row: the second row runs right to left
 const POS = Object.fromEntries(ORDER.map((s, i) => [s, i < PER ? { x: i * (NW + GX), y: 0 } : { x: (ORDER.length - 1 - i) * (NW + GX), y: RY }]));
 const GATE_STAGE = { pick: "pick", mesh_check: "mesh_check", rig_check: "rig_check", orient: "plan" };
 const NUM = Object.fromEntries(ORDER.map((s, i) => [s, i + 1]));

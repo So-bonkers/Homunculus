@@ -3,10 +3,10 @@ with your instructions added to the redraw prompt and the judges' context, and o
 import json, os, shutil, time
 from . import config as C
 
-STAGES = ["ingest", "upscale", "plan", "edit", "pick", "upscale_edit", "mesh", "mesh_check", "color", "rig", "rig_check", "animate", "texture", "report"]
-FORKABLE = ["upscale", "plan", "edit", "upscale_edit", "mesh", "color", "rig", "animate", "texture", "report"]
+STAGES = ["ingest", "upscale", "plan", "edit", "pick", "upscale_edit", "views", "mesh", "mesh_check", "color", "rig", "rig_check", "animate", "texture", "report"]
+FORKABLE = ["upscale", "plan", "edit", "upscale_edit", "views", "mesh", "color", "rig", "animate", "texture", "report"]
 # which stage first writes each run folder; a fork keeps only the folders of the stages before the fork point
-DIR_STAGE = {"00_input": "ingest", "01_upscale": "upscale", "02_plan": "plan", "03_edit": "edit", "04_upscale_edit": "upscale_edit",
+DIR_STAGE = {"00_input": "ingest", "01_upscale": "upscale", "02_plan": "plan", "03_edit": "edit", "04_upscale_edit": "upscale_edit", "04b_views": "views",
              "05_mesh": "mesh", "06_mesh_check": "mesh", "07_rig": "rig", "08_rig_check": "rig", "09_animate": "animate"}   # colour and texture write inside 05_mesh
 SNAP_STAGE = {"pick": "edit", "mesh_check": "mesh", "rig_check": "rig"}
 

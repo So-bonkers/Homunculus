@@ -2,13 +2,13 @@
 import json, os, time
 from . import config as C
 
-STAGES = ["ingest", "upscale", "plan", "edit", "pick", "upscale_edit", "mesh", "mesh_check", "color", "rig", "rig_check", "animate", "texture", "report"]
-LABEL = {"ingest": "Ingest", "upscale": "Upscale", "plan": "Plan", "edit": "Redraw", "pick": "Pick", "upscale_edit": "Prepare",
+STAGES = ["ingest", "upscale", "plan", "edit", "pick", "upscale_edit", "views", "mesh", "mesh_check", "color", "rig", "rig_check", "animate", "texture", "report"]
+LABEL = {"ingest": "Ingest", "upscale": "Upscale", "plan": "Plan", "edit": "Redraw", "pick": "Pick", "upscale_edit": "Prepare", "views": "Views",
          "mesh": "3D shape", "mesh_check": "Shape check", "color": "Colour", "rig": "Auto-rig", "rig_check": "Rig check", "animate": "Animate",
          "texture": "Texture", "report": "Report"}
 MODEL = {"upscale": "RealESRGAN · ComfyUI", "plan": "Qwen3.8 27B vision", "edit": "Qwen-Image 2.1 edit", "pick": "3-judge VLM panel",
-         "upscale_edit": "RealESRGAN · clean-up", "mesh": "Pixal3D · best of 3", "mesh_check": "judges + digit gate", "color": "quick colours · CPU",
-         "rig": "Make-It-Animatable", "rig_check": "pose suite + judges", "animate": "UniMate text-to-motion", "texture": "face fit + extra views · Blender",
+         "upscale_edit": "RealESRGAN · clean-up", "views": "depth-guided · Qwen-Image Turbo", "mesh": "Pixal3D · best of 3", "mesh_check": "judges + digit gate", "color": "quick colours · CPU",
+         "rig": "Make-It-Animatable", "rig_check": "pose suite + judges", "animate": "GVHMR video-to-motion · UniMate text", "texture": "face fit + extra views · Blender",
          "report": "contact sheet", "ingest": "input"}
 # mesh-first runs (an STL/OBJ/... as input): same stages, different work
 MESH_LABEL = {"ingest": "Prepare mesh", "upscale": "Upscale", "plan": "Orient + plan", "edit": "Paint", "pick": "Pick painting",
@@ -16,7 +16,7 @@ MESH_LABEL = {"ingest": "Prepare mesh", "upscale": "Upscale", "plan": "Orient + 
 MESH_MODEL = {"ingest": "weld · base · decimate · UVs", "upscale": "not needed (no picture)", "plan": "Qwen3.8: front + colours",
               "edit": "Qwen-Image paints the grey render", "pick": "outline check · you / judges", "upscale_edit": "RealESRGAN · face close-up",
               "mesh": "kept as is (no Pixal3D)", "mesh_check": "not needed (your geometry)", "color": "front painting projected"}
-MESH_SKIPPED = {"upscale", "mesh_check"}
+MESH_SKIPPED = {"upscale", "mesh_check", "views"}
 GLB_KEYS = [("final_glb", "Final"), ("rig_glb", "Rigged"), ("colored_glb", "Coloured mesh"), ("mesh_glb", "Textured mesh")]   # colored_glb: the mesh with the picture projected onto it (what the rig is built on); mesh_glb is still Pixal3D's own, garbled colours until the final texture is made
 FILE_KEYS = [("final_glb", "Final rig · GLB"), ("final_fbx", "Final rig · FBX"), ("mesh_glb", "Mesh · GLB"), ("report", "Report")]      # GLB only unless an older run kept FBX; more formats are made on demand (Accept)
 

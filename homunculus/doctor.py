@@ -49,6 +49,9 @@ def checks():
         add(label, "ok" if _exists(m / rel, big) else "fail", rel, "bash comfy/dl.sh")
     mv = [f for f in ("pixal3d_multiview_bf16.safetensors", "pixal3d_multiview_int8_convrot.safetensors") if _exists(m / "diffusion_models" / f, 4e9)]
     add("Pixal3D multiview weights (turnaround sheets)", "ok" if mv else "warn", mv[0] if mv else "optional", "bash comfy/dl.sh (only needed for runs started from a turnaround sheet)")
+    from .stages import depthviews
+    miss = depthviews.models_ok()
+    add("Qwen-Image 2.1 Turbo + depth ControlNet (every redraw, the depth phase)", "ok" if not miss else "warn", "installed" if not miss else "missing: " + ", ".join(miss), "docs/TURNAROUND.md has the file list; without them redraws fall back to Unsloth Studio and the depth phase is skipped")
     for n in set(C.UPSCALERS.values()): add("Upscaler " + n, "ok" if _exists(m / "upscale_models" / n, 1e6) else "warn", n, "./setup.sh comfy (4x-UltraSharp is a manual download)")
     py = C.COMFY_PY; add("ComfyUI Python env", "ok" if _exists(py) else "fail", str(py), "./setup.sh comfy")
     # rigging, animation, T-pose
