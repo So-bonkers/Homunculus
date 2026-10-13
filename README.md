@@ -6,7 +6,8 @@ Give Homunculus a picture of a character (or a turnaround sheet, or an existing 
 
 ## Showcase: *Miles Jackson*
 
-<!-- To play inline on GitHub, the video has to be uploaded through GitHub's editor: edit this file on github.com, drag docs/media/miles_jackson.mp4 onto this line, and GitHub replaces it with a github.com/user-attachments link that plays with sound. -->
+https://github.com/user-attachments/assets/a6c291a1-b4cb-4171-97e5-f90ad6a3fa6d
+
 
 [![Miles Jackson: a Homunculus character dancing Thriller (click to play, with sound)](docs/media/miles_jackson_poster.jpg)](docs/media/miles_jackson.mp4)
 
