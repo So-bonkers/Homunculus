@@ -7,7 +7,7 @@ spec, a timeline per hand:          {"tracks": {"left": [[0, "open"], [1.6, "fis
   pose is shortened to 60 % of the gap so a quick accent still arrives. curve: smooth (default, minimum jerk, d 0.13 s) | quick (fast start, soft landing, 0.07 s) | snap (fast and a little
   overshoot, 0.05 s) | linear (0.13 s) | hold (a cut).
 A library pose: {"index": [base, middle, tip], ..., "thumb": [...], "thumb_out": degrees (the thumb turns sideways), "splay": {finger: degrees away from the middle finger}}.
-Each finger joint curls toward the palm. The curl axis comes from the skeleton itself: bone direction x palm-normal (the rest pose has palms down), converted to the bone's own
+Each finger joint curls toward the palm. The curl axis comes from the skeleton itself: bone direction x palm-normal (the palm normal of each hand is worked out from its own bones, so any rest pose works), converted to the bone's own
 local space, so it works for any rig with Mixamo-style finger names (Left/Right Hand Thumb/Index/Middle/Ring/Pinky 1-4). The first `ramp` frames ease in from the clip's own fingers.
 Import it as a module (blender_handlib.py does) to set poses on a rig without a clip."""
 import math, re, json, sys
@@ -51,14 +51,35 @@ class Fingers:
             m = rx.match(b.name)
             if m: chains.setdefault((m.group(1), m.group(2).lower()), {})[int(m.group(3))] = b
         if not chains: raise RuntimeError("no finger bones found (names)")
-        down = (arm.matrix_world.to_3x3().inverted() @ Vector((0, 0, -1))).normalized()               # palms down in the rest pose, in armature space
+        bone = {b.name.split(":")[-1]: b for b in arm.data.bones}
+        def palm_of(side):
+            """The palm normal of a hand in the rest pose, in armature space, from the rig's own bones: the hand axis (wrist to the middle knuckle) x the way the thumb side lies (pinky knuckle to
+            index knuckle), mirrored for the right hand. Rigs differ: a Mixamo T-pose has the palms down, a Make-It-Animatable one often forward with the thumbs up."""
+            try:
+                w, m1, i1, p1 = (bone[f"{side}Hand{n}"].head_local if n else bone[f"{side}Hand"].head_local for n in ("", "Middle1", "Index1", "Pinky1"))
+            except KeyError: return None
+            ax = (m1 - w).normalized(); ts = (i1 - p1); ts -= ax * ts.dot(ax)
+            if ts.length < 1e-6 or ax.length < 1e-6: return None
+            n = ax.cross(ts.normalized()).normalized(); return n if side == "Left" else -n
+        fallback = (arm.matrix_world.to_3x3().inverted() @ Vector((0, 0, -1))).normalized()          # palms down, if the hand bones cannot say
+        self.palm = {side: palm_of(side) or fallback for side in ("Left", "Right")}
         def local_axis(b, world_axis): return (b.matrix_local.to_3x3().normalized().inverted() @ world_axis).normalized()
         self.bones = {}
         for (side, finger), ch in chains.items():
+            down = self.palm[side]
+            dirs = {j: ((ch[j + 1].head_local - ch[j].head_local) if ch.get(j + 1) else (ch[j].tail_local - ch[j].head_local)).normalized() for j in (1, 2, 3) if ch.get(j) is not None}
+            # "straight" is not the rest pose: a rig's hand rests slightly curled (Make-It-Animatable's about 35 degrees). The bend of each joint at rest, measured in the plane of the hand's axis and its palm
+            # normal, becomes the zero of the curl, so a library curl of 0 is a straight finger on any rig.
+            w, m1 = bone.get(f"{side}Hand"), bone.get(f"{side}HandMiddle1"); off = {}
+            if w is not None and m1 is not None and finger != "thumb":
+                a = (m1.head_local - w.head_local).normalized(); a = (a - down * a.dot(down)).normalized(); phi = {j: math.atan2(d.dot(down), d.dot(a)) for j, d in dirs.items()}
+                prev = 0.0
+                for j in (1, 2, 3):
+                    if j in phi: off[j] = -math.degrees(phi[j] - prev); prev = phi[j]
             for j in (1, 2, 3):
                 b = ch.get(j)
                 if b is None: continue
-                nxt = ch.get(j + 1); d = ((nxt.head_local - b.head_local) if nxt else (b.tail_local - b.head_local)).normalized(); axis = d.cross(down)
+                nxt = ch.get(j + 1); d = dirs[j]; axis = d.cross(down)
                 if axis.length < 1e-6: continue
                 out = abd = None
                 if finger == "thumb" and j == 1:                                                      # thumbs up: the thumb sticks out sideways, away from the index finger
@@ -75,10 +96,10 @@ class Fingers:
                             sc = (self.Q(down, math.radians(sgn * 10)) @ d).dot(lat)
                             if best is None or sc > best[0]: best = (sc, sgn)
                         abd = (local_axis(b, down), best[1])
-                self.bones[b.name] = (side, finger, j, local_axis(b, axis.normalized()), out, abd)
+                self.bones[b.name] = (side, finger, j, local_axis(b, axis.normalized()), out, abd, off.get(j, 0.0))
 
     def quat(self, name, ang):
-        side, finger, j, ax, out, abd = self.bones[name]; q = self.Q(ax, math.radians(ang[finger][j - 1]))
+        side, finger, j, ax, out, abd, off = self.bones[name]; q = self.Q(ax, math.radians(ang[finger][j - 1] + off))
         if out and ang["thumb_out"]: q = self.Q(out[0], math.radians(out[1] * ang["thumb_out"])) @ q
         if abd and ang["splay"].get(finger): q = self.Q(abd[0], math.radians(abd[1] * ang["splay"][finger])) @ q
         return q
