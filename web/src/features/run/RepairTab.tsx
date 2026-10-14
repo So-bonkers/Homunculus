@@ -19,7 +19,7 @@ const PRESETS = {
   crown: { label: "top of the head or helmet", view: "top", icon: HardHat, name: "Crown" },
   feet: { label: "feet (keep the shoes or boots)", view: "auto", icon: Footprints, name: "Feet" },
 } as const;
-const VIEWS = [{ value: "auto", label: "Automatic" }, { value: "front", label: "Front" }, { value: "back", label: "Back" }, { value: "left", label: "Left side" }, { value: "right", label: "Right side" }, { value: "top", label: "Above" }];
+const VIEWS = [{ value: "auto", label: "Automatic" }, { value: "front", label: "Front" }, { value: "back", label: "Back" }, { value: "left", label: "Left side" }, { value: "right", label: "Right side" }, { value: "top", label: "Above" }, { value: "bottom", label: "Below" }];
 
 function useBrushKeys(b: React.RefObject<Brush | null>) {
   React.useEffect(() => {

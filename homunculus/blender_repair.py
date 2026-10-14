@@ -1,7 +1,7 @@
 """Region repair, Blender side.  Two modes:
 
 blender -b --python blender_repair.py -- analyse base.glb strokes.json out_dir [view]
-    view: front (default) | back | left | right | top | auto. The model is turned so that this side faces the camera before the close-up is rendered (and turned back after
+    view: front (default) | back | left | right | top | bottom | auto. The model is turned so that this side faces the camera before the close-up is rendered (and turned back after
     the merge): a helmet crown is repaired from above, a back from behind. auto picks the side most of the painted surface faces. "left" = the character's left side.
     strokes.json: {"strokes": [[x, y, z, r], ...]} in glTF coordinates (Y up), as picked in the web viewer.
     Writes out_dir/regionN.json + maskN.npy (vertex indices, one region per connected blob), regionN_crop.png (front close-up of the region,
@@ -131,7 +131,7 @@ def set_vertex_colours(ob, cols, name="Col"):
     me.materials.clear(); me.materials.append(m); return m
 
 
-VIEWS = {"front": (0, -1, 0), "back": (0, 1, 0), "left": (1, 0, 0), "right": (-1, 0, 0), "top": (0, 0, 1)}      # direction from the model towards the camera ("left" = the character's left side, +x)
+VIEWS = {"front": (0, -1, 0), "back": (0, 1, 0), "left": (1, 0, 0), "right": (-1, 0, 0), "top": (0, 0, 1), "bottom": (0, 0, -1)}      # direction from the model towards the camera ("left" = the character's left side, +x); "bottom" looks up at the soles (the character's front is at the top of that picture)
 
 
 def view_rotation(d):
@@ -216,7 +216,7 @@ elif mode == "analyse":
     print(f"[repair] {int(mask.sum())} of {len(V)} vertices inside {len(S)} brush strokes")
     if view == "auto" and mask.any():      # the side that most of the painted surface faces (front wins a near tie: it is the best tested one)
         Nv = np.empty(len(V) * 3, np.float32); ob.data.vertices.foreach_get("normal", Nv); Nv = Nv.reshape(-1, 3)[mask]
-        score = {k: int((Nv @ np.array(d) > 0.3).sum()) for k, d in VIEWS.items()}; view = max(score, key=score.get)
+        score = {k: int((Nv @ np.array(d) > 0.3).sum()) for k, d in VIEWS.items() if k != "bottom"}; view = max(score, key=score.get)      # auto never picks "bottom": it is only for when you ask (the soles of the feet)
         if score["front"] >= 0.85 * score[view]: view = "front"
         print(f"[repair] view chosen from the painted surface: {view} {score}")
     VIEW_R = view_rotation(VIEWS.get(view, VIEWS["front"]))

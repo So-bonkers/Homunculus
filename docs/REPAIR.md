@@ -2,7 +2,7 @@
 
 Pixal3D sometimes returns fused, melted or cut-off fingers, a crumpled helmet top, a melted foot. The **Repair** tab of a run page lets you paint over **any** broken part of the model (or press a region button: *Hands*, *Head*, *Crown*, *Feet*) and regenerates just that part: the part is redrawn, Pixal3D builds its shape again, and it replaces the broken one.
 
-What you give it besides the paint: **What is it?** (a few words, e.g. "the top of the helmet"; it goes into the redraw prompt) and **Redraw from** (automatic, front, back, left, right, above). From the command line: `python -m homunculus.repair <run> --region crown --view top` (regions: hands, head, crown, feet) or `--job <id>` for painted strokes.
+What you give it besides the paint: **What is it?** (a few words, e.g. "the top of the helmet"; it goes into the redraw prompt) and **Redraw from** (automatic, front, back, left, right, above, below: from underneath, for the soles of the feet; automatic never picks it). From the command line: `python -m homunculus.repair <run> --region crown --view top` (regions: hands, head, crown, feet) or `--job <id>` for painted strokes.
 
 What is general and what is specific to hands:
 - General: the region (any painted blob with a boundary to the rest of the surface), the camera (the model is turned so the side the region faces looks at the camera, then turned back after the merge), the redraw prompt (built from the label), the merge (the new part is slid over the boundary along the boundary's own plane normal).

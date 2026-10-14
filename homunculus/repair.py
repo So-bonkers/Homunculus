@@ -1,6 +1,6 @@
 """Repair any part of a run's 3D model: the user paints the broken region (cut-off fingers, a crumpled helmet crown, a melted foot, ...) in the web viewer and this regenerates it.
     python -m homunculus.repair <run> --job <id>     (the job folder runs/<run>/10_repair/<id>/ holds request.json: {"strokes": [[x,y,z,r],...], "notes": "...", "label": "...", "view": "auto"})
-    python -m homunculus.repair <run> --region hands|head|crown|feet [--auto] [--label "..."] [--view auto|front|back|left|right|top]     (a named region of a T/A-posed figure; the viewer's buttons use the same rules)
+    python -m homunculus.repair <run> --region hands|head|crown|feet [--auto] [--label "..."] [--view auto|front|back|left|right|top|bottom]     (a named region of a T/A-posed figure; the viewer's buttons use the same rules)
 The redraw is chosen by YOU on the Repair tab (the job waits for the pick; --auto lets the finger counter / silhouette check and the VLM choose, which the unattended hand repair of a run uses).
 Steps (each recorded in status.json for the web app): 1 region from the strokes + a close-up of it, rendered from the side it faces (Blender)  2 the image model redraws the close-up
 as a complete, clean version of what the region is (the label), the checks and the VLM choose (hands also get the finger counter)  3 Pixal3D turns the chosen redraw into a small mesh
@@ -287,7 +287,7 @@ def run_job(R, job, groups, notes="", rounds=2, per_round=3, manual=False):
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("run"); ap.add_argument("--job", default=None); ap.add_argument("--hands", action="store_true", help="same as --region hands"); ap.add_argument("--region", action="append", choices=["hands", "head", "crown", "feet"], help="a named region of a T/A-posed figure instead of painted strokes; repeat for several (each gets its own label, view and checks)")
-    ap.add_argument("--label", default=None, help="what the region is, e.g. \"the top of the helmet\" (default: from --region, or \"the painted part\")"); ap.add_argument("--view", default=None, choices=["auto", "front", "back", "left", "right", "top"], help="the side to redraw it from (default: front for hands, else auto)"); ap.add_argument("--notes", default=""); ap.add_argument("--auto", action="store_true", help="the checks and the VLM choose the redraw (default: you choose it on the Repair tab)")
+    ap.add_argument("--label", default=None, help="what the region is, e.g. \"the top of the helmet\" (default: from --region, or \"the painted part\")"); ap.add_argument("--view", default=None, choices=["auto", "front", "back", "left", "right", "top", "bottom"], help="the side to redraw it from (default: front for hands, else auto)"); ap.add_argument("--notes", default=""); ap.add_argument("--auto", action="store_true", help="the checks and the VLM choose the redraw (default: you choose it on the Repair tab)")
     ap.add_argument("--remerge", metavar="JOB", help="join the donors of an earlier job again and bake (CPU, no GPU lock); --base PATH names the mesh the job was made on")
     ap.add_argument("--base", default=None)
     ap.add_argument("--bake", metavar="JOB", help="only bake the textured single mesh of an earlier job (CPU, no GPU lock)")

@@ -369,7 +369,7 @@ class H(SimpleHTTPRequestHandler):
             for g in (groups if ok else []):
                 st = g.get("strokes") or []
                 if not (isinstance(st, list) and 1 <= len(st) <= 1500 and all(isinstance(x, list) and len(x) == 4 and all(isinstance(y, (int, float)) for y in x) for x in st)): ok = False; break
-                view = str(g.get("view") or "auto"); view = view if view in ("auto", "front", "back", "left", "right", "top") else "auto"
+                view = str(g.get("view") or "auto"); view = view if view in ("auto", "front", "back", "left", "right", "top", "bottom") else "auto"
                 clean.append({"strokes": st, "label": re.sub(r"[^\w ,.'()/-]", "", str(g.get("label", "")))[:80], "view": view})
             if not ok: return self._json(400, {"error": "Paint the broken region on the model first."})
             job = time.strftime("%Y%m%d_%H%M%S"); jd = C.RUNS / run / "10_repair" / job; jd.mkdir(parents=True, exist_ok=True)
