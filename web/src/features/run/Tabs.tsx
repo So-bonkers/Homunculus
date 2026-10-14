@@ -232,7 +232,7 @@ export function LogTab({ lines }: { lines: string[] }) {
   const box = React.useRef<HTMLDivElement>(null);
   const stick = React.useRef(true);
   React.useEffect(() => { const b = box.current; if (b && stick.current) b.scrollTop = b.scrollHeight; }, [lines]);
-  const cls = (l: string) => /Traceback|Error|FAILED|failed/.test(l) ? "text-bad" : /^\S+ !!|Waiting/.test(l) ? "text-warn" : /--- stage|=== /.test(l) ? "font-semibold text-[#b8a9ff]" : /done in|picked|PASS|accept/i.test(l) ? "text-ok" : "text-ink-2";
+  const cls = (l: string) => /\[review\] .*(YOU CHOSE|\buser (choose|accept|reject|redo)\b|\byou (accept|reject|redo|choose))/i.test(l) ? "-mx-2 rounded-md border-l-2 border-accent bg-accent/12 px-2 font-semibold text-[#e4dcff]" : /Traceback|Error|FAILED|failed/.test(l) ? "text-bad" : /^\S+ !!|Waiting/.test(l) ? "text-warn" : /--- stage|=== /.test(l) ? "font-semibold text-[#b8a9ff]" : /done in|picked|PASS|accept/i.test(l) ? "text-ok" : "text-ink-2";
   return (
     <div ref={box} onScroll={(e) => { const b = e.currentTarget; stick.current = b.scrollHeight - b.scrollTop - b.clientHeight < 30; }}
       className="h-[min(70vh,720px)] overflow-y-auto rounded-xl border border-line bg-black/40 p-4 font-mono text-[11.5px] leading-[1.65]">

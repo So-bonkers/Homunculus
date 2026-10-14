@@ -172,7 +172,11 @@ def human_gate(R, gate, title, images, captions, verdict_text, wait=False):
     R.state.pop("awaiting_review", None); R.state.pop("review_open_t", None)
     if rec["action"] != "none" or rec.get("notes"):
         R.state.setdefault("human_reviews", []).append({"gate": gate, "title": title, **rec, "time": time.strftime("%H:%M:%S")})
-        R.log(f"[review] {gate}: user {rec['action']}" + (f" #{rec['choice']}" if rec["action"] == "choose" else "") + (f" - notes: {rec['notes']}" if rec.get("notes") else ""))
+        what = f"you {rec['action']}"
+        if rec["action"] == "choose":      # which one, and whether it was not the judges' pick
+            k = int(rec.get("choice") or 0); cap = captions[k - 1] if 1 <= k <= len(captions) else f"#{k}"; jb = int(R.state.get("_judge_best", 0) or 0)
+            what = f"YOU CHOSE {cap}" + (f" (the judges' best was #{jb})" if jb and jb != k else " (the judges' best too)" if jb else "")
+        R.log(f"[review] {gate}: {what}" + (f" - notes: {rec['notes']}" if rec.get("notes") else ""))
     if rec.get("notes"):     # human observations steer the next redraw and the judges
         if rec["notes"].strip() not in R.state.get("human_notes", ""):      # don't repeat the same note
             R.state["human_notes"] = (R.state.get("human_notes", "") + " " + rec["notes"].strip()).strip()[-1500:]
