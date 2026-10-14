@@ -99,4 +99,4 @@ export type HandKey = [number, string] | [number, string, HandKeyOpts];
 export interface HandPose { key: string; label: string; category: string; description: string; search: string; image: string | null; kind?: "pose" | "wrist" | "palm" }
 export type HandLane = "left" | "right" | "left_wrist" | "right_wrist" | "left_palm" | "right_palm";
 export type HandTracks = Record<HandLane, HandKey[]>;
-export interface HandsInfo { clip: string; poses: string[]; tracks: HandTracks; updated: number | null; meta?: { source?: string; how?: string; from?: string; similarity?: string } | null; status: "idle" | "running" | "done" | "failed"; error: string | null; applied: boolean }
+export interface HandsInfo { clip: string; poses: string[]; tracks: HandTracks; updated: number | null; meta?: { source?: string; how?: string; from?: string; similarity?: string } | null; agreement?: Record<string, { agree: number; majority: number; model?: string }> | null; status: "idle" | "running" | "done" | "failed"; error: string | null; applied: boolean }

@@ -68,7 +68,29 @@ def info(run, clip):
     try: st = json.load(open(sp))
     except Exception: st = {"status": "idle", "error": None}
     if st.get("status") == "running" and time.time() - os.path.getmtime(sp) > 900: st = {"status": "failed", "error": "the bake stopped answering"}
-    return {"clip": clip, "poses": list(handpose.LIB), "tracks": saved["tracks"], "updated": saved.get("updated"), "meta": saved.get("meta"), **st, "applied": bool(c.get("hands_glb"))}
+    return {"clip": clip, "poses": list(handpose.LIB), "tracks": saved["tracks"], "updated": saved.get("updated"), "meta": saved.get("meta"), "agreement": agreement(run, clip, saved["tracks"]), **st, "applied": bool(c.get("hands_glb"))}
+
+
+def agreement(run, clip, current):
+    """How much of what a model proposed survives: per lane the share of time (sampled at 30 Hz over the clip) where the current label is the proposed one, and what always guessing the person's most common label would
+    score on the same time. Only lanes the person has labelled count. None if no model draft was made for this clip."""
+    tp, _ = _paths(run, clip); dp = str(tp)[:-5] + ".draft.json"
+    try: dr = json.load(open(dp))
+    except Exception: return None
+    dur = float(dr.get("duration") or max([k[0] for v in current.values() for k in v] + [1]))
+    def at(keys, t):
+        p = None
+        for k in sorted(keys, key=lambda k: k[0]):
+            if p is None or k[0] <= t + 1e-9: p = k[1]
+        return p
+    out = {}
+    for lane, dkeys in dr["tracks"].items():
+        mine = current.get(lane) or []
+        if not mine or json.dumps(mine) == json.dumps(dkeys): continue                 # not labelled yet (or untouched): nothing to compare
+        ts = [i / 30 for i in range(int(dur * 30))]; yours = [at(mine, t) for t in ts]; prop = [at(dkeys, t) for t in ts]
+        from collections import Counter
+        out[lane] = {"agree": round(100 * sum(a == b for a, b in zip(yours, prop)) / len(ts)), "majority": round(100 * Counter(yours).most_common(1)[0][1] / len(ts)), "model": dr.get("model")}
+    return out or None
 
 
 def save(run, clip, tracks, meta=None, wait=False):
@@ -78,6 +100,8 @@ def save(run, clip, tracks, meta=None, wait=False):
     if _clip(run, clip) is None: raise ValueError("no such clip")
     os.makedirs(tp.parent, exist_ok=True)
     json.dump({"tracks": tracks, "updated": time.time(), **({"meta": meta} if meta else {})}, open(tp, "w"), indent=1)
+    if meta and meta.get("source") == "draft" and meta.get("model"):      # what a model proposed, kept apart: later edits are measured against it (agreement())
+        json.dump({"tracks": {k: v for k, v in tracks.items() if v}, "duration": meta.get("duration"), "model": meta["model"]}, open(str(tp)[:-5] + ".draft.json", "w"), indent=1)
     _status(sp, "running"); th = threading.Thread(target=_bake, args=(run, clip, tracks), daemon=True); th.start()
     if wait: th.join()
 

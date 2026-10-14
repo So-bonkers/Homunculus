@@ -169,6 +169,11 @@ export function HandTimeline({ run, clip, t, len, seek, wave }: { run: string; c
     <div className="panel p-4" data-tour="hands">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Hand className="size-4 text-accent" /><h3 className="text-[14px] font-semibold">Hands</h3>
+        {q.data?.agreement && Object.entries(q.data.agreement).map(([ln, a]) => (
+          <Tip key={ln} content={`${a.model ?? "The model"} proposed this lane; your labels keep its choice on ${a.agree} % of the clip. Always guessing your own most common label would score ${a.majority} %.${a.agree > a.majority ? " The model is ahead of that guess." : " The model is not ahead of that guess."}`}>
+            <Badge tone={a.agree > a.majority ? "ok" : "warn"}>model vs you · {ln.replace("_", " ")} {a.agree} % <span className="opacity-70">(guess {a.majority} %)</span></Badge>
+          </Tip>
+        ))}
         {q.data?.meta?.source === "draft" && !dirty && !baking && <Tip content={q.data.meta.how ?? ""}><Badge tone="accent"><Sparkles className="size-3" /> auto draft: check it</Badge></Tip>}
         {baking ? <Badge tone="accent"><Loader2 className="size-3 animate-spin" /> setting the fingers…</Badge>
           : q.data?.status === "failed" ? <Tip content={q.data.error ?? ""}><Badge tone="bad"><TriangleAlert className="size-3" /> failed</Badge></Tip>
