@@ -46,3 +46,15 @@ Times are in seconds from the start of the clip. Tried on the Thriller rig with 
 **Rigs.** The finger, wrist and palm layers work out each hand's own frame from its bones (the palm normal from the hand axis and the thumb side, mirrored for the right hand), so they hold for Mixamo characters (palms down in the T-pose) and for the pipeline's own Make-It-Animatable rigs (palms forward); the bend of a joint at rest is the zero of its curl, so "straight" is straight on any rig.
 
 Where the poses come from automatically is the open part. In a wide shot of a group the hands are about 40 px (1080p video), blurred and partly hidden, so a hand-pose estimator cannot read the fingers there; a close shot (a hand over ~150 px) may. Planned: a classifier (open / fist / point ...) trained on the editor's labels plus synthetic hands (the rig's hand rendered in a known pose, drawn realistic under a depth map, degraded to 40 px), and the hand boxes saved per frame so the labels come with their crops.
+
+## Automatic hand labels: what was tried (2026-10-14)
+One 20 s clip (the Kinjaz centre dancer) was annotated by hand in all six lanes: about 200 changes, over 30 minutes. Questions, and what the clip's data says:
+
+| Question | Result |
+|---|---|
+| Does the video's own motion (GVHMR) carry the wrist and the palm direction? | No. The retargeted wrist never bends (range 0 to 0). The clip's palm direction picks the annotator's label on 11 % (left) and 7 % (right) of frames; guessing the most common label gets 49 % and 43 %. |
+| Can a classifier on the hand pixels learn the labels from 20 s? | No. 64 px hand crops, DINOv2-small features, a linear head trained on the first 13 s, tested on the last 6 s: fingers 19 % / 17 %, wrist 62 % / 40 %, palm 50 % / 28 %, all at or below guessing the commonest label. |
+| Can a body-motion prior (trained on FineDance, 155 files, 5.7 h) guess the hands from the arms? | Palm direction: 58 % on held-out FineDance files against 33 % for guessing, and 45 % / 41 % on the clip (the clip's own palm: about 10 %; the annotator's habit: 49 % / 43 %). Finger closure: no signal (49 % against 48 %). The wrist bend of FineDance is zero too, so a model of body motion cannot supply it. |
+| Do the changes happen on the beat, on sounds, or on sharp arm movements? | Not on sounds or the (crudely estimated) beats. Slightly on sharp wrist movements: 40 % within 70 ms against 30 % for random times, 56 % within 120 ms against 42 %. |
+
+So: wrist and finger labels need the hand pixels, and the hands are about 64 px in a wide shot; the palm direction can be drafted from the arm geometry; 20 s is far too little to train a pixel model. The routes that remain are more labels (made cheaper by editor shortcuts), synthetic training data rendered from the dancer's own model, and a close-up estimator (HaMeR) where a hand is large.
