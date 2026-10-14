@@ -93,6 +93,9 @@ export interface VideoJob {
 }
 
 /** The hand timeline of one clip (/api/hands/<run>/<clip>): a pose per hand from a time on (seconds); the first pose holds from the start. */
-export type HandKey = [number, string];
+export type HandCurve = "smooth" | "quick" | "snap" | "linear" | "hold";
+export interface HandKeyOpts { curve?: HandCurve; d?: number }
+export type HandKey = [number, string] | [number, string, HandKeyOpts];
+export interface HandPose { key: string; label: string; category: string; description: string; search: string; image: string }
 export interface HandTracks { left: HandKey[]; right: HandKey[] }
 export interface HandsInfo { clip: string; poses: string[]; tracks: HandTracks; updated: number | null; status: "idle" | "running" | "done" | "failed"; error: string | null; applied: boolean }

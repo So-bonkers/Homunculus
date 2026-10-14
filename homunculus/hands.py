@@ -8,6 +8,7 @@ import json, os, shutil, subprocess, threading, time
 from . import config as C, handpose
 
 MAX_KEYS = 400
+CURVES = ("smooth", "quick", "snap", "linear", "hold")
 _locks = {}
 
 
@@ -36,10 +37,22 @@ def clean(tracks):
         rows = []
         for k in ks:
             try: t, pose = float(k[0]), str(k[1])
-            except (TypeError, ValueError, IndexError): raise ValueError(f"{side}: each entry is [seconds, pose]")
+            except (TypeError, ValueError, IndexError): raise ValueError(f"{side}: each entry is [seconds, pose] or [seconds, pose, {{curve, d}}]")
             if pose not in handpose.LIB: raise ValueError(f"{side}: unknown pose '{pose}' (use {', '.join(handpose.LIB)})")
             if not (0 <= t <= 3600): raise ValueError(f"{side}: time {t} out of range")
-            rows.append([round(t, 3), pose])
+            row = [round(t, 3), pose]
+            if len(k) > 2 and isinstance(k[2], dict) and k[2]:      # how the change arrives: curve (smooth | quick | snap | linear | hold) and its length d in seconds
+                o = {}
+                if k[2].get("curve") is not None:
+                    if k[2]["curve"] not in CURVES: raise ValueError(f"{side}: unknown transition '{k[2]['curve']}' (use {', '.join(CURVES)})")
+                    o["curve"] = k[2]["curve"]
+                if k[2].get("d") is not None:
+                    try: d = float(k[2]["d"])
+                    except (TypeError, ValueError): raise ValueError(f"{side}: d must be a number of seconds")
+                    if not (0.005 <= d <= 3): raise ValueError(f"{side}: d must be between 0.005 and 3 seconds")
+                    o["d"] = round(d, 3)
+                if o: row.append(o)
+            rows.append(row)
         out[side] = sorted(rows, key=lambda r: r[0])
     return out
 
