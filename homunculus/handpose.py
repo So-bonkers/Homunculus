@@ -36,3 +36,8 @@ def poses_for(prompt):
             if both_named or not (left or right): return {"left": pose, "right": pose} if hands == "both" else {"left": "relaxed", "right": pose}
             return {"left": pose if left else "relaxed", "right": pose if right else "relaxed"}
     return {"left": "relaxed", "right": "relaxed"}
+
+
+# the richer vocabulary (handshapes.py): finger states + thumb + spread; the names above keep their numbers
+from . import handshapes as _hs
+LIB.update(_hs.build())

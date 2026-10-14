@@ -1,0 +1,386 @@
+[
+ {
+  "key": "open",
+  "label": "Open",
+  "category": "Neutral",
+  "description": "All fingers straight, thumb alongside.",
+  "search": "flat palm",
+  "image": "/static/hands/open.jpg"
+ },
+ {
+  "key": "relaxed",
+  "label": "Relaxed",
+  "category": "Neutral",
+  "description": "A slightly curled, easy hand.",
+  "search": "idle natural",
+  "image": "/static/hands/relaxed.jpg"
+ },
+ {
+  "key": "fist",
+  "label": "Fist",
+  "category": "Closed",
+  "description": "Fingers curled hard into the palm, thumb across.",
+  "search": "punch clench",
+  "image": "/static/hands/fist.jpg"
+ },
+ {
+  "key": "grip",
+  "label": "Grip",
+  "category": "Closed",
+  "description": "A firm half-closed grip, as on a handle.",
+  "search": "hold sword bat",
+  "image": "/static/hands/grip.jpg"
+ },
+ {
+  "key": "point",
+  "label": "Point",
+  "category": "Pointing",
+  "description": "Index straight, the other fingers curled.",
+  "search": "index finger",
+  "image": "/static/hands/point.jpg"
+ },
+ {
+  "key": "thumbs_up",
+  "label": "Thumbs up",
+  "category": "Signs",
+  "description": "Fist with the thumb stuck up.",
+  "search": "like good",
+  "image": "/static/hands/thumbs_up.jpg"
+ },
+ {
+  "key": "pinch",
+  "label": "Pinch",
+  "category": "Pinch & snap",
+  "description": "Thumb and index pressed together.",
+  "search": "pick small",
+  "image": "/static/hands/pinch.jpg"
+ },
+ {
+  "key": "flat",
+  "label": "Flat",
+  "category": "Neutral",
+  "description": "All fingers straight and together, thumb alongside: a flat hand, a blade.",
+  "search": "blade chop karate palm stop salute",
+  "image": "/static/hands/flat.jpg"
+ },
+ {
+  "key": "spread",
+  "label": "Spread",
+  "category": "Neutral",
+  "description": "All fingers straight and apart, thumb out: jazz hands, spirit fingers.",
+  "search": "jazz hands spirit fingers fan five",
+  "image": "/static/hands/spread.jpg"
+ },
+ {
+  "key": "spread_wide",
+  "label": "Spread wide",
+  "category": "Neutral",
+  "description": "Fingers as far apart as they go.",
+  "search": "fan star explode burst",
+  "image": "/static/hands/spread_wide.jpg"
+ },
+ {
+  "key": "soft",
+  "label": "Soft",
+  "category": "Neutral",
+  "description": "A dancer's natural hand: fingers loosely curled (about 25 degrees), thumb alongside.",
+  "search": "natural idle loose",
+  "image": "/static/hands/soft.jpg"
+ },
+ {
+  "key": "lax",
+  "label": "Lax",
+  "category": "Neutral",
+  "description": "Barely curled: a hand that hangs limp.",
+  "search": "limp hang drop",
+  "image": "/static/hands/lax.jpg"
+ },
+ {
+  "key": "back",
+  "label": "Bent back",
+  "category": "Neutral",
+  "description": "Fingers pulled back past straight: a hyperextended stretch.",
+  "search": "stretch hyperextended arch flare",
+  "image": "/static/hands/back.jpg"
+ },
+ {
+  "key": "cup",
+  "label": "Cup",
+  "category": "Curved",
+  "description": "Fingers curved and together, thumb alongside: a cupped hand.",
+  "search": "catch scoop hold water",
+  "image": "/static/hands/cup.jpg"
+ },
+ {
+  "key": "c_shape",
+  "label": "C shape",
+  "category": "Curved",
+  "description": "Fingers and thumb curved apart, like holding a can.",
+  "search": "c can ball hold",
+  "image": "/static/hands/c_shape.jpg"
+ },
+ {
+  "key": "ball",
+  "label": "Ball",
+  "category": "Curved",
+  "description": "Fingers curved and spread, thumb opposing: holding a ball.",
+  "search": "sphere orb grab hold",
+  "image": "/static/hands/ball.jpg"
+ },
+ {
+  "key": "o_shape",
+  "label": "O shape",
+  "category": "Curved",
+  "description": "Fingers curved, thumb meeting the fingers: an O.",
+  "search": "circle ring zero",
+  "image": "/static/hands/o_shape.jpg"
+ },
+ {
+  "key": "claw",
+  "label": "Claw",
+  "category": "Curved",
+  "description": "Knuckles and middle joints bent, tips curled: a claw.",
+  "search": "talon grab rake monster",
+  "image": "/static/hands/claw.jpg"
+ },
+ {
+  "key": "claw_spread",
+  "label": "Claw spread",
+  "category": "Curved",
+  "description": "A claw with the fingers apart.",
+  "search": "talon rake menacing",
+  "image": "/static/hands/claw_spread.jpg"
+ },
+ {
+  "key": "hook",
+  "label": "Hook",
+  "category": "Curved",
+  "description": "Knuckles straight, the two upper joints bent: a hook.",
+  "search": "hooked bait pull",
+  "image": "/static/hands/hook.jpg"
+ },
+ {
+  "key": "tabletop",
+  "label": "Table top",
+  "category": "Curved",
+  "description": "Knuckles bent 90 degrees, fingers straight: a flat L / table top.",
+  "search": "bent hand l shelf",
+  "image": "/static/hands/tabletop.jpg"
+ },
+ {
+  "key": "fist_loose",
+  "label": "Loose fist",
+  "category": "Closed",
+  "description": "A half-closed hand, thumb across.",
+  "search": "half fist relaxed grip",
+  "image": "/static/hands/fist_loose.jpg"
+ },
+ {
+  "key": "fist_tight",
+  "label": "Tight fist",
+  "category": "Closed",
+  "description": "Fingers pressed hard into the palm, thumb across.",
+  "search": "clench power punch",
+  "image": "/static/hands/fist_tight.jpg"
+ },
+ {
+  "key": "fist_thumb_in",
+  "label": "Fist, thumb in",
+  "category": "Closed",
+  "description": "A fist with the thumb tucked inside.",
+  "search": "tucked baby",
+  "image": "/static/hands/fist_thumb_in.jpg"
+ },
+ {
+  "key": "fist_thumb_out",
+  "label": "Fist, thumb out",
+  "category": "Closed",
+  "description": "A fist with the thumb stuck out sideways.",
+  "search": "hitchhike",
+  "image": "/static/hands/fist_thumb_out.jpg"
+ },
+ {
+  "key": "grip_wide",
+  "label": "Grip, wide",
+  "category": "Closed",
+  "description": "A wide loose grip, as on a thick pole.",
+  "search": "hold pole bar handle",
+  "image": "/static/hands/grip_wide.jpg"
+ },
+ {
+  "key": "point_up",
+  "label": "Point (gun)",
+  "category": "Pointing",
+  "description": "Index straight, thumb up, the rest closed: a finger gun.",
+  "search": "gun pistol shoot pow",
+  "image": "/static/hands/point_up.jpg"
+ },
+ {
+  "key": "point_two",
+  "label": "Two fingers",
+  "category": "Pointing",
+  "description": "Index and middle straight together, the rest closed: a double point.",
+  "search": "two finger double gun guns",
+  "image": "/static/hands/point_two.jpg"
+ },
+ {
+  "key": "peace",
+  "label": "Peace",
+  "category": "Pointing",
+  "description": "Index and middle straight and apart, the rest closed: a V.",
+  "search": "victory v bunny scissors two",
+  "image": "/static/hands/peace.jpg"
+ },
+ {
+  "key": "three",
+  "label": "Three",
+  "category": "Pointing",
+  "description": "Index, middle and ring straight, pinky closed, thumb across.",
+  "search": "w count",
+  "image": "/static/hands/three.jpg"
+ },
+ {
+  "key": "w_shape",
+  "label": "W",
+  "category": "Pointing",
+  "description": "Index, middle and ring straight and apart, thumb on the pinky.",
+  "search": "w three",
+  "image": "/static/hands/w_shape.jpg"
+ },
+ {
+  "key": "four",
+  "label": "Four",
+  "category": "Pointing",
+  "description": "Four fingers straight, thumb across the palm.",
+  "search": "count",
+  "image": "/static/hands/four.jpg"
+ },
+ {
+  "key": "pinky_point",
+  "label": "Pinky",
+  "category": "Pointing",
+  "description": "Only the little finger straight.",
+  "search": "little finger swear",
+  "image": "/static/hands/pinky_point.jpg"
+ },
+ {
+  "key": "l_shape",
+  "label": "L",
+  "category": "Pointing",
+  "description": "Index straight, thumb out, the rest closed: an L.",
+  "search": "loser l corner",
+  "image": "/static/hands/l_shape.jpg"
+ },
+ {
+  "key": "rock",
+  "label": "Rock on",
+  "category": "Signs",
+  "description": "Index and pinky straight, middle and ring closed, thumb across: horns.",
+  "search": "horns metal devil",
+  "image": "/static/hands/rock.jpg"
+ },
+ {
+  "key": "ily",
+  "label": "I love you",
+  "category": "Signs",
+  "description": "Index, pinky and thumb out, middle and ring closed.",
+  "search": "love spiderman web",
+  "image": "/static/hands/ily.jpg"
+ },
+ {
+  "key": "shaka",
+  "label": "Shaka",
+  "category": "Signs",
+  "description": "Thumb and pinky out, the other fingers closed: hang loose, call me.",
+  "search": "hang loose call phone surf",
+  "image": "/static/hands/shaka.jpg"
+ },
+ {
+  "key": "ok",
+  "label": "OK",
+  "category": "Signs",
+  "description": "Thumb and index meet in a ring, the other three straight and slightly apart.",
+  "search": "okay perfect ring",
+  "image": "/static/hands/ok.jpg"
+ },
+ {
+  "key": "thumb_out",
+  "label": "Thumb out",
+  "category": "Signs",
+  "description": "Fingers loosely closed, thumb sticks out sideways.",
+  "search": "hitchhiker",
+  "image": "/static/hands/thumb_out.jpg"
+ },
+ {
+  "key": "pinch_open",
+  "label": "Pinch, open",
+  "category": "Pinch & snap",
+  "description": "Thumb and index almost meeting, the other fingers soft: a beak.",
+  "search": "beak peck almost",
+  "image": "/static/hands/pinch_open.jpg"
+ },
+ {
+  "key": "pinch_all",
+  "label": "Pinch, all",
+  "category": "Pinch & snap",
+  "description": "All four fingertips gathered to the thumb tip.",
+  "search": "bunch gather tulip",
+  "image": "/static/hands/pinch_all.jpg"
+ },
+ {
+  "key": "snap_ready",
+  "label": "Snap, ready",
+  "category": "Pinch & snap",
+  "description": "Thumb pressed on the middle fingertip, the other fingers soft: the loaded finger snap.",
+  "search": "snap click load",
+  "image": "/static/hands/snap_ready.jpg"
+ },
+ {
+  "key": "snap_hit",
+  "label": "Snap, hit",
+  "category": "Pinch & snap",
+  "description": "The middle finger slapped into the palm, thumb across: the moment of the snap.",
+  "search": "snap click slap",
+  "image": "/static/hands/snap_hit.jpg"
+ },
+ {
+  "key": "flick_ready",
+  "label": "Flick, ready",
+  "category": "Pinch & snap",
+  "description": "Index curled under the thumb, loaded to flick out.",
+  "search": "flick fling load",
+  "image": "/static/hands/flick_ready.jpg"
+ },
+ {
+  "key": "wave1",
+  "label": "Wave 1",
+  "category": "Finger wave",
+  "description": "Only the pinky curled, the rest straight.",
+  "search": "ripple pinky",
+  "image": "/static/hands/wave1.jpg"
+ },
+ {
+  "key": "wave2",
+  "label": "Wave 2",
+  "category": "Finger wave",
+  "description": "Pinky and ring curled.",
+  "search": "ripple ring",
+  "image": "/static/hands/wave2.jpg"
+ },
+ {
+  "key": "wave3",
+  "label": "Wave 3",
+  "category": "Finger wave",
+  "description": "Pinky, ring and middle curled.",
+  "search": "ripple middle",
+  "image": "/static/hands/wave3.jpg"
+ },
+ {
+  "key": "wave4",
+  "label": "Wave 4",
+  "category": "Finger wave",
+  "description": "All four fingers curled, thumb out.",
+  "search": "ripple index",
+  "image": "/static/hands/wave4.jpg"
+ }
+]
