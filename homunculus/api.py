@@ -94,6 +94,13 @@ def _repairing(name):
 REPAIR_STEP = {"queued": "waiting for the GPU", "regions": "redrawing", "merge": "joining", "bake": "baking the texture"}
 
 
+def _clip_url(name, c):
+    """The clip the viewer loads: the one with the fingers set (hands.py) when there is one, with its modification time so a new bake is not served from the browser's cache."""
+    h = c.get("hands_glb"); u = _url(name, h) if h else None
+    if u: return u + f"?v={int(os.path.getmtime(C.RUNS / name / h))}"
+    return _url(name, c.get("textured") or c.get("glb"))
+
+
 def video_jobs(name):
     """The dance-from-video jobs of a run (newest first): stages with estimates and a report each (stages/video_progress.py), report paths as URLs, and the clip when done."""
     d0 = C.RUNS / name / "09_animate" / "video_jobs"; out = []
@@ -204,7 +211,7 @@ def run(name, live):
     try:
         am = json.load(open(C.RUNS / name / "09_animate" / "animations.json"))
         anims = {"status": am.get("status"), "error": am.get("error"), "clips": [
-            {"id": c["id"], "prompt": c.get("prompt", ""), "rep": c.get("rep", 0), "url": _url(name, c.get("textured") or c.get("glb")), "fbx": _url(name, c.get("textured_fbx") or c.get("fbx")),
+            {"id": c["id"], "prompt": c.get("prompt", ""), "rep": c.get("rep", 0), "url": _clip_url(name, c), "fbx": _url(name, c.get("hands_fbx") or c.get("textured_fbx") or c.get("fbx")), "hands": bool(c.get("hands_glb")),
              "thumb": _url(name, c.get("thumb")), "textured": bool(c.get("textured")), "source": c.get("source"), "video": _url(name, c.get("video")), "compare": _url(name, c.get("compare")),
              "ref": _url(name, c.get("ref")), "range": c.get("range")} for c in am.get("clips", []) if _url(name, c.get("textured") or c.get("glb"))]}
     except Exception: pass

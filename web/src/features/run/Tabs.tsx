@@ -4,6 +4,7 @@ import { Clapperboard, Download, Film, GitFork, Hand, Image as ImageIcon, Loader
 import { api, q, upload, useInvalidate, useVideoJobs } from "@/lib/api";
 import { Link } from "react-router-dom";
 import { SyncPlayer } from "@/features/animate/SyncPlayer";
+import { HandTimeline } from "@/features/animate/HandTimeline";
 import { VideoJobCard } from "@/features/animate/VideoJob";
 import type { Clip, RunDetail } from "@/lib/types";
 import { Badge, Button, Empty, Field, Input, Panel, Progress, Segmented, Select, Spinner, Textarea } from "@/components/ui";
@@ -72,7 +73,7 @@ export function ModelTab({ d }: { d: RunDetail }) {
 }
 
 /* ---------------------------------------------------------------- Animate */
-function ClipPlayer({ clips }: { clips: Clip[] }) {
+function ClipPlayer({ clips, run }: { clips: Clip[]; run: string }) {
   const [id, setId] = React.useState<string | null>(null);
   const c = clips.find((x) => x.id === id) ?? clips[clips.length - 1];
   const [v, setV] = React.useState<Viewer | null>(null);
@@ -81,9 +82,9 @@ function ClipPlayer({ clips }: { clips: Clip[] }) {
   const [t, setT] = React.useState(0);
   React.useEffect(() => { if (!v) return; const i = setInterval(() => setT(v.clipTime()), 50); return () => clearInterval(i); }, [v]);
   const list = (
-    <div className="grid max-h-[min(64vh,640px)] content-start gap-1.5 overflow-y-auto pr-1">
+    <div className="grid max-h-[min(64vh,640px)] min-w-0 content-start gap-1.5 overflow-y-auto pr-1">
       {[...clips].reverse().map((x) => (
-        <button key={x.id} onClick={() => setId(x.id)} className={cn("flex items-center gap-3 rounded-xl border p-2 text-left transition", c?.id === x.id ? "border-accent/60 bg-accent/10" : "border-line hover:border-white/15")}>
+        <button key={x.id} onClick={() => setId(x.id)} className={cn("flex w-full min-w-0 items-center gap-3 rounded-xl border p-2 text-left transition", c?.id === x.id ? "border-accent/60 bg-accent/10" : "border-line hover:border-white/15")}>
           <Img src={x.thumb} className="size-12 shrink-0 rounded-lg" />
           <div className="min-w-0">
             <div className="truncate text-[13px] font-medium">{x.prompt}</div>
@@ -95,7 +96,9 @@ function ClipPlayer({ clips }: { clips: Clip[] }) {
   );
   if (c?.ref) return (        // a dance from a video: the video and the character play together
     <div className="grid gap-3 xl:grid-cols-[1fr_260px]">
-      <SyncPlayer key={c.id} model={c.url} reference={c.ref} compare={c.compare} preview={c.video} fbx={c.fbx} />
+      <SyncPlayer key={c.id} model={c.url} reference={c.ref} compare={c.compare} preview={c.video} fbx={c.fbx}>
+        {(p) => <HandTimeline run={run} clip={c.id} t={p.t} len={p.len} seek={p.seek} />}
+      </SyncPlayer>
       {list}
     </div>
   );
@@ -190,7 +193,7 @@ export function AnimateTab({ d }: { d: RunDetail }) {
       </div>
       {vjob && <VideoJobCard key={vjob.job} j={vjob} />}
       {busy && !(vjob && (vjob.status === "queued" || vjob.status === "running")) && <div className="flex items-center gap-3 rounded-xl border border-accent/30 bg-accent/8 px-4 py-3 text-[13px]"><Spinner className="text-accent" /> A clip is being made; the Log tab has the details.</div>}
-      {A?.clips?.length ? <ClipPlayer clips={A.clips} /> : <Empty icon={<Clapperboard />} title={busy ? "Making the first clips…" : "No clips yet."}>Copy a dance from a video or type a prompt above.</Empty>}
+      {A?.clips?.length ? <ClipPlayer clips={A.clips} run={d.name} /> : <Empty icon={<Clapperboard />} title={busy ? "Making the first clips…" : "No clips yet."}>Copy a dance from a video or type a prompt above.</Empty>}
     </div>
   );
 }

@@ -24,7 +24,7 @@ export interface Snapshot { n: number; time: string; stage: string; label: strin
 
 export interface Clip {
   id: string; prompt: string; rep: number; url: string; fbx: string | null; thumb: string | null; textured: boolean;
-  source?: "video"; video?: string | null; compare?: string | null; ref?: string | null; range?: [number, number] | null;
+  source?: "video"; video?: string | null; compare?: string | null; ref?: string | null; range?: [number, number] | null; hands?: boolean;
 }
 
 export interface Animations { status: "idle" | "queued" | "running" | "done" | "failed"; error: string | null; clips: Clip[] }
@@ -91,3 +91,8 @@ export interface VideoJob {
   stages: VideoStage[];
   result: { id: string; url: string | null; ref: string | null; compare: string | null; video: string | null; fbx: string | null; thumb: string | null } | null;
 }
+
+/** The hand timeline of one clip (/api/hands/<run>/<clip>): a pose per hand from a time on (seconds); the first pose holds from the start. */
+export type HandKey = [number, string];
+export interface HandTracks { left: HandKey[]; right: HandKey[] }
+export interface HandsInfo { clip: string; poses: string[]; tracks: HandTracks; updated: number | null; status: "idle" | "running" | "done" | "failed"; error: string | null; applied: boolean }

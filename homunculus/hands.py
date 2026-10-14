@@ -1,0 +1,98 @@
+"""Hand timelines for the clips of a run (the Animate tab's editor): which pose each hand has at each moment of a dance, baked into a copy of the clip.
+
+runs/<run>/09_animate/hands/<clip>.json         {"tracks": {"left": [[seconds, pose], ...], "right": [...]}, "updated": time}   what the editor saves (the training labels of a later classifier)
+runs/<run>/09_animate/hands/<clip>.status.json  {"status": "running" | "done" | "failed", "error": ...}
+runs/<run>/09_animate/clips/<clip>_hands.glb    the clip with the fingers set (blender_handpose.py), made from the textured clip when there is one; the original clip is never touched.
+The clip's entry in animations.json gets hands_glb (and hands_fbx); api.py serves those instead of the plain clip once they exist. An empty timeline removes them again."""
+import json, os, shutil, subprocess, threading, time
+from . import config as C, handpose
+
+MAX_KEYS = 400
+_locks = {}
+
+
+def _dir(run): return C.RUNS / os.path.basename(run) / "09_animate"
+def _paths(run, clip):
+    d = _dir(run); clip = os.path.basename(clip); return d / "hands" / f"{clip}.json", d / "hands" / f"{clip}.status.json"
+
+
+def _manifest(run):
+    try: return json.load(open(_dir(run) / "animations.json"))
+    except Exception: return None
+
+
+def _clip(run, clip):
+    M = _manifest(run)
+    return next((c for c in (M or {}).get("clips", []) if c.get("id") == clip), None)
+
+
+def clean(tracks):
+    """Validated tracks: {"left": [[seconds, pose], ...], "right": [...]} sorted by time (raises ValueError)."""
+    if not isinstance(tracks, dict): raise ValueError("tracks must be {left: [...], right: [...]}")
+    out = {}
+    for side in ("left", "right"):
+        ks = tracks.get(side) or []
+        if not isinstance(ks, list) or len(ks) > MAX_KEYS: raise ValueError(f"{side}: a list of at most {MAX_KEYS} poses")
+        rows = []
+        for k in ks:
+            try: t, pose = float(k[0]), str(k[1])
+            except (TypeError, ValueError, IndexError): raise ValueError(f"{side}: each entry is [seconds, pose]")
+            if pose not in handpose.LIB: raise ValueError(f"{side}: unknown pose '{pose}' (use {', '.join(handpose.LIB)})")
+            if not (0 <= t <= 3600): raise ValueError(f"{side}: time {t} out of range")
+            rows.append([round(t, 3), pose])
+        out[side] = sorted(rows, key=lambda r: r[0])
+    return out
+
+
+def info(run, clip):
+    """What the editor needs: the poses, the saved tracks and the state of the last bake."""
+    clip = os.path.basename(clip); tp, sp = _paths(run, clip); c = _clip(run, clip)
+    if c is None: raise ValueError("no such clip")
+    try: saved = json.load(open(tp))
+    except Exception: saved = {"tracks": {"left": [], "right": []}, "updated": None}
+    try: st = json.load(open(sp))
+    except Exception: st = {"status": "idle", "error": None}
+    if st.get("status") == "running" and time.time() - os.path.getmtime(sp) > 900: st = {"status": "failed", "error": "the bake stopped answering"}
+    return {"clip": clip, "poses": list(handpose.LIB), "tracks": saved["tracks"], "updated": saved.get("updated"), **st, "applied": bool(c.get("hands_glb"))}
+
+
+def save(run, clip, tracks):
+    """Write the timeline and bake it into a copy of the clip in the background. Returns at once; poll info()."""
+    clip = os.path.basename(clip); tracks = clean(tracks); tp, sp = _paths(run, clip)
+    if _clip(run, clip) is None: raise ValueError("no such clip")
+    os.makedirs(tp.parent, exist_ok=True)
+    json.dump({"tracks": tracks, "updated": time.time()}, open(tp, "w"), indent=1)
+    _status(sp, "running")
+    threading.Thread(target=_bake, args=(run, clip, tracks), daemon=True).start()
+
+
+def _status(sp, status, error=None):
+    tmp = str(sp) + ".tmp"; json.dump({"status": status, "error": error}, open(tmp, "w")); os.replace(tmp, sp)
+
+
+def _bake(run, clip, tracks):
+    lock = _locks.setdefault((run, clip), threading.Lock())
+    with lock:
+        tp, sp = _paths(run, clip); d = _dir(run)
+        try:
+            M = _manifest(run); c = next(c for c in M["clips"] if c["id"] == clip)
+            if not any(tracks.values()):              # an empty timeline: back to the plain clip
+                for k in ("hands_glb", "hands_fbx"):
+                    p = c.pop(k, None)
+                    if p:
+                        try: os.remove(C.RUNS / run / p)
+                        except OSError: pass
+                json.dump(M, open(d / "animations.json", "w"), indent=1); _status(sp, "done"); return
+            src = C.RUNS / run / (c.get("textured") or c["glb"]); dst = d / "clips" / f"{clip}_hands.glb"; part = d / "clips" / f"{clip}_hands_part.glb"
+            shutil.copy(src, part); fbx_src = src.with_suffix(".fbx")
+            want_fbx = bool(C.KEEP_FBX) and fbx_src.exists()
+            if want_fbx: shutil.copy(fbx_src, part.with_suffix(".fbx"))
+            spec = {"tracks": tracks, "lib": handpose.LIB, "ease": 0.13, "ramp": 6, "fbx": want_fbx}; sj = d / "hands" / f"{clip}.spec.json"; json.dump(spec, open(sj, "w"))
+            r = subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "blender_handpose.py"), "--", str(part), str(sj)], capture_output=True, text=True, timeout=900)
+            if r.returncode or "finger bones" not in r.stdout: raise RuntimeError(((r.stdout + r.stderr).strip().splitlines() or ["no output"])[-1][:200])
+            os.replace(part, dst); c["hands_glb"] = os.path.relpath(dst, C.RUNS / run)
+            if want_fbx: os.replace(part.with_suffix(".fbx"), dst.with_suffix(".fbx")); c["hands_fbx"] = os.path.relpath(dst.with_suffix(".fbx"), C.RUNS / run)
+            M2 = _manifest(run); c2 = next(x for x in M2["clips"] if x["id"] == clip); c2.update({k: c[k] for k in ("hands_glb", "hands_fbx") if k in c})      # the manifest may have changed meanwhile
+            json.dump(M2, open(d / "animations.json", "w"), indent=1); _status(sp, "done")
+        except Exception as e:
+            _status(sp, "failed", f"{type(e).__name__}: {str(e)[:200]}")

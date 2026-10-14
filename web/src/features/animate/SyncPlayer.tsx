@@ -9,8 +9,11 @@ const STILL = { rotate: false };
 
 /** The reference video and the character dancing it, played together. The video is the clock: every frame the 3D clip is posed at the video's time, so play, pause,
  *  scrubbing and the speed move both, and the 3D view can still be orbited while it plays. The reference is the same range of the video the motion was read from. */
-export function SyncPlayer({ model, reference, compare, preview, fbx, className }: {
+export interface PlayerCtx { t: number; len: number; seek: (s: number) => void; playing: boolean; toggle: () => void }
+
+export function SyncPlayer({ model, reference, compare, preview, fbx, className, children }: {
   model: string | null | undefined; reference: string; compare?: string | null; preview?: string | null; fbx?: string | null; className?: string;
+  /** drawn under the transport bar with the player's clock (the hand timeline) */ children?: (c: PlayerCtx) => React.ReactNode;
 }) {
   const vid = React.useRef<HTMLVideoElement>(null);
   const [v, setV] = React.useState<Viewer | null>(null);
@@ -80,6 +83,8 @@ export function SyncPlayer({ model, reference, compare, preview, fbx, className 
         <Tip content={muted ? "Sound off" : "Sound on"}><Button variant="ghost" size="icon" onClick={() => setMuted(!muted)}>{muted ? <VolumeX /> : <Volume2 />}</Button></Tip>
         <Tip content={stack ? "Side by side" : "One above the other"}><Button variant="ghost" size="icon" onClick={() => setStack(!stack)} className="hidden md:inline-flex">{stack ? <Columns2 /> : <Rows2 />}</Button></Tip>
       </div>
+
+      {children?.({ t, len, seek, playing, toggle })}
 
       {(model || fbx || preview || compare) && (
         <div className="flex flex-wrap items-center gap-2">

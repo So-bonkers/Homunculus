@@ -57,6 +57,10 @@ class H(SimpleHTTPRequestHandler):
                                     "accepted": S.get("accepted"), "status": st})
         if path == "/api/doctor":
             from . import doctor; return self._json(200, doctor.checks())
+        if path.startswith("/api/hands/"):        # the hand timeline of one clip: /api/hands/<run>/<clip>
+            from . import hands
+            try: parts = path.split("/"); return self._json(200, hands.info(parts[3], parts[4]))
+            except (ValueError, IndexError) as e: return self._json(404, {"error": str(e) or "no such clip"})
         if path.startswith("/api/video/"):       # dance-from-video jobs of a run: stages, estimates, reports
             from . import api; return self._json(200, api.video_jobs(os.path.basename(path)))
         if path.startswith("/api/retex/"):
@@ -140,6 +144,7 @@ class H(SimpleHTTPRequestHandler):
         if path == "/api/looks": return self.look_previews()
         if path == "/api/animate": return self.animate_job()
         if path == "/api/animate_video": return self.animate_video_job()
+        if path == "/api/hands": return self.hands_job()
         if path == "/api/repair": return self.repair_job()
         if path == "/api/repair_use": return self.repair_use()
         if path == "/api/repair_choose": return self.repair_choose()
@@ -412,6 +417,16 @@ class H(SimpleHTTPRequestHandler):
             self._json(200, {"ok": True})
         except Exception as e:
             self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
+    def hands_job(self):
+        """Save a clip's hand timeline and bake it into a copy of the clip: {run, clip, tracks: {left: [[seconds, pose], ...], right: [...]}}. Poll GET /api/hands/<run>/<clip>."""
+        from . import hands
+        try:
+            d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}"); run = os.path.basename(str(d.get("run", "")))
+            if run in live_runs(): return self._json(409, {"error": "This run is running; set the hands when it has finished."})
+            hands.save(run, str(d.get("clip", "")), d.get("tracks")); self._json(200, {"ok": True})
+        except ValueError as e: self._json(400, {"error": str(e)})
+        except Exception as e: self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
     def animate_video_job(self):
         """Copy the dance of a video onto a rigged run. The video is the request body, the options are in the query: ?run=&fname=&start=&end=[&title=]. An empty body re-uses the
