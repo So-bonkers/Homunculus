@@ -25,3 +25,16 @@ A 20 s clip took about two and a half minutes on the Radeon (YOLO tracking, ViTP
 The dance's heading is not recoverable from the clip: if the character faces away from the render camera, pass `--yaw 180` (any angle) to `smpl_to_bvh.py`. For the first test clip, where the dancer faces the camera at the start, 180 is right.
 
 Body only (no fingers), depth is guessed from one camera, feet slide (0.6-0.7 body heights per second while low in the first test), fast spins and floor work are weaker. Tested on one 20 s freestyle slice (dark clothes, coloured light, steady camera): the arm and leg poses matched the footage at five checked moments.
+
+## Fingers (work in progress, 2026-10-14)
+GVHMR gives the body only, so a dance from a video leaves every finger at rest. The hand-pose layer (`homunculus/blender_handpose.py`) can now give each hand a **timeline of poses** (open, relaxed, fist, grip, point, thumbs up, pinch; eased between), not one pose for the whole clip:
+
+```json
+{"tracks": {"left": [[0, "open"], [2.0, "fist"], [5.0, "point"]], "right": [[0, "fist"], [3.0, "open"]]}, "ease": 0.13, "ramp": 6, "lib": "<handpose.LIB>"}
+```
+```bash
+blender -b --python homunculus/blender_handpose.py -- clip.glb spec.json      # rewrites the GLB (and the FBX next to it)
+```
+Times are in seconds from the start of the clip. Tried on the Thriller rig with a hand-made track: open, fist, point, grip and thumbs-up all show on both hands at the set times.
+
+Where the poses come from is the open part. In a wide shot of a group the hands are about 40 px (1080p video), blurred and partly hidden, so a hand-pose estimator cannot read the fingers there; a close shot (a hand over ~150 px) may. Not built yet: a way to write the tracks (by hand against the side-by-side video, and automatically where the hand is big enough).
