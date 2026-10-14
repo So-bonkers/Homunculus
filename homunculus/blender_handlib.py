@@ -1,11 +1,12 @@
 """Pictures of the hand library: every pose on a rig's left hand, from the side (the curl) and from above (the spread).
-blender -b --python blender_handlib.py -- rig.glb|rig.fbx lib.json out_dir      (lib.json: {pose: entry}); writes out_dir/<pose>_side.png and <pose>_top.png"""
+blender -b --python blender_handlib.py -- rig.glb|rig.fbx lib.json out_dir [wrist_lib.json]      (lib.json: {pose: entry}); writes out_dir/<pose>_side.png and <pose>_top.png,
+and with a wrist library out_dir/w_<name>_side.png / _top.png (soft fingers, the wrist posed; the camera further back)"""
 import bpy, sys, os, json
 from mathutils import Vector
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import blender_handpose as H
 
-glb, lib_p, out = sys.argv[sys.argv.index("--") + 1:][:3]; lib = json.load(open(lib_p)); os.makedirs(out, exist_ok=True)
+_a = sys.argv[sys.argv.index("--") + 1:]; glb, lib_p, out = _a[:3]; lib = json.load(open(lib_p)); wlib = json.load(open(_a[3])) if len(_a) > 3 else {}; os.makedirs(out, exist_ok=True)
 bpy.ops.wm.read_factory_settings(use_empty=True)
 if glb.lower().endswith(".fbx"): bpy.ops.import_scene.fbx(filepath=glb)
 else: bpy.ops.import_scene.gltf(filepath=glb)
@@ -27,4 +28,11 @@ for name in lib:
     for view, off in (("side", side * hl * 2.5), ("top", Vector((0, 0, 1)) * hl * 2.5)):
         cam.location = centre + off; cam.rotation_euler = (centre - cam.location).to_track_quat("-Z", "Y").to_euler()
         sc.render.filepath = os.path.join(out, f"{name}_{view}.png"); bpy.ops.render.render(write_still=True)
-print(f"[handlib] {len(lib)} poses")
+if wlib:
+    F.set_static("soft", "soft") if "soft" in lib else None
+    for name in wlib:
+        F.set_wrist_static(name, name, wlib); bpy.context.view_layer.update()
+        for view, off in (("side", side * hl * 3.4), ("top", Vector((0, 0, 1)) * hl * 3.4)):
+            cam.location = rest_head + axis * (hl * 0.35) + off; cam.rotation_euler = (rest_head + axis * (hl * 0.35) - cam.location).to_track_quat("-Z", "Y").to_euler()
+            sc.render.filepath = os.path.join(out, f"w_{name}_{view}.png"); bpy.ops.render.render(write_still=True)
+print(f"[handlib] {len(lib)} poses, {len(wlib)} wrist positions")

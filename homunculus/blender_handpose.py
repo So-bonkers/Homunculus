@@ -42,6 +42,30 @@ def angles_at(lib, track, f, ease=0.13):
     return cur
 
 
+def wrist_at(wlib, track, f, ease=0.13):
+    """The wrist of one hand at time f (seconds): {"flex": degrees, "dev": degrees}; keys as for the fingers ([seconds, name] or [seconds, name, {"curve", "d"}])."""
+    ks = sorted(track, key=lambda k: k[0]); cur = dict(wlib[ks[0][1]])
+    for i in range(1, len(ks)):
+        k = ks[i]; opt = k[2] if len(k) > 2 and isinstance(k[2], dict) else {}; d0, fn = CURVES.get(opt.get("curve", "smooth"), CURVES["smooth"])
+        d = float(opt["d"]) if opt.get("d") else (ease if opt.get("curve", "smooth") == "smooth" else d0)
+        d = max(1e-3, min(d, 0.6 * (k[0] - ks[i - 1][0]) if k[0] > ks[i - 1][0] else d)); u = (f - (k[0] - d / 2)) / d
+        if u <= 0: break
+        t = fn(min(1.0, u)); nxt = wlib[k[1]]; cur = {a: cur[a] + (nxt[a] - cur[a]) * t for a in ("flex", "dev")}
+    return cur
+
+
+def palm_at(track, f, ease=0.13):
+    """(from, to, u): the direction codes of the palm track around time f (seconds) and how far the change has come (0-1, eased). Codes are None for "as the clip"."""
+    ks = sorted(track, key=lambda k: k[0]); prev = nxt = ks[0][1]; u = 1.0
+    for i in range(1, len(ks)):
+        k = ks[i]; opt = k[2] if len(k) > 2 and isinstance(k[2], dict) else {}; d0, fn = CURVES.get(opt.get("curve", "smooth"), CURVES["smooth"])
+        d = float(opt["d"]) if opt.get("d") else (ease if opt.get("curve", "smooth") == "smooth" else d0)
+        d = max(1e-3, min(d, 0.6 * (k[0] - ks[i - 1][0]) if k[0] > ks[i - 1][0] else d)); x = (f - (k[0] - d / 2)) / d
+        if x <= 0: break
+        prev, nxt, u = ks[i - 1][1], k[1], fn(min(1.0, x))
+    return prev, nxt, u
+
+
 class Fingers:
     """The finger bones of an armature and how each one curls (and spreads) in its own space."""
     def __init__(self, arm, lib):
@@ -51,7 +75,7 @@ class Fingers:
             m = rx.match(b.name)
             if m: chains.setdefault((m.group(1), m.group(2).lower()), {})[int(m.group(3))] = b
         if not chains: raise RuntimeError("no finger bones found (names)")
-        bone = {b.name.split(":")[-1]: b for b in arm.data.bones}
+        bone = {b.name.split(":")[-1]: b for b in arm.data.bones}; self._hand_frame = {}
         def palm_of(side):
             """The palm normal of a hand in the rest pose, in armature space, from the rig's own bones: the hand axis (wrist to the middle knuckle) x the way the thumb side lies (pinky knuckle to
             index knuckle), mirrored for the right hand. Rigs differ: a Mixamo T-pose has the palms down, a Make-It-Animatable one often forward with the thumbs up."""
@@ -60,10 +84,29 @@ class Fingers:
             except KeyError: return None
             ax = (m1 - w).normalized(); ts = (i1 - p1); ts -= ax * ts.dot(ax)
             if ts.length < 1e-6 or ax.length < 1e-6: return None
-            n = ax.cross(ts.normalized()).normalized(); return n if side == "Left" else -n
+            ts = ts.normalized(); n = ax.cross(ts).normalized(); n = n if side == "Left" else -n; self._hand_frame[side] = (ax, ts); return n
         fallback = (arm.matrix_world.to_3x3().inverted() @ Vector((0, 0, -1))).normalized()          # palms down, if the hand bones cannot say
         self.palm = {side: palm_of(side) or fallback for side in ("Left", "Right")}
         def local_axis(b, world_axis): return (b.matrix_local.to_3x3().normalized().inverted() @ world_axis).normalized()
+        # the wrist: the hand bone turns about two axes of its own hand: flexion about (hand axis x palm normal) (positive: toward the palm), deviation about the palm normal (positive: toward the thumb)
+        self.wrist = {}
+        for side in ("Left", "Right"):
+            hb = bone.get(f"{side}Hand")
+            if hb is None or side not in self._hand_frame: continue
+            ax, ts = self._hand_frame[side]; n = self.palm[side]; fa = ax.cross(n).normalized(); best = None
+            for sgn in (1, -1):
+                sc = (self.Q(n, math.radians(sgn * 10)) @ ax).dot(ts)
+                if best is None or sc > best[0]: best = (sc, sgn)
+            self.wrist[side] = (hb.name, local_axis(hb, fa), local_axis(hb, n), best[1])
+        # the forearm roll: the forearm bone turns about its own length; the palm's normal is followed in the hand bone's frame, and the torso gives "forward"
+        self.roll = {}
+        for side in ("Left", "Right"):
+            fb, hb = bone.get(f"{side}ForeArm"), bone.get(f"{side}Hand")
+            if fb is None or hb is None: continue
+            self.roll[side] = (fb.name, hb.name, local_axis(fb, (fb.tail_local - fb.head_local).normalized()), (hb.matrix_local.to_3x3().inverted() @ self.palm[side]).normalized())
+        self.up = (arm.matrix_world.to_3x3().inverted() @ Vector((0, 0, 1))).normalized()
+        ll, rl = bone.get("LeftUpLeg"), bone.get("RightUpLeg"); self.chest = next((bone[n] for n in ("Spine2", "Spine1", "Spine") if n in bone), None)
+        self.fwd_rest = (ll.head_local - rl.head_local).normalized().cross(self.up).normalized() if ll is not None and rl is not None else None      # left x up: the way the character faces
         self.bones = {}
         for (side, finger), ch in chains.items():
             down = self.palm[side]
@@ -104,6 +147,35 @@ class Fingers:
         if abd and ang["splay"].get(finger): q = self.Q(abd[0], math.radians(abd[1] * ang["splay"][finger])) @ q
         return q
 
+    def direction(self, code, side):
+        """A palm direction code (down, up, forward, back, in, out) as a vector in armature space for this pose (forward and the sides follow the torso's heading)."""
+        if code in ("down", "up"): return -self.up if code == "down" else self.up
+        if self.chest is None or self.fwd_rest is None: return None
+        pb = self.arm.pose.bones[self.chest.name]; R = pb.matrix.to_3x3() @ self.chest.matrix_local.to_3x3().inverted(); fw = R @ self.fwd_rest
+        fw = (fw - self.up * fw.dot(self.up)); 
+        if fw.length < 1e-6: return None
+        fw.normalize(); left = self.up.cross(fw).normalized()                                       # the character's left, in armature space
+        inward = -left if side == "Left" else left
+        return {"forward": fw, "back": -fw, "in": inward, "out": -inward}.get(code)
+
+    def roll_angle(self, side, target):
+        """Degrees to roll the forearm about its length so the palm faces `target` (armature space), from the pose as it is now (None if the forearm points along the target)."""
+        fname, hname, ax_local, n_loc = self.roll[side]; pf, ph = self.arm.pose.bones[fname], self.arm.pose.bones[hname]
+        f = (ph.head - pf.head).normalized(); n = (ph.matrix.to_3x3() @ n_loc).normalized()
+        n = n - f * n.dot(f); t = target - f * target.dot(f)
+        if n.length < 1e-6 or t.length < 1e-3: return None
+        n.normalize(); t.normalize(); return math.degrees(math.atan2(f.dot(n.cross(t)), n.dot(t)))
+
+    def wrist_quat(self, side, ang):
+        """The extra rotation of the hand bone for {"flex": degrees, "dev": degrees}: the bone's own frame, to be multiplied after the clip's rotation (q_clip @ q)."""
+        name, fax, dax, sgn = self.wrist[side]; return self.Q(dax, math.radians(sgn * ang["dev"])) @ self.Q(fax, math.radians(ang["flex"]))
+
+    def set_wrist_static(self, left, right, wlib):
+        """Pose the wrists of a rig without a clip (library pictures): left / right are wrist library names."""
+        for side, nm in (("Left", left), ("Right", right)):
+            if side in self.wrist:
+                pb = self.arm.pose.bones[self.wrist[side][0]]; pb.rotation_mode = "QUATERNION"; pb.rotation_quaternion = self.wrist_quat(side, wlib[nm])
+
     def set_static(self, left, right):
         """Pose the fingers of a rig without a clip (library pictures): left / right are library pose names."""
         ang = {"Left": angles(self.lib, left), "Right": angles(self.lib, right)}
@@ -115,6 +187,8 @@ def main():
     import bpy
     glb, spec_p = sys.argv[sys.argv.index("--") + 1:][:2]; spec = json.load(open(spec_p)); lib = spec["lib"]; ramp = int(spec.get("ramp", 6)); ease = max(1e-3, float(spec.get("ease", 0.13)))
     tracks = spec.get("tracks") or {"left": [[0, spec["left"]]], "right": [[0, spec["right"]]]}        # one pose for the whole clip is a track with one key
+    wtracks = {s: t for s, t in (spec.get("wrist_tracks") or {}).items() if t}; wlib = spec.get("wrist_lib") or {}
+    ptracks = {s: t for s, t in (spec.get("palm_tracks") or {}).items() if t}; plib = spec.get("palm_lib") or {}
     bpy.ops.wm.read_factory_settings(use_empty=True); bpy.ops.import_scene.gltf(filepath=glb)
     arm = next((o for o in bpy.data.objects if o.type == "ARMATURE"), None)
     if arm is None: print("[handpose] no armature"); sys.exit(2)
@@ -125,15 +199,35 @@ def main():
     bpy.context.view_layer.objects.active = arm
     for f in range(f0, f1 + 1):
         bpy.context.scene.frame_set(f); t = min(1.0, (f - f0 + 1) / max(1, ramp)); t = t * t * (3 - 2 * t)
-        ts = (f - f0) / fps; ang = {"Left": angles_at(lib, tracks["left"], ts, ease), "Right": angles_at(lib, tracks["right"], ts, ease)}      # track times count from the first frame of the clip
+        for side in ("Left", "Right"):                                                                # the palm direction: the forearm rolls (before the fingers and the wrist, which sit on top)
+            tr = ptracks.get(side.lower())
+            if tr and side in F.roll:
+                a, b, u = palm_at(tr, (f - f0) / fps, ease); da, db = plib.get(a), plib.get(b)
+                va, vb = (F.direction(da, side) if da else None), (F.direction(db, side) if db else None); w = 1.0
+                if va is None and vb is None: continue
+                if va is None: tgt, w = vb, u
+                elif vb is None: tgt, w = va, 1.0 - u
+                else: tgt = (va * (1 - u) + vb * u)
+                th = F.roll_angle(side, tgt) if tgt is not None and tgt.length > 1e-6 else None
+                if th is not None and abs(w) > 1e-3:
+                    pb = arm.pose.bones[F.roll[side][0]]; pb.rotation_mode = "QUATERNION"; pb.rotation_quaternion = pb.rotation_quaternion @ F.Q(F.roll[side][2], math.radians(th * w))
+                    pb.keyframe_insert("rotation_quaternion", frame=f)
+        bpy.context.view_layer.update()
+        ts = (f - f0) / fps; ang = {s: angles_at(lib, tracks[s.lower()], ts, ease) for s in ("Left", "Right") if tracks.get(s.lower())}      # track times count from the first frame of the clip; a hand with no track keeps the clip's own fingers
         for name, (side, *_r) in F.bones.items():
+            if side not in ang: continue
             q = F.quat(name, ang[side]); pb = arm.pose.bones[name]; pb.rotation_mode = "QUATERNION"
             cur = pb.rotation_quaternion.copy(); pb.rotation_quaternion = cur.slerp(q, t) if ramp else q
             pb.keyframe_insert("rotation_quaternion", frame=f)
+        for side in ("Left", "Right"):                                                                # the wrist: an extra bend of the hand bone on top of the clip's own rotation
+            tr = wtracks.get(side.lower())
+            if tr and side in F.wrist:
+                pb = arm.pose.bones[F.wrist[side][0]]; pb.rotation_mode = "QUATERNION"; pb.rotation_quaternion = pb.rotation_quaternion @ F.wrist_quat(side, wrist_at(wlib, tr, ts, ease))
+                pb.keyframe_insert("rotation_quaternion", frame=f)
     fbx = glb[:-4] + ".fbx"
     bpy.ops.export_scene.gltf(filepath=glb, export_format="GLB", export_animations=True)
     if spec.get("fbx", True): bpy.ops.export_scene.fbx(filepath=fbx, add_leaf_bones=False, bake_anim=True, path_mode="COPY", embed_textures=True)
-    print(f"[handpose] {fps:g} fps in Blender; " + " / ".join(f"{h}: {len(tracks[h])} pose(s)" for h in ("left", "right")) + f": {len(F.bones)} finger bones over {f1 - f0 + 1} frames")
+    print(f"[handpose] {fps:g} fps in Blender; " + " / ".join(f"{h}: {len(tracks.get(h) or [])} pose(s)" for h in ("left", "right")) + f": {len(F.bones)} finger bones over {f1 - f0 + 1} frames" + (f"; wrists: {', '.join(wtracks)}" if wtracks else "") + (f"; palm direction: {', '.join(ptracks)}" if ptracks else ""))
 
 
 if __name__ == "__main__":

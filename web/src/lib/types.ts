@@ -96,6 +96,7 @@ export interface VideoJob {
 export type HandCurve = "smooth" | "quick" | "snap" | "linear" | "hold";
 export interface HandKeyOpts { curve?: HandCurve; d?: number }
 export type HandKey = [number, string] | [number, string, HandKeyOpts];
-export interface HandPose { key: string; label: string; category: string; description: string; search: string; image: string }
-export interface HandTracks { left: HandKey[]; right: HandKey[] }
+export interface HandPose { key: string; label: string; category: string; description: string; search: string; image: string | null; kind?: "pose" | "wrist" | "palm" }
+export type HandLane = "left" | "right" | "left_wrist" | "right_wrist" | "left_palm" | "right_palm";
+export type HandTracks = Record<HandLane, HandKey[]>;
 export interface HandsInfo { clip: string; poses: string[]; tracks: HandTracks; updated: number | null; status: "idle" | "running" | "done" | "failed"; error: string | null; applied: boolean }

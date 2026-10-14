@@ -98,3 +98,55 @@ def catalogue():
     rows = [{"key": k, "label": v[0], "category": v[1], "description": v[2], "search": v[3]} for k, v in older.items()]
     rows += [{"key": k, "label": v[0], "category": v[1], "description": v[2], "search": v[3]} for k, v in SHAPES.items()]
     return rows
+
+
+# --- the wrist: how the hand sits on the forearm. flex: degrees the hand bends toward the palm (negative: back, away from the palm); dev: degrees it swings sideways (positive: toward the thumb, negative: toward
+# the little finger). Human range: about 80 in, 70 back, 20 toward the thumb, 35 toward the little finger. Named by the movement, so it holds whichever way the palm faces.
+WRISTS = {
+    "neutral": ("Neutral", "Straight", "The hand in line with the forearm.", "level normal rest", 0, 0),
+    "flex_20": ("In, small", "Bent in", "The hand bends slightly toward the palm side.", "down droop soft", 20, 0),
+    "flex_40": ("In, medium", "Bent in", "The hand bends toward the palm side (about 40 degrees).", "down droop drop limp", 40, 0),
+    "flex_70": ("In, deep", "Bent in", "The hand folds toward the palm side as far as it goes.", "down fold hook", 70, 0),
+    "ext_20": ("Back, small", "Bent back", "The hand bends slightly back, away from the palm.", "up lift", -20, 0),
+    "ext_40": ("Back, medium", "Bent back", "The hand bends back (about 40 degrees): a push, a stop sign.", "up push stop", -40, 0),
+    "ext_65": ("Back, deep", "Bent back", "The hand bends back as far as it goes.", "up cock lift", -65, 0),
+    "radial_10": ("Toward thumb, small", "Sideways", "The hand tilts slightly toward the thumb side.", "radial", 0, 10),
+    "radial_20": ("Toward thumb", "Sideways", "The hand tilts toward the thumb side as far as it goes.", "radial", 0, 20),
+    "ulnar_15": ("Toward pinky, small", "Sideways", "The hand tilts slightly toward the little-finger side.", "ulnar", 0, -15),
+    "ulnar_30": ("Toward pinky", "Sideways", "The hand tilts toward the little-finger side.", "ulnar karate chop", 0, -30),
+    "flex_ulnar": ("In and toward pinky", "Combined", "Bent toward the palm and tilted toward the little finger.", "down ulnar slash", 35, -25),
+    "flex_radial": ("In and toward thumb", "Combined", "Bent toward the palm and tilted toward the thumb.", "down radial", 35, 15),
+    "ext_ulnar": ("Back and toward pinky", "Combined", "Bent back and tilted toward the little finger.", "up ulnar", -35, -25),
+    "ext_radial": ("Back and toward thumb", "Combined", "Bent back and tilted toward the thumb.", "up radial", -35, 15),
+}
+
+
+def wrist_lib():
+    """{name: {"flex": degrees, "dev": degrees}} for the Blender layer."""
+    return {k: {"flex": v[4], "dev": v[5]} for k, v in WRISTS.items()}
+
+
+def wrist_catalogue():
+    return [{"key": k, "label": v[0], "category": v[1], "description": v[2], "search": v[3], "kind": "wrist"} for k, v in WRISTS.items()]
+
+
+# --- the palm direction: which way the palm faces, set by rolling the forearm (the elbow's twist). Absolute, not an offset: the clip's own palm direction is replaced while a label is on, and given back
+# ("As the clip") when it ends. up / down are the world's; forward, back, in and out follow the torso. GVHMR sees a forearm's twist only very weakly, so this is where a person's eye does better than the video.
+PALMS = {
+    "as_clip": ("As the clip", "Palm", "Hand the palm back to the motion the video gave.", "reset free natural video", None),
+    "palm_down": ("Palm down", "Palm", "The palm faces the floor.", "down floor press pronated", "down"),
+    "palm_up": ("Palm up", "Palm", "The palm faces the ceiling: an open offering.", "up ceiling offer supinated cup", "up"),
+    "palm_forward": ("Palm forward", "Palm", "The palm faces the way the dancer faces: a stop.", "front stop push", "forward"),
+    "palm_back": ("Palm back", "Palm", "The palm faces behind the dancer.", "behind rear", "back"),
+    "palm_in": ("Palm in", "Palm", "The palm faces the body's middle line.", "inward toward body", "in"),
+    "palm_out": ("Palm out", "Palm", "The palm faces away from the body.", "outward away side", "out"),
+}
+
+
+def palm_lib():
+    """{name: direction code or None} for the Blender layer."""
+    return {k: v[4] for k, v in PALMS.items()}
+
+
+def palm_catalogue():
+    return [{"key": k, "label": v[0], "category": v[1], "description": v[2], "search": v[3], "kind": "palm"} for k, v in PALMS.items()]

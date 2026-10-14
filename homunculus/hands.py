@@ -5,7 +5,7 @@ runs/<run>/09_animate/hands/<clip>.status.json  {"status": "running" | "done" | 
 runs/<run>/09_animate/clips/<clip>_hands.glb    the clip with the fingers set (blender_handpose.py), made from the textured clip when there is one; the original clip is never touched.
 The clip's entry in animations.json gets hands_glb (and hands_fbx); api.py serves those instead of the plain clip once they exist. An empty timeline removes them again."""
 import json, os, shutil, subprocess, threading, time
-from . import config as C, handpose
+from . import config as C, handpose, handshapes
 
 MAX_KEYS = 400
 CURVES = ("smooth", "quick", "snap", "linear", "hold")
@@ -31,14 +31,15 @@ def clean(tracks):
     """Validated tracks: {"left": [[seconds, pose], ...], "right": [...]} sorted by time (raises ValueError)."""
     if not isinstance(tracks, dict): raise ValueError("tracks must be {left: [...], right: [...]}")
     out = {}
-    for side in ("left", "right"):
+    for side in ("left", "right", "left_wrist", "right_wrist", "left_palm", "right_palm"):
         ks = tracks.get(side) or []
+        names = handshapes.WRISTS if side.endswith("_wrist") else handshapes.PALMS if side.endswith("_palm") else handpose.LIB
         if not isinstance(ks, list) or len(ks) > MAX_KEYS: raise ValueError(f"{side}: a list of at most {MAX_KEYS} poses")
         rows = []
         for k in ks:
             try: t, pose = float(k[0]), str(k[1])
             except (TypeError, ValueError, IndexError): raise ValueError(f"{side}: each entry is [seconds, pose] or [seconds, pose, {{curve, d}}]")
-            if pose not in handpose.LIB: raise ValueError(f"{side}: unknown pose '{pose}' (use {', '.join(handpose.LIB)})")
+            if pose not in names: raise ValueError(f"{side}: unknown {'wrist position' if side.endswith('_wrist') else 'palm direction' if side.endswith('_palm') else 'pose'} '{pose}' (use {', '.join(names)})")
             if not (0 <= t <= 3600): raise ValueError(f"{side}: time {t} out of range")
             row = [round(t, 3), pose]
             if len(k) > 2 and isinstance(k[2], dict) and k[2]:      # how the change arrives: curve (smooth | quick | snap | linear | hold) and its length d in seconds
@@ -63,6 +64,7 @@ def info(run, clip):
     if c is None: raise ValueError("no such clip")
     try: saved = json.load(open(tp))
     except Exception: saved = {"tracks": {"left": [], "right": []}, "updated": None}
+    saved["tracks"] = {**{k: [] for k in ("left", "right", "left_wrist", "right_wrist", "left_palm", "right_palm")}, **saved["tracks"]}
     try: st = json.load(open(sp))
     except Exception: st = {"status": "idle", "error": None}
     if st.get("status") == "running" and time.time() - os.path.getmtime(sp) > 900: st = {"status": "failed", "error": "the bake stopped answering"}
@@ -100,7 +102,8 @@ def _bake(run, clip, tracks):
             shutil.copy(src, part); fbx_src = src.with_suffix(".fbx")
             want_fbx = bool(C.KEEP_FBX) and fbx_src.exists()
             if want_fbx: shutil.copy(fbx_src, part.with_suffix(".fbx"))
-            spec = {"tracks": tracks, "lib": handpose.LIB, "ease": 0.13, "ramp": 6, "fbx": want_fbx}; sj = d / "hands" / f"{clip}.spec.json"; json.dump(spec, open(sj, "w"))
+            spec = {"tracks": {"left": tracks["left"], "right": tracks["right"]}, "wrist_tracks": {"left": tracks.get("left_wrist", []), "right": tracks.get("right_wrist", [])}, "lib": handpose.LIB,
+                    "wrist_lib": handshapes.wrist_lib(), "palm_tracks": {"left": tracks.get("left_palm", []), "right": tracks.get("right_palm", [])}, "palm_lib": handshapes.palm_lib(), "ease": 0.13, "ramp": 6, "fbx": want_fbx}; sj = d / "hands" / f"{clip}.spec.json"; json.dump(spec, open(sj, "w"))
             r = subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "blender_handpose.py"), "--", str(part), str(sj)], capture_output=True, text=True, timeout=900)
             if r.returncode or "finger bones" not in r.stdout: raise RuntimeError(((r.stdout + r.stderr).strip().splitlines() or ["no output"])[-1][:200])
             os.replace(part, dst); c["hands_glb"] = os.path.relpath(dst, C.RUNS / run)
