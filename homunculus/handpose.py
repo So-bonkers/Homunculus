@@ -8,11 +8,11 @@ import re
 LIB = {
     "open":      {"thumb": (0, 0, 0),    "index": (0, 0, 0),    "middle": (0, 0, 0),    "ring": (0, 0, 0),    "pinky": (0, 0, 0)},
     "relaxed":   {"thumb": (6, 8, 6),    "index": (14, 16, 10), "middle": (18, 20, 12), "ring": (22, 24, 14), "pinky": (26, 28, 16)},
-    "fist":      {"thumb": (22, 38, 30), "index": (85, 100, 65), "middle": (88, 102, 66), "ring": (90, 104, 68), "pinky": (92, 106, 70)},
-    "grip":      {"thumb": (18, 28, 22), "index": (60, 70, 45), "middle": (64, 74, 48), "ring": (68, 78, 50), "pinky": (72, 82, 52)},
-    "point":     {"thumb": (22, 38, 30), "index": (0, 0, 0),    "middle": (88, 102, 66), "ring": (90, 104, 68), "pinky": (92, 106, 70)},
+    "fist":      {"thumb": (46, 58, 38), "index": (85, 100, 65), "middle": (88, 102, 66), "ring": (90, 104, 68), "pinky": (92, 106, 70)},
+    "grip":      {"thumb": (34, 46, 30), "index": (60, 70, 45), "middle": (64, 74, 48), "ring": (68, 78, 50), "pinky": (72, 82, 52)},
+    "point":     {"thumb": (46, 58, 38), "index": (0, 0, 0),    "middle": (88, 102, 66), "ring": (90, 104, 68), "pinky": (92, 106, 70)},
     "thumbs_up": {"thumb": (0, 0, 0),    "index": (85, 100, 65), "middle": (88, 102, 66), "ring": (90, 104, 68), "pinky": (92, 106, 70), "thumb_out": 62},
-    "pinch":     {"thumb": (28, 24, 14), "index": (38, 36, 16), "middle": (14, 16, 10), "ring": (16, 18, 10), "pinky": (18, 20, 12)},
+    "pinch":     {"thumb": (52, 42, 22), "index": (38, 36, 16), "middle": (14, 16, 10), "ring": (16, 18, 10), "pinky": (18, 20, 12)},
 }
 
 # order matters: the first rule that matches decides. (regex, pose, which hands when the prompt does not name a side)

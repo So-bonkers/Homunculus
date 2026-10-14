@@ -15,7 +15,7 @@ STATES = {
     "bent": (88, 3, 3), "half": (60, 70, 45), "fist": (88, 102, 66), "tight": (96, 108, 72),
 }
 THUMBS = {                       # (base, middle, tip) curl, thumb_out
-    "side": ((4, 4, 4), 0), "out": ((0, 0, 0), 42), "up": ((0, 0, 0), 62), "across": ((28, 42, 30), 0), "oppose": ((30, 24, 12), 18), "tucked": ((16, 32, 16), 0), "hitch": ((0, 0, 0), 30),
+    "side": ((4, 4, 4), 0), "out": ((0, 0, 0), 42), "up": ((0, 0, 0), 62), "across": ((46, 58, 38), 0), "oppose": ((52, 42, 22), 4), "tucked": ((16, 32, 16), 0), "hitch": ((0, 0, 0), 30),
 }
 SPREADS = {                      # degrees away from the middle finger: index, ring, pinky
     "none": {}, "slight": {"index": 5, "ring": 4, "pinky": 9}, "spread": {"index": 12, "ring": 9, "pinky": 20}, "wide": {"index": 20, "ring": 14, "pinky": 32},

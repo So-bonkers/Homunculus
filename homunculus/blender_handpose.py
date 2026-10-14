@@ -13,6 +13,7 @@ Import it as a module (blender_handlib.py does) to set poses on a rig without a 
 import math, re, json, sys
 
 FINGERS = ("thumb", "index", "middle", "ring", "pinky")
+THUMB_ACROSS = 0.6        # how much of the thumb's fold is toward the little finger (the rest is toward the palm)
 CURVES = {"smooth": (0.13, lambda u: u ** 3 * (10 - 15 * u + 6 * u * u)), "quick": (0.07, lambda u: 1 - (1 - u) ** 3), "linear": (0.13, lambda u: u),
           "snap": (0.05, lambda u: 1 + 2.70158 * (u - 1) ** 3 + 1.70158 * (u - 1) ** 2), "hold": (0.001, lambda u: 1.0 if u >= 0.5 else 0.0)}
 
@@ -110,6 +111,9 @@ class Fingers:
         self.bones = {}
         for (side, finger), ch in chains.items():
             down = self.palm[side]
+            if finger == "thumb" and side in self._hand_frame:
+                # a thumb does not fold straight into the palm like a finger: it folds across it, toward the little finger and the palm. Its curl is about the thumb direction x that way.
+                ts = self._hand_frame[side][1]; down = (-ts * THUMB_ACROSS + down * (1 - THUMB_ACROSS)).normalized()
             dirs = {j: ((ch[j + 1].head_local - ch[j].head_local) if ch.get(j + 1) else (ch[j].tail_local - ch[j].head_local)).normalized() for j in (1, 2, 3) if ch.get(j) is not None}
             # "straight" is not the rest pose: a rig's hand rests slightly curled (Make-It-Animatable's about 35 degrees). The bend of each joint at rest, measured in the plane of the hand's axis and its palm
             # normal, becomes the zero of the curl, so a library curl of 0 is a straight finger on any rig.
