@@ -6,6 +6,7 @@ import type { HandCurve, HandKey, HandKeyOpts, HandLane, HandPose, HandTracks } 
 import { Badge, Button, Popover, PopoverContent, PopoverTrigger, Tip } from "@/components/ui";
 import { cn, duration } from "@/lib/utils";
 import { GESTURES, WRIST_GESTURES, type Gesture } from "./handGestures";
+import type { Wave } from "./SyncPlayer";
 
 /** The hand timeline of a dance: one lane per hand, a block per pose, under the video and the character on their shared clock. Press 1-9 to give the chosen hand(s) a pinned pose from the playhead on
  *  (the first pose of a lane holds from the start), pick any of the 48 library poses from the picker, or drop a quick gesture (snap, flick, pulse ...) at the playhead. Drag a block's left edge to move
@@ -70,7 +71,31 @@ function PoseCard({ p, onPick, pinned, onPin }: { p: HandPose; onPick: () => voi
   );
 }
 
-export function HandTimeline({ run, clip, t, len, seek }: { run: string; clip: string; t: number; len: number; seek: (s: number) => void }) {
+/** The sound of the clip as a strip aligned with the lanes: the envelope, and a tick where the sound jumps (a hit). Click it to jump there. */
+function WaveStrip({ wave, len, t, seek }: { wave: Wave | null | "none"; len: number; t: number; seek: (s: number) => void }) {
+  const cv = React.useRef<HTMLCanvasElement>(null); const box = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const c = cv.current, b = box.current; if (!c || !b) return;
+    const draw = () => {
+      const w = b.clientWidth, h = b.clientHeight, dpr = devicePixelRatio || 1; c.width = w * dpr; c.height = h * dpr; const g = c.getContext("2d")!; g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
+      if (!wave || wave === "none" || !len) return;
+      const P = wave.peaks; g.fillStyle = "rgba(139,108,255,0.55)";
+      for (let x = 0; x < w; x++) { const i = Math.min(P.length - 1, Math.floor((x / w) * P.length)); const a = Math.max(1, P[i] * (h - 4)); g.fillRect(x, (h - a) / 2, 1, a); }
+      g.fillStyle = "rgba(251,191,36,0.9)"; for (const o of wave.onsets) g.fillRect(Math.round((o / len) * w), 0, 1.5, 5);
+    };
+    draw(); const ro = new ResizeObserver(draw); ro.observe(b); return () => ro.disconnect();
+  }, [wave, len]);
+  return (
+    <div ref={box} className="relative h-9 cursor-pointer overflow-hidden rounded-lg border border-line bg-black/30" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); seek(((e.clientX - r.left) / r.width) * len); }}>
+      <canvas ref={cv} className="absolute inset-0 size-full" />
+      {wave === "none" && <div className="absolute inset-0 grid place-items-center text-[11px] text-warn">no sound in this reference file</div>}
+      {wave === null && <div className="absolute inset-0 grid place-items-center text-[11px] text-ink-3">reading the sound…</div>}
+      <div className="pointer-events-none absolute inset-y-0 w-0.5 bg-white" style={{ left: `${len ? Math.min(100, (t / len) * 100) : 0}%` }} />
+    </div>
+  );
+}
+
+export function HandTimeline({ run, clip, t, len, seek, wave }: { run: string; clip: string; t: number; len: number; seek: (s: number) => void; wave?: Wave | null | "none" }) {
   const q = useHands(run, clip); const inv = useInvalidate(); const cat = useHandPoses();
   const all = cat.data ?? []; const byKey = React.useMemo(() => Object.fromEntries(all.map((p) => [p.key, p])), [all]);
   const [mode, setMode] = React.useState<Mode>("fingers"); const kind = MODES.find((m) => m.key === mode)!.kind;
@@ -144,6 +169,7 @@ export function HandTimeline({ run, clip, t, len, seek }: { run: string; clip: s
     <div className="panel p-4" data-tour="hands">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Hand className="size-4 text-accent" /><h3 className="text-[14px] font-semibold">Hands</h3>
+        {q.data?.meta?.source === "draft" && !dirty && !baking && <Tip content={q.data.meta.how ?? ""}><Badge tone="accent"><Sparkles className="size-3" /> auto draft: check it</Badge></Tip>}
         {baking ? <Badge tone="accent"><Loader2 className="size-3 animate-spin" /> setting the fingers…</Badge>
           : q.data?.status === "failed" ? <Tip content={q.data.error ?? ""}><Badge tone="bad"><TriangleAlert className="size-3" /> failed</Badge></Tip>
           : dirty ? <Badge tone="warn">not applied</Badge> : q.data?.applied ? <Badge tone="ok"><Check className="size-3" /> on the model</Badge> : <Badge>fingers at rest</Badge>}
@@ -198,6 +224,8 @@ export function HandTimeline({ run, clip, t, len, seek }: { run: string; clip: s
       </div>
 
       <div className="grid grid-cols-[64px_1fr] gap-x-2 gap-y-1.5">
+        <div className="flex h-9 flex-col items-start justify-center px-2 text-[11px] text-ink-3"><span>Sound</span><span className="text-[9px] opacity-70">{wave && wave !== "none" ? `${wave.onsets.length} hits` : ""}</span></div>
+        <WaveStrip wave={wave ?? null} len={len} t={t} seek={seek} />
         <div />
         <div ref={lane} className="relative h-5 cursor-pointer select-none" onPointerDown={(e) => seek(at(e.clientX))}>
           {ticks.map((s) => <span key={s} className="absolute top-0 -translate-x-1/2 font-mono text-[10px] text-ink-3" style={{ left: pct(s) }}>{duration(s)}</span>)}

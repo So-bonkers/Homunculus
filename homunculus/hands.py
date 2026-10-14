@@ -68,17 +68,18 @@ def info(run, clip):
     try: st = json.load(open(sp))
     except Exception: st = {"status": "idle", "error": None}
     if st.get("status") == "running" and time.time() - os.path.getmtime(sp) > 900: st = {"status": "failed", "error": "the bake stopped answering"}
-    return {"clip": clip, "poses": list(handpose.LIB), "tracks": saved["tracks"], "updated": saved.get("updated"), **st, "applied": bool(c.get("hands_glb"))}
+    return {"clip": clip, "poses": list(handpose.LIB), "tracks": saved["tracks"], "updated": saved.get("updated"), "meta": saved.get("meta"), **st, "applied": bool(c.get("hands_glb"))}
 
 
-def save(run, clip, tracks):
-    """Write the timeline and bake it into a copy of the clip in the background. Returns at once; poll info()."""
+def save(run, clip, tracks, meta=None, wait=False):
+    """Write the timeline and bake it into a copy of the clip in the background. Returns at once; poll info(). meta: a note stored with it (a draft says where it came from; the editor's own saves have none,
+    so the note goes away when a person saves). wait=True: return when the bake is done (scripts)."""
     clip = os.path.basename(clip); tracks = clean(tracks); tp, sp = _paths(run, clip)
     if _clip(run, clip) is None: raise ValueError("no such clip")
     os.makedirs(tp.parent, exist_ok=True)
-    json.dump({"tracks": tracks, "updated": time.time()}, open(tp, "w"), indent=1)
-    _status(sp, "running")
-    threading.Thread(target=_bake, args=(run, clip, tracks), daemon=True).start()
+    json.dump({"tracks": tracks, "updated": time.time(), **({"meta": meta} if meta else {})}, open(tp, "w"), indent=1)
+    _status(sp, "running"); th = threading.Thread(target=_bake, args=(run, clip, tracks), daemon=True); th.start()
+    if wait: th.join()
 
 
 def _status(sp, status, error=None):

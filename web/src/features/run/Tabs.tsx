@@ -97,7 +97,7 @@ function ClipPlayer({ clips, run }: { clips: Clip[]; run: string }) {
   if (c?.ref) return (        // a dance from a video: the video and the character play together
     <div className="grid gap-3 xl:grid-cols-[1fr_260px]">
       <SyncPlayer key={c.id} model={c.url} reference={c.ref} compare={c.compare} preview={c.video} fbx={c.fbx}>
-        {(p) => <HandTimeline run={run} clip={c.id} t={p.t} len={p.len} seek={p.seek} />}
+        {(p) => <HandTimeline run={run} clip={c.id} t={p.t} len={p.len} seek={p.seek} wave={p.wave} />}
       </SyncPlayer>
       {list}
     </div>
