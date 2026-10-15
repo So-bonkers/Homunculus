@@ -1,0 +1,1648 @@
+{
+ "version": 1,
+ "note": "A vocabulary of full-body dance moves, mostly breaking, with a few hip hop foundations, popping, locking and krump moves. check: sourced = the move is named with a description in a source; name_only = named in a source with no description (what it is must be looked up); knowledge = general knowledge. Descriptions are written in my own words after the sources. Seconds are typical lengths of a move where known.",
+ "categories": [
+  {
+   "key": "toprock",
+   "label": "Toprock",
+   "text": "Standing steps: the opening of a set, and the way back to it from other elements. Draws on popping, locking, tap, house."
+  },
+  {
+   "key": "go_down",
+   "label": "Go-downs (drops)",
+   "text": "The way from standing to the floor; ideally it flows out of the toprock."
+  },
+  {
+   "key": "footwork",
+   "label": "Footwork (downrock)",
+   "text": "Movement on the floor with the hands supporting the body as much as the feet."
+  },
+  {
+   "key": "freeze_ground",
+   "label": "Freezes: ground",
+   "text": "Held shapes with the body off the floor on the arms, landed on a strong sound; they often end a sequence."
+  },
+  {
+   "key": "freeze_air",
+   "label": "Freezes: air",
+   "text": "Held shapes with the body up in the air (handstand family and kicks)."
+  },
+  {
+   "key": "power",
+   "label": "Power moves",
+   "text": "Continuous rotation or flipping on the upper body (hands, elbows, head, back, shoulders), with the legs building the momentum."
+  },
+  {
+   "key": "float",
+   "label": "Floats",
+   "text": "Moves that hop or walk on the hands in a held balance."
+  },
+  {
+   "key": "spin",
+   "label": "Spins",
+   "text": "Rotation about the vertical axis on one point of contact (head, back, elbow, hand, knee)."
+  },
+  {
+   "key": "trick",
+   "label": "Tricks and others",
+   "text": "Acrobatic moves, connections and standard moves with an unusual twist."
+  },
+  {
+   "key": "foundation",
+   "label": "Standing hip hop foundations",
+   "text": "The bounce and rock under almost every standing hip hop move."
+  },
+  {
+   "key": "popping",
+   "label": "Popping and locking (body)",
+   "text": "Full-body moves of popping, waving, gliding and locking."
+  },
+  {
+   "key": "krump",
+   "label": "Krump (body)",
+   "text": "Full-body moves of krump."
+  }
+ ],
+ "flow": {
+  "typical_round": [
+   "toprock",
+   "go_down",
+   "footwork",
+   "power",
+   "freeze_ground"
+  ],
+  "note": "A set usually opens with toprock, drops to the floor with a go-down, then works footwork and power moves, and ends on a freeze that lands on a strong beat; freezes can be chained into stacks; in blow-up style power moves are chained fast and end in a freeze or a suicide (a move that looks like losing control). Toprock is also the way back to standing.",
+  "edges": [
+   {
+    "from": "toprock",
+    "to": [
+     "go_down",
+     "toprock"
+    ],
+    "note": "a go-down (drop) is the transition from toprock to the floor"
+   },
+   {
+    "from": "go_down",
+    "to": [
+     "footwork",
+     "freeze_ground",
+     "power"
+    ]
+   },
+   {
+    "from": "footwork",
+    "to": [
+     "footwork",
+     "power",
+     "freeze_ground",
+     "freeze_air",
+     "float",
+     "spin",
+     "trick",
+     "toprock"
+    ]
+   },
+   {
+    "from": "power",
+    "to": [
+     "freeze_ground",
+     "freeze_air",
+     "footwork",
+     "power",
+     "spin"
+    ]
+   },
+   {
+    "from": "float",
+    "to": [
+     "freeze_ground",
+     "footwork",
+     "spin"
+    ]
+   },
+   {
+    "from": "spin",
+    "to": [
+     "freeze_ground",
+     "footwork",
+     "power"
+    ]
+   },
+   {
+    "from": "freeze_ground",
+    "to": [
+     "footwork",
+     "power",
+     "toprock",
+     "freeze_ground"
+    ]
+   },
+   {
+    "from": "freeze_air",
+    "to": [
+     "footwork",
+     "toprock"
+    ]
+   },
+   {
+    "from": "trick",
+    "to": [
+     "footwork",
+     "freeze_ground",
+     "toprock"
+    ]
+   }
+  ],
+  "source": "Wikipedia: Breakdancing (the links between toprock, drops, footwork, power moves and freezes); the edges between the other categories are my reading and need checking"
+ },
+ "moves": [
+  {
+   "key": "indian_step",
+   "label": "Indian step",
+   "category": "toprock",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "A basic toprock step that travels with a crossing step and a hop, the arms swinging with it.",
+   "check": "knowledge",
+   "source": "Red Bull: the basic elements of breaking (named); the description is mine"
+  },
+  {
+   "key": "cross_step",
+   "label": "Cross step",
+   "category": "toprock",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "A toprock step in which one foot crosses over the other and back.",
+   "check": "knowledge",
+   "source": "Red Bull: the basic elements of breaking (named); the description is mine"
+  },
+  {
+   "key": "kick_step",
+   "label": "Kick step",
+   "category": "toprock",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "A toprock step that kicks one leg out in front on the beat and swaps legs.",
+   "check": "knowledge",
+   "source": "general knowledge"
+  },
+  {
+   "key": "side_rock",
+   "label": "Side rock",
+   "category": "toprock",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "Weight rocks from foot to foot with a small step to the side on each beat.",
+   "check": "knowledge",
+   "source": "general knowledge"
+  },
+  {
+   "key": "uprock",
+   "label": "Uprock (Brooklyn)",
+   "category": "toprock",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "The standing, face-to-face dance of Brooklyn: quick rhythmic steps and arm swings, often a battle in itself.",
+   "check": "knowledge",
+   "source": "Wikipedia: Breakdancing (uprock is named as a source of toprock); the description is mine"
+  },
+  {
+   "key": "knee_drop",
+   "label": "Knee drop",
+   "category": "go_down",
+   "orientation": "mixed",
+   "support": [
+    "feet",
+    "knee",
+    "hands"
+   ],
+   "motion": "transition",
+   "loops": false,
+   "text": "Sinking from standing to one or both knees, then on to the hands.",
+   "check": "knowledge",
+   "source": "Red Bull: the basic elements of breaking (named); the description is mine"
+  },
+  {
+   "key": "spin_down",
+   "label": "Spin down",
+   "category": "go_down",
+   "orientation": "mixed",
+   "support": [
+    "feet",
+    "hands"
+   ],
+   "motion": "transition",
+   "loops": false,
+   "text": "A turn that carries the dancer down to the floor.",
+   "check": "knowledge",
+   "source": "Red Bull: the basic elements of breaking (named); the description is mine"
+  },
+  {
+   "key": "hook_drop",
+   "label": "Hook drop",
+   "category": "go_down",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "transition",
+   "loops": false,
+   "text": "Named in the source; the source gives no description of how it is done.",
+   "check": "name_only",
+   "source": "Red Bull: the basic elements of breaking"
+  },
+  {
+   "key": "coin_drop",
+   "label": "Coin drop",
+   "category": "go_down",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "transition",
+   "loops": false,
+   "text": "Named in the source; the source gives no description of how it is done.",
+   "check": "name_only",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "drop_of_science",
+   "label": "Drop of science",
+   "category": "go_down",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "transition",
+   "loops": false,
+   "text": "Named in the source; the source gives no description of how it is done.",
+   "check": "name_only",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "sweep_drop",
+   "label": "Sweep drop",
+   "category": "go_down",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "transition",
+   "loops": false,
+   "text": "Named in the source; the source gives no description of how it is done.",
+   "check": "name_only",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "thread_drop",
+   "label": "Thread drop",
+   "category": "go_down",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "transition",
+   "loops": false,
+   "text": "Named in the source; the source gives no description of how it is done.",
+   "check": "name_only",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "back_drop",
+   "label": "Back drop",
+   "category": "go_down",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "transition",
+   "loops": false,
+   "text": "Named in the source; the source gives no description of how it is done.",
+   "check": "name_only",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "elbow_drop",
+   "label": "Elbow drop",
+   "category": "go_down",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "transition",
+   "loops": false,
+   "text": "Named in the source; the source gives no description of how it is done.",
+   "check": "name_only",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "acid_drop",
+   "label": "Acid drop",
+   "category": "go_down",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "transition",
+   "loops": false,
+   "text": "Named in the source; the source gives no description of how it is done.",
+   "check": "name_only",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "six_step",
+   "label": "Six-step",
+   "category": "footwork",
+   "orientation": "floor",
+   "support": [
+    "hands",
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "The foundational footwork: a six-count loop of the legs around the supporting hands, one hand or both on the floor.",
+   "check": "sourced",
+   "source": "Red Bull: the basic elements of breaking and Wikipedia: Breakdancing (the foundational footwork move); the detail is my reading"
+  },
+  {
+   "key": "three_step",
+   "label": "Three-step",
+   "category": "footwork",
+   "orientation": "floor",
+   "support": [
+    "hands",
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "A shorter variant of the six-step.",
+   "check": "sourced",
+   "source": "Wikipedia: Breakdancing (a variant of the 6-step)"
+  },
+  {
+   "key": "two_step",
+   "label": "Two-step",
+   "category": "footwork",
+   "orientation": "floor",
+   "support": [
+    "hands",
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "A footwork sequence.",
+   "check": "name_only",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "twelve_step",
+   "label": "Twelve-step",
+   "category": "footwork",
+   "orientation": "floor",
+   "support": [
+    "hands",
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "A footwork sequence.",
+   "check": "name_only",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "coffee_grinder",
+   "label": "Coffee grinder",
+   "category": "footwork",
+   "orientation": "floor",
+   "support": [
+    "hands",
+    "one foot"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "A straight leg sweeps in circles just above the floor while the hands hop around it.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror) (the list gives this description for 1-step, coffee grinder, helicopter and ball and chain)",
+   "aliases": [
+    "1-step",
+    "helicopter",
+    "ball and chain"
+   ]
+  },
+  {
+   "key": "switch",
+   "label": "Switch (pompo)",
+   "category": "footwork",
+   "orientation": "floor",
+   "support": [
+    "hands",
+    "seat"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "Seated floor sequence with alternating leg lifts and weight shifts.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)",
+   "aliases": [
+    "pompo"
+   ]
+  },
+  {
+   "key": "cc",
+   "label": "CC (crazy commando)",
+   "category": "footwork",
+   "orientation": "floor",
+   "support": [
+    "hands",
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "A footwork step named in the sources, without a description there.",
+   "check": "name_only",
+   "source": "Red Bull: the basic elements of breaking"
+  },
+  {
+   "key": "kickouts",
+   "label": "Kick-outs",
+   "category": "footwork",
+   "orientation": "floor",
+   "support": [
+    "hands",
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "Named in the source; the source gives no description of how it is done.",
+   "check": "name_only",
+   "source": "Red Bull: the basic elements of breaking"
+  },
+  {
+   "key": "shuffles",
+   "label": "Shuffles",
+   "category": "footwork",
+   "orientation": "floor",
+   "support": [
+    "hands",
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "Named in the source; the source gives no description of how it is done.",
+   "check": "name_only",
+   "source": "Red Bull: the basic elements of breaking"
+  },
+  {
+   "key": "airbaby",
+   "label": "Airbaby (underground)",
+   "category": "freeze_ground",
+   "orientation": "floor",
+   "support": [
+    "arms"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "A freeze with the knee resting on the matching elbow.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "airbaby_one_hand",
+   "label": "One-handed airbaby",
+   "category": "freeze_ground",
+   "orientation": "floor",
+   "support": [
+    "arms"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "The airbaby supported by one hand.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "airchair",
+   "label": "Airchair",
+   "category": "freeze_ground",
+   "orientation": "inverted",
+   "support": [
+    "arms"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "Balanced on a stabbed elbow with the legs in the air.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "baby_freeze",
+   "label": "Baby freeze",
+   "category": "freeze_ground",
+   "orientation": "floor",
+   "support": [
+    "arms"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "The elbow stabbed into the side, the legs brought round to the other arm.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror) (also named in Red Bull: the basic elements of breaking)"
+  },
+  {
+   "key": "chair_freeze",
+   "label": "Chair freeze",
+   "category": "freeze_ground",
+   "orientation": "floor",
+   "support": [
+    "arms"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "Balanced on an elbow and the head, the legs crossed.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror) (also named in Red Bull: the basic elements of breaking)"
+  },
+  {
+   "key": "handglide_freeze",
+   "label": "Handglide freeze",
+   "category": "freeze_ground",
+   "orientation": "inverted",
+   "support": [
+    "arms"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "Balanced on the stabbed arm, the free arm supporting.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "hong10_freeze",
+   "label": "Hong 10 freeze",
+   "category": "freeze_ground",
+   "orientation": "floor",
+   "support": [
+    "arms"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "The signature freeze of the dancer Hong 10.",
+   "check": "name_only",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "planche",
+   "label": "Planche",
+   "category": "freeze_ground",
+   "orientation": "floor",
+   "support": [
+    "arms"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "A gymnastics position: straight arms, the body horizontal off the floor.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "side_baby",
+   "label": "Side baby",
+   "category": "freeze_ground",
+   "orientation": "floor",
+   "support": [
+    "arms"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "A freeze named in the list, without a description there.",
+   "check": "name_only",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "elbow_freeze",
+   "label": "Elbow freeze",
+   "category": "freeze_ground",
+   "orientation": "floor",
+   "support": [
+    "arms"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "Held up on one arm and elbow.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror) (also named in Red Bull: the basic elements of breaking)"
+  },
+  {
+   "key": "g_kick",
+   "label": "G-kick",
+   "category": "freeze_air",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "The legs and an arm form a G shape.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "headstand",
+   "label": "Headstand",
+   "category": "freeze_air",
+   "orientation": "inverted",
+   "support": [
+    "head"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "Standing on the head, with or without a hand for support.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "hollowback",
+   "label": "Hollowback",
+   "category": "freeze_air",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "An arched back in a handstand.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "invert",
+   "label": "Invert",
+   "category": "freeze_air",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "The hollowback with the legs bent forward instead of back.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "k_kick",
+   "label": "K-kick",
+   "category": "freeze_air",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "The legs and an arm form a K shape.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "l_kick",
+   "label": "L-kick",
+   "category": "freeze_air",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "The legs form an L shape.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "nike",
+   "label": "Nike",
+   "category": "freeze_air",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "A kick that looks like the Nike sign.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "pike",
+   "label": "Pike",
+   "category": "freeze_air",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "Both legs in the air, the free hand holding the feet.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror) (the Pike is also named in Wikipedia: Breakdancing)"
+  },
+  {
+   "key": "v_kick",
+   "label": "V-kick (applejack)",
+   "category": "freeze_air",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "The legs in a V, from a squat falling back onto the hands.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "k_snap",
+   "label": "K-snap",
+   "category": "freeze_air",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "jump",
+   "loops": false,
+   "text": "A high jump and tuck, landing in a leapfrog stance and flipping up.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "flare",
+   "label": "Flare",
+   "category": "power",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "Legs swing in circles while the dancer balances on the hands; it comes from gymnastics (the Thomas flair).",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror) and Wikipedia: Breakdancing"
+  },
+  {
+   "key": "air_flare",
+   "label": "Air flare",
+   "category": "power",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "A variant of the flare in which the hands leave the floor between turns.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror) (a variant of the flare); the detail is my reading"
+  },
+  {
+   "key": "air_track",
+   "label": "Air track",
+   "category": "power",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "A variant of the air flare.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "king_flare",
+   "label": "King flares (hopping flares)",
+   "category": "power",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "A flare done hopping from hand to hand.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)",
+   "aliases": [
+    "hopping flares"
+   ]
+  },
+  {
+   "key": "virgin_flare",
+   "label": "Virgin flares",
+   "category": "power",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "A flare done with the legs closed.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "swipe",
+   "label": "Swipes",
+   "category": "power",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "The upper body twists in the air and the legs follow.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror) and Wikipedia: Breakdancing"
+  },
+  {
+   "key": "windmill",
+   "label": "Windmill",
+   "category": "power",
+   "orientation": "floor",
+   "support": [
+    "back",
+    "shoulders"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "Rotating on the upper body while the legs swing round.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror) and Wikipedia: Breakdancing",
+   "aliases": [
+    "mills"
+   ]
+  },
+  {
+   "key": "halo",
+   "label": "Halo (track)",
+   "category": "power",
+   "orientation": "inverted",
+   "support": [
+    "head",
+    "hands"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "A windmill variant balanced on the head.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)",
+   "aliases": [
+    "tracks"
+   ]
+  },
+  {
+   "key": "cricket",
+   "label": "Crickets",
+   "category": "float",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "Hops in circles in the handglide position.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "jackhammer",
+   "label": "Jackhammers",
+   "category": "float",
+   "orientation": "inverted",
+   "support": [
+    "one hand"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "Crickets on one hand.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "turtle",
+   "label": "Turtles",
+   "category": "float",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "Balanced on both hands, walking in circles.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "pumping_turtle",
+   "label": "Pumping turtle (darkhammers)",
+   "category": "float",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "A turtle that hops.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)",
+   "aliases": [
+    "darkhammers"
+   ]
+  },
+  {
+   "key": "ufo",
+   "label": "UFO (air turtle)",
+   "category": "float",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "A spinning float that is not stabbed against the body.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)",
+   "aliases": [
+    "air turtle"
+   ]
+  },
+  {
+   "key": "nineteen_ninety",
+   "label": "1990",
+   "category": "spin",
+   "orientation": "inverted",
+   "support": [
+    "one hand"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "A spinning one-handed handstand.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "two_thousand",
+   "label": "2000",
+   "category": "spin",
+   "orientation": "inverted",
+   "support": [
+    "hands"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "The 1990 with the spare hand on top of the supporting hand.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "elbow_spin",
+   "label": "Elbow spin",
+   "category": "spin",
+   "orientation": "floor",
+   "support": [
+    "elbow"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "A spin on the elbow.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "back_spin",
+   "label": "Back spin",
+   "category": "spin",
+   "orientation": "floor",
+   "support": [
+    "back"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "A spin on the back.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror) and Wikipedia: Breakdancing"
+  },
+  {
+   "key": "butt_spin",
+   "label": "Butt spin",
+   "category": "spin",
+   "orientation": "floor",
+   "support": [
+    "seat"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "A spin on the seat.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "handglide_spin",
+   "label": "Handglide (handspin)",
+   "category": "spin",
+   "orientation": "inverted",
+   "support": [
+    "hand"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "A spin from a one-handed float.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "headspin",
+   "label": "Headspin",
+   "category": "spin",
+   "orientation": "inverted",
+   "support": [
+    "head"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "A spin on the head.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror) and Wikipedia: Breakdancing"
+  },
+  {
+   "key": "drill",
+   "label": "Drills",
+   "category": "spin",
+   "orientation": "inverted",
+   "support": [
+    "head"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "A headspin variant.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "knee_spin",
+   "label": "Knee spin",
+   "category": "spin",
+   "orientation": "floor",
+   "support": [
+    "knee"
+   ],
+   "motion": "rotation",
+   "loops": true,
+   "text": "A spin on one or both knees.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "bronco",
+   "label": "Broncos",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "jump",
+   "loops": false,
+   "text": "Handstand kicks and arm pushes to gain air time.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "frog",
+   "label": "Frogs",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "jump",
+   "loops": false,
+   "text": "A bronco that lands in the turtle position and bounces back up.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "butterfly_kick",
+   "label": "Butterfly kick",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "jump",
+   "loops": false,
+   "text": "A wushu move that is sometimes used in breaking.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "worm",
+   "label": "The worm",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "steps",
+   "loops": false,
+   "text": "The body rippling along the ground.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)",
+   "aliases": [
+    "caterpillar"
+   ]
+  },
+  {
+   "key": "fly_and_roll",
+   "label": "Fly and roll",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "jump",
+   "loops": false,
+   "text": "A jump forward, a landing and a roll back to the feet.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "headglide",
+   "label": "Headglide (icey ice)",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "jump",
+   "loops": false,
+   "text": "The head slides round the supporting hand, like a compass.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)",
+   "aliases": [
+    "icey ice"
+   ]
+  },
+  {
+   "key": "headspring",
+   "label": "Headspring",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "jump",
+   "loops": false,
+   "text": "A kick up from kneeling to the head, then a kip up.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "insane_corkscrew",
+   "label": "Insane corkscrew",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "jump",
+   "loops": false,
+   "text": "A spin where the direction of rotation keeps changing.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "leghop",
+   "label": "Leghop",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "jump",
+   "loops": false,
+   "text": "A figure-four grip of leg and hand, then a jump through the loop.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "rocket",
+   "label": "Rocket",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "jump",
+   "loops": false,
+   "text": "A six-step into a helicopter, then a high jump with the leg swinging under.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "rolls",
+   "label": "Rolls",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "jump",
+   "loops": false,
+   "text": "From four points, a kick into a bent-leg handstand and a drop into a crab.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "skyscraper",
+   "label": "Skyscraper",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "jump",
+   "loops": false,
+   "text": "A handstand hand-walk that turns the body to face the other way.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "solar_eclipse",
+   "label": "Solar eclipse",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "jump",
+   "loops": false,
+   "text": "Balanced on one hand and bouncing in circles.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "threading",
+   "label": "Threading",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "jump",
+   "loops": false,
+   "text": "A leg threaded through the arms; it is similar to the leghop and often used in freezes.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "valdez",
+   "label": "Valdez",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "jump",
+   "loops": false,
+   "text": "From sitting, the arms swing behind and the dancer backflips.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "back_to_back",
+   "label": "Back to back",
+   "category": "trick",
+   "orientation": "mixed",
+   "support": [],
+   "motion": "jump",
+   "loops": false,
+   "text": "A two-person move: one dancer flips over the other's back and lands.",
+   "check": "sourced",
+   "source": "Wikipedia: List of breakdance moves (2007 mirror)"
+  },
+  {
+   "key": "bounce",
+   "label": "Bounce",
+   "category": "foundation",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "A rhythmic bend of the knees on every beat, the chest and head following: the pulse under hip hop.",
+   "check": "knowledge",
+   "source": "general knowledge"
+  },
+  {
+   "key": "rock",
+   "label": "Rock",
+   "category": "foundation",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "Weight shifting from foot to foot on the beat, with the bounce.",
+   "check": "knowledge",
+   "source": "general knowledge"
+  },
+  {
+   "key": "step_touch",
+   "label": "Step touch",
+   "category": "foundation",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "A step to the side and a touch of the other foot, in time.",
+   "check": "knowledge",
+   "source": "general knowledge"
+  },
+  {
+   "key": "groove",
+   "label": "Groove",
+   "category": "foundation",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "A loose, personal bounce with the shoulders and arms, the base of freestyle.",
+   "check": "knowledge",
+   "source": "general knowledge"
+  },
+  {
+   "key": "pop",
+   "label": "Pop (hit)",
+   "category": "popping",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "static",
+   "loops": true,
+   "text": "A quick contraction and release of the muscles that jerks the body.",
+   "check": "sourced",
+   "source": "Wikipedia: Popping (dance)"
+  },
+  {
+   "key": "tut",
+   "label": "Tutting",
+   "category": "popping",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "Geometric positions of the arms, hands and wrists, mostly right angles.",
+   "check": "sourced",
+   "source": "Wikipedia: Popping (dance) / Tutting"
+  },
+  {
+   "key": "wave",
+   "label": "Wave",
+   "category": "popping",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "A wave that travels through the body, arms or hands.",
+   "check": "knowledge",
+   "source": "Wikipedia: Popping (dance) (waving is named); the description is mine"
+  },
+  {
+   "key": "strobe",
+   "label": "Strobing",
+   "category": "popping",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "Stop-motion stutter of the movement, as under a strobe light.",
+   "check": "knowledge",
+   "source": "Wikipedia: Popping (dance) (named); the description is mine"
+  },
+  {
+   "key": "robot",
+   "label": "Robot",
+   "category": "popping",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "Stiff, mechanical movement in angles and holds.",
+   "check": "knowledge",
+   "source": "Wikipedia: Hip-hop dance (named); the description is mine"
+  },
+  {
+   "key": "glide",
+   "label": "Glide (backslide, moonwalk)",
+   "category": "popping",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "A slide across the floor that looks like walking the other way.",
+   "check": "sourced",
+   "source": "Wikipedia: Popping (dance) (the backslide, often called the moonwalk)",
+   "aliases": [
+    "moonwalk",
+    "backslide"
+   ]
+  },
+  {
+   "key": "boogaloo",
+   "label": "Boogaloo",
+   "category": "popping",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "Circular, rolling movement of the hips, chest, shoulders, knees and head.",
+   "check": "sourced",
+   "source": "Wikipedia: Popping (dance)"
+  },
+  {
+   "key": "animation",
+   "label": "Animation",
+   "category": "popping",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "Rigid, jerky movement like a stop-motion character.",
+   "check": "sourced",
+   "source": "Wikipedia: Popping (dance)"
+  },
+  {
+   "key": "lock",
+   "label": "Lock",
+   "category": "popping",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "A sudden pause, like a freeze, in the middle of a fast move.",
+   "check": "sourced",
+   "source": "Wikipedia: Locking (dance) / Hip-hop dance"
+  },
+  {
+   "key": "lock_point",
+   "label": "Point (locking)",
+   "category": "popping",
+   "orientation": "standing",
+   "support": [
+    "feet",
+    "arm"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "One arm extends quickly from the opposite shoulder and is held briefly.",
+   "check": "sourced",
+   "source": "Wikipedia: Locking (dance)"
+  },
+  {
+   "key": "stop_and_go",
+   "label": "Stop and go",
+   "category": "popping",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": false,
+   "text": "A locking move of freezes and fast bursts, with a punch.",
+   "check": "sourced",
+   "source": "Wikipedia: Locking (dance)"
+  },
+  {
+   "key": "knee_drop_lock",
+   "label": "Knee drop (locking)",
+   "category": "popping",
+   "orientation": "mixed",
+   "support": [
+    "knee"
+   ],
+   "motion": "transition",
+   "loops": false,
+   "text": "A drop to the knee in locking.",
+   "check": "name_only",
+   "source": "Wikipedia: Locking (dance)"
+  },
+  {
+   "key": "leo_walk",
+   "label": "Leo walk",
+   "category": "popping",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": true,
+   "text": "A locking walk; the source gives no description of it.",
+   "check": "name_only",
+   "source": "Wikipedia: Locking (dance)"
+  },
+  {
+   "key": "scoobot",
+   "label": "Scoobot",
+   "category": "popping",
+   "orientation": "standing",
+   "support": [
+    "feet",
+    "arms"
+   ],
+   "motion": "steps",
+   "loops": false,
+   "text": "Arms crossed, then the wrists twirl and the hands clap behind the back.",
+   "check": "sourced",
+   "source": "Wikipedia: Locking (dance)"
+  },
+  {
+   "key": "stomp",
+   "label": "Stomp",
+   "category": "krump",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "The foot driven into the ground and back up, as if the energy comes from the floor.",
+   "check": "sourced",
+   "source": "Wikipedia: Krumping"
+  },
+  {
+   "key": "jab",
+   "label": "Jab",
+   "category": "krump",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "A short, sharp push of the arm out from the chest, and back with the same energy.",
+   "check": "sourced",
+   "source": "Wikipedia: Krumping"
+  },
+  {
+   "key": "chest_pop",
+   "label": "Chest pop",
+   "category": "krump",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "static",
+   "loops": false,
+   "text": "An upward chest motion like breathing in.",
+   "check": "sourced",
+   "source": "Wikipedia: Krumping"
+  },
+  {
+   "key": "arm_swing",
+   "label": "Arm swing",
+   "category": "krump",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "steps",
+   "loops": false,
+   "text": "A sweeping arm movement that uses gravity, small like a pitch or big like a bat.",
+   "check": "sourced",
+   "source": "Wikipedia: Krumping"
+  },
+  {
+   "key": "buck_hop",
+   "label": "Buck hop",
+   "category": "krump",
+   "orientation": "standing",
+   "support": [
+    "feet"
+   ],
+   "motion": "jump",
+   "loops": false,
+   "text": "A krump move named in the article, without a description there.",
+   "check": "name_only",
+   "source": "Wikipedia: Krumping"
+  }
+ ],
+ "durations": {
+  "note": "Typical lengths of a segment in the BRACE dataset (Red Bull BC One), from a third-party paper (arXiv 2510.20287), to be checked against BRACE itself",
+  "seconds_mean_sd": {
+   "toprock": [
+    7.01,
+    4.01
+   ],
+   "footwork": [
+    11.5,
+    6.95
+   ],
+   "power": [
+    9.85,
+    5.9
+   ]
+  }
+ }
+}

@@ -18,7 +18,14 @@ No open source lists hip hop hand moves with joint detail; the descriptions of f
 
 ## What was built
 
-`homunculus/static/hands/moves.json`: 29 moves (the editor's 11 gestures plus 18 hip hop moves: 7 locking, 6 popping and tutting, 2 krump, 3 party dances), each a short run of poses, wrist positions and palm directions with times and curves, dropped at the playhead of the hand editor on every lane it has. Each move has `check`: **sourced** (the move and its hand action are named in a source), **knowledge** (general knowledge, no source describes it) or **estimate**. All timings are animation estimates. The editor reads the file; it replaces the hard-coded list in the web code.
+`homunculus/static/hands/moves.json`: 83 moves in seven groups (basics 26, locking 11, popping and tutting 14, krump 6, breaking 3, party dances 9, gestures 14), each a short run of poses, wrist positions and palm directions with times and curves, dropped at the playhead of the hand editor on every lane it has. It began as 29 (the editor's 11 gestures and 18 hip hop moves) and was widened to 83 after a first review. Each move has `check`: **sourced** (the move and its hand action are named in a source), **knowledge** (general knowledge, no source describes it) or **estimate**. All timings are animation estimates. The editor reads the file; it replaces the hard-coded list in the web code.
+
+## How the moves were tested
+
+- Every pose, wrist and palm name in every move exists in the library (checked on each change).
+- `python -m homunculus.move_pictures` draws every move on the dancer's rig (`blender_movesheet.py`): eight moments from just before the first key to just after the last, each from the side and from above, evaluated with the same curve code that bakes a timeline into a clip; the pictures are `static/hands/moves/<key>.jpg` and the editor shows them next to each move. All 83 were looked at. One was too weak to see (the strobe alternated `open` and `soft`) and was changed to `open` and `claw`.
+- A throwaway clip with all of the first 29 moves in one timeline, both hands, palm lanes included, was baked by the normal path without error.
+- Not tested: the moves on a full dance clip in motion, the timings against real footage, and any use of the moves by the LLM annotation (not built).
 
 ## Originality (US sources, not legal advice)
 
