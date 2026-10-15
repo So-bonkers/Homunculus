@@ -1,6 +1,6 @@
 import * as React from "react";
 import { toast } from "sonner";
-import { Check, Hand, Loader2, RotateCcw, Search, Sparkles, Star, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowLeftRight, Check, Hand, Loader2, RotateCcw, Search, Sparkles, Star, Trash2, TriangleAlert } from "lucide-react";
 import { api, useHandPoses, useHands, useInvalidate } from "@/lib/api";
 import type { HandCurve, HandKey, HandKeyOpts, HandLane, HandPose, HandTracks } from "@/lib/types";
 import { Badge, Button, Popover, PopoverContent, PopoverTrigger, Tip } from "@/components/ui";
@@ -150,6 +150,9 @@ export function HandTimeline({ run, clip, t, len, seek, wave }: { run: string; c
   const apply = async () => {
     try { await api.hands(run, clip, tracks); setSaved(JSON.stringify(tracks)); inv(["hands", run, clip]); } catch (e: any) { toast.error(e.message); }
   };
+  const swap = () => {      // the left and right hands were labelled the wrong way round: exchange the two lanes of what is shown (fingers, wrist or palm); Apply keeps it
+    const a = laneOf("left", mode), b = laneOf("right", mode); setTracks((T) => ({ ...T, [a]: T[b], [b]: T[a] })); setSel(null); toast.message(`${MODES.find((m) => m.key === mode)!.label}: left and right swapped. Apply to keep it.`);
+  };
   const reset = () => { if (q.data) { setTracks({ ...EMPTY, ...q.data.tracks }); setSel(null); } };
 
   const lane = React.useRef<HTMLDivElement>(null); const drag = React.useRef<{ lane: HandLane; i: number } | null>(null);
@@ -187,6 +190,7 @@ export function HandTimeline({ run, clip, t, len, seek, wave }: { run: string; c
               <button key={a} onClick={() => setActive(a)} className={cn("rounded-md px-2.5 py-1 capitalize transition", active === a ? "bg-accent/25 text-ink" : "text-ink-3 hover:text-ink")}>{a === "both" ? "Both (B)" : a === "left" ? "Left (L)" : "Right (R)"}</button>
             ))}
           </div>
+          <Tip content={`Swap the left and right hand lanes (${MODES.find((m) => m.key === mode)!.label.toLowerCase()}), if they were labelled the wrong way round`}><Button size="icon" variant="ghost" onClick={swap} disabled={!tracks[laneOf("left", mode)].length && !tracks[laneOf("right", mode)].length} aria-label="Swap left and right"><ArrowLeftRight /></Button></Tip>
           <Tip content="Back to what is saved"><Button size="icon" variant="ghost" onClick={reset} disabled={!dirty}><RotateCcw /></Button></Tip>
           <Button variant="primary" size="sm" onClick={apply} disabled={!dirty || baking || len <= 0}>{baking ? <Loader2 className="animate-spin" /> : <Check />} Apply to the model</Button>
         </div>
