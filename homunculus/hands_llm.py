@@ -61,7 +61,7 @@ def stop(run, clip):
     _stop[(run, os.path.basename(clip))] = True
 
 
-def start(run, clip, fps=FPS, thinking=True, model="qwen38", temperature=TEMPERATURE, chunking="seconds", expect=None, bpm=None, vocab="full"):
+def start(run, clip, fps=FPS, thinking=True, model="qwen38", temperature=TEMPERATURE, chunking="seconds", expect=None, bpm=None, vocab="full", chunk_seconds=None, size=None):
     """Start the annotation in the background. Raises ValueError when it cannot (no such clip, no video, another annotation running)."""
     clip = os.path.basename(clip); c = hands._clip(run, clip)
     if c is None: raise ValueError("no such clip")
@@ -74,9 +74,11 @@ def start(run, clip, fps=FPS, thinking=True, model="qwen38", temperature=TEMPERA
     if not (0 <= temperature <= 1.5): _lock.release(); raise ValueError("temperature must be between 0 and 1.5")
     if chunking not in ("seconds", "bar"): _lock.release(); raise ValueError("chunking is seconds or bar")
     if vocab not in ("full", "core"): _lock.release(); raise ValueError("vocab is full or core")
+    chunk_seconds = None if chunk_seconds in (None, "", 0) else float(chunk_seconds); size = None if size in (None, "", 0) else int(size)
+    if (chunk_seconds is not None and not (0.5 <= chunk_seconds <= 30)) or (size is not None and not (224 <= size <= 1024)): _lock.release(); raise ValueError("chunk_seconds is 0.5-30, size 224-1024")
     expect = None if expect in (None, "", False, 0) else float(expect); bpm = None if bpm in (None, "", 0) else float(bpm)
-    _stop.pop((run, clip), None); _set(run, clip, "running", chunk=0, chunks=0, started=time.time(), fps=fps, thinking=bool(thinking), model=model, temperature=temperature, chunking=chunking, expect=expect, vocab=vocab)
-    threading.Thread(target=_job, args=(run, clip, C.RUNS / run / c["ref"], fps, bool(thinking), model, temperature, chunking, expect, bpm, vocab), daemon=True).start()
+    _stop.pop((run, clip), None); _set(run, clip, "running", chunk=0, chunks=0, started=time.time(), fps=fps, thinking=bool(thinking), model=model, temperature=temperature, chunking=chunking, expect=expect, vocab=vocab, chunk_seconds=chunk_seconds, size=size)
+    threading.Thread(target=_job, args=(run, clip, C.RUNS / run / c["ref"], fps, bool(thinking), model, temperature, chunking, expect, bpm, vocab, chunk_seconds, size, c.get("valid_ranges"), (v or {}).get("fps")), daemon=True).start()
 
 
 def _dump(path, obj, **kw):
@@ -114,8 +116,10 @@ PALM (which way the palm faces, relative to the dancer's own body; the forearm's
 {{"rows":[[0,"open","neutral","palm_in","relaxed","neutral","palm_down"], ... ]}}"""
 
 
-def _frames(video, out, fps):
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-vf", f"fps={fps:g},scale={SIZE}:{SIZE}:force_original_aspect_ratio=decrease,pad={SIZE}:{SIZE}:(ow-iw)/2:(oh-ih)/2", "-q:v", "3", os.path.join(out, "f%05d.jpg")], check=True)
+def _frames(video, out, fps, size=SIZE, native=None):
+    """Every frame of the video at `fps` (all of them, untouched, when fps is the video's own rate), as pictures of size x size."""
+    rate = "" if native and abs(fps - native) < 0.01 else f"fps={fps:g},"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-vf", f"{rate}scale={size}:{size}:force_original_aspect_ratio=decrease,pad={size}:{size}:(ow-iw)/2:(oh-ih)/2", "-q:v", "3", os.path.join(out, "f%05d.jpg")], check=True)
     return sorted(f for f in os.listdir(out) if f.endswith(".jpg"))
 
 
@@ -166,9 +170,18 @@ def _meta(dur, bad, fps, thinking, model, temperature=TEMPERATURE, chunking="sec
     return {"source": "draft", "model": model_name(fps, thinking, model, temperature), "duration": dur, "how": f"{MODELS[model]['label']} watched every frame of the clip at {fps:g} fps (thinking {'on' if thinking else 'off'}, {"one bar of the music" if chunking == "bar" else str(CHUNK_SECONDS) + " s of video"} per request{f", told to expect about {expect:g} changes per lane per second" if expect else ""}{", small vocabulary (9 finger poses, 5 wrist positions)" if vocab == "core" else ""}) and named a pose, wrist position and palm direction for each hand in each frame. {bad} answers were not in the library and were replaced by the previous label."}
 
 
-def _ranges(video, N, fps, chunking, bpm=None):
+def _ranges(video, N, fps, chunking, bpm=None, chunk_seconds=None, valid=None):
     """[(first frame, end frame), ...]: what each request is shown. "seconds": CHUNK_SECONDS of video each; "bar": one bar of the music each (the sound of the video gives the beat grid; the stretch before the first bar and the one after the last are requests of their own)."""
-    per = max(8, round(CHUNK_SECONDS * fps))
+    per = max(8, round((chunk_seconds or CHUNK_SECONDS) * fps))
+    if valid:                                       # only the stretches (seconds) where the person is really in the picture: chunks inside each, none across a gap
+        out = []
+        for t0, t1 in valid:
+            a, b = int(round(t0 * fps)), min(N, int(round(t1 * fps)))
+            for x in range(a, b, per):
+                y = min(b, x + per)
+                if y - x < 12 and out and out[-1][1] == x: out[-1] = (out[-1][0], y)        # a short rest joins the chunk before it
+                elif y - x >= 6: out.append((x, y))
+        return out
     if chunking == "bar":
         from . import beats
         g = beats.grid(video, bpm=bpm)
@@ -182,15 +195,15 @@ def _ranges(video, N, fps, chunking, bpm=None):
     return [(a, min(N, a + per)) for a in range(0, N, per)]
 
 
-def _job(run, clip, video, fps, thinking, model="qwen38", temperature=TEMPERATURE, chunking="seconds", expect=None, bpm=None, vocab="full"):
+def _job(run, clip, video, fps, thinking, model="qwen38", temperature=TEMPERATURE, chunking="seconds", expect=None, bpm=None, vocab="full", chunk_seconds=None, size=None, valid=None, native=None):
     global lane_names
     lane_names = {"fing": set(CORE["fing"] if vocab == "core" else handpose.LIB), "wrist": set(CORE["wrist"] if vocab == "core" else handshapes.WRISTS), "palm": set(handshapes.PALMS) - {"as_clip"}}
     cols = ("fing", "wrist", "palm", "fing", "wrist", "palm"); lanes = ("left", "left_wrist", "left_palm", "right", "right_wrist", "right_palm")
     tmp = tempfile.mkdtemp(prefix="hands_llm_"); t0 = time.time(); loaded = False; old_ctx = C.VLM_CTX
     try:
-        frames = _frames(video, tmp, fps); N = len(frames)
+        frames = _frames(video, tmp, fps, size or SIZE, native); N = len(frames)
         if not N: raise RuntimeError("no frames in the reference video")
-        ranges = _ranges(video, N, fps, chunking, bpm); chunks = len(ranges); at = {}; bad = 0; log = lambda s: None
+        ranges = _ranges(video, N, fps, chunking, bpm, chunk_seconds, valid); chunks = len(ranges); at = {}; bad = 0; log = lambda s: None
         _set(run, clip, "running", chunk=0, chunks=chunks, started=t0, frames=N, fps=fps, thinking=thinking, model=model)
         C.VLM_CTX = CTX; vlm.load(log, MODELS[model]["model"], MODELS[model]["variant"]); loaded = True
         for ci in range(chunks):
