@@ -1,6 +1,6 @@
 import * as React from "react";
 import { toast } from "sonner";
-import { ArrowLeftRight, Bot, Check, Hand, Loader2, RotateCcw, Search, Sparkles, Square, Star, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowLeftRight, Bot, Check, Hand, Image as ImageIcon, Loader2, RotateCcw, Search, Sparkles, Square, Star, Trash2, TriangleAlert } from "lucide-react";
 import { api, useHandMoves, useHandPoses, useHands, useInvalidate } from "@/lib/api";
 import type { HandCurve, HandKey, HandKeyOpts, HandLane, HandMove, HandPose, HandTracks } from "@/lib/types";
 import { Badge, Button, Popover, PopoverContent, PopoverTrigger, Segmented, Tip } from "@/components/ui";
@@ -171,7 +171,8 @@ export function HandTimeline({ run, clip, name, t, len, seek, wave }: { run: str
   const dirty = JSON.stringify(tracks) !== saved; const baking = q.data?.status === "running";
   const sides = (a: Active): Side[] => (a === "both" ? ["left", "right"] : [a]);
   const put = React.useCallback((pose: string) => setTracks((T) => { const n = { ...T }; for (const s of sides(active)) { const l = laneOf(s, mode); n[l] = setAt(T[l], tRef.current, pose, undefined, START[mode]); } return n; }), [active, mode]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const moves = useHandMoves().data;
+  const moves = useHandMoves().data; const [moveFind, setMoveFind] = React.useState(""); const [moveShow, setMoveShow] = React.useState<string | null>(null);
+  const moveHit = (m: HandMove) => { const q = moveFind.trim().toLowerCase(); return !q || `${m.label} ${m.key} ${m.style} ${m.text}`.toLowerCase().includes(q); };
   const drop = (m: HandMove) => setTracks((T) => {          // a move sets every lane it has (fingers, wrist, palm) on the chosen hand(s), over its own span
     const n = { ...T }; const t0 = tRef.current;
     for (const gm of ["fingers", "wrist", "palm"] as Mode[]) {
@@ -298,17 +299,24 @@ export function HandTimeline({ run, clip, name, t, len, seek, wave }: { run: str
           <PopoverTrigger asChild><button className="flex w-[88px] flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-line-strong text-[11.5px] text-ink-2 transition hover:border-accent/50 hover:text-ink"><Sparkles className="size-4" />Gestures</button></PopoverTrigger>
           <PopoverContent className="max-h-[70vh] w-[min(460px,92vw)] overflow-y-auto p-2" align="start">
             <div className="mb-1 px-1 text-[11px] text-ink-3">Hand moves: short runs of poses. Dropped at the playhead for {active === "both" ? "both hands" : active}, on every lane the move has (fingers, wrist, palm); the playhead is the moment of the hit. The timings are estimates: edit the blocks after.</div>
-            {(moves?.styles ?? []).map((st) => (
+            <div className="relative mb-1"><Search className="pointer-events-none absolute top-2 left-2.5 size-3.5 text-ink-3" /><input value={moveFind} onChange={(e) => setMoveFind(e.target.value)} placeholder={`Find a move (${moves?.moves.length ?? 0})`} className="h-8 w-full rounded-lg border border-line-strong bg-transparent pr-2 pl-8 text-[12.5px] outline-none placeholder:text-ink-3 focus:border-accent/50" /></div>
+            {(moves?.styles ?? []).map((st) => { const rows = (moves?.moves ?? []).filter((m) => m.style === st && moveHit(m)); if (!rows.length) return null; return (
               <div key={st} className="mb-1">
-                <div className="px-2 pt-2 pb-1 text-[10.5px] font-medium tracking-wide text-ink-3 uppercase">{st}</div>
-                {moves!.moves.filter((m) => m.style === st).map((m) => (
-                  <Tip key={m.key} content={`${m.source} · ${m.check === "sourced" ? "named in a source" : m.check === "knowledge" ? "from general knowledge: check it" : "timing is an estimate"}`}>
-                    <button onClick={() => drop(m)} className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-white/6"><Sparkles className="mt-0.5 size-3.5 shrink-0 text-accent" />
-                      <span className="min-w-0"><b className="text-[13px] font-medium">{m.label}</b><span className="ml-2 text-[10.5px] text-ink-3">{Object.keys(m.lanes).join(" + ")}{m.check === "knowledge" ? " · from knowledge" : ""}</span><span className="block text-[11.5px] text-ink-3">{m.text}</span></span></button>
-                  </Tip>
+                <div className="px-2 pt-2 pb-1 text-[10.5px] font-medium tracking-wide text-ink-3 uppercase">{st} · {rows.length}</div>
+                {rows.map((m) => (
+                  <div key={m.key}>
+                    <div className="flex items-start gap-1 rounded-lg transition hover:bg-white/6">
+                      <Tip content={`${m.source} · ${m.check === "sourced" ? "named in a source" : m.check === "knowledge" ? "from general knowledge: check it" : "timing is an estimate"}`}>
+                        <button onClick={() => drop(m)} className="flex min-w-0 flex-1 items-start gap-2 px-2 py-1.5 text-left"><Sparkles className="mt-0.5 size-3.5 shrink-0 text-accent" />
+                          <span className="min-w-0"><b className="text-[13px] font-medium">{m.label}</b><span className="ml-2 text-[10.5px] text-ink-3">{Object.keys(m.lanes).join(" + ")}{m.check === "knowledge" ? " · from knowledge" : ""}</span><span className="block text-[11.5px] text-ink-3">{m.text}</span></span></button>
+                      </Tip>
+                      <Tip content="Show the move drawn on the hand (eight moments, side and top)"><button onClick={() => setMoveShow(moveShow === m.key ? null : m.key)} className={cn("mt-1.5 mr-1 grid size-7 shrink-0 place-items-center rounded-md text-ink-3 hover:text-ink", moveShow === m.key && "bg-white/10 text-accent")} aria-label="Preview"><ImageIcon className="size-3.5" /></button></Tip>
+                    </div>
+                    {moveShow === m.key && <img src={`/static/hands/moves/${m.key}.jpg`} alt={m.label} className="mx-2 mb-2 w-[calc(100%-1rem)] rounded-md" loading="lazy" />}
+                  </div>
                 ))}
               </div>
-            ))}
+            ); })}
             {!moves && <div className="px-2 py-3 text-[12px] text-ink-3">Loading the moves…</div>}
           </PopoverContent>
         </Popover>
