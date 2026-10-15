@@ -19,6 +19,7 @@ def opt(flag, default=None, cast=str):
     if flag in argv: i = argv.index(flag); v = argv[i + 1]; del argv[i:i + 2]; return cast(v)
     return default
 OUT_FPS = opt("--fps", 60, int); MAP_NAME = opt("--map", "cmu"); F_START = opt("--start", None, int); SRC_FPS_OPT = opt("--src-fps", None, int); SRC_UNIT = opt("--src-scale", None, float); F_END = opt("--end", None, int); REPORT_ONLY_FLOOR = "--floor-lock" in argv
+TEXTURE = opt("--texture", None)             # a picture to use as the character's base-colour texture instead of the one it came with (same size and layout: a recoloured copy of it)
 if "--floor-lock" in argv: argv.remove("--floor-lock")
 target_path, bvh_path, out_dir, name = argv[:4]; os.makedirs(out_dir, exist_ok=True)
 
@@ -43,6 +44,13 @@ MAP = MAPS[MAP_NAME]
 bpy.ops.wm.read_factory_settings(use_empty=True)
 (bpy.ops.import_scene.gltf if target_path.lower().endswith((".glb", ".gltf")) else bpy.ops.import_scene.fbx)(filepath=target_path)
 T = next(o for o in bpy.data.objects if o.type == "ARMATURE")
+if TEXTURE:
+    nodes = [n for m in bpy.data.materials if m.node_tree for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and n.image]
+    if not nodes: sys.exit("--texture: the character has no texture to replace")
+    big = max((n.image for n in nodes), key=lambda i: i.size[0] * i.size[1]); new = bpy.data.images.load(TEXTURE, check_existing=False); new.colorspace_settings.name = big.colorspace_settings.name; new.alpha_mode = big.alpha_mode
+    for n in nodes:
+        if n.image == big: n.image = new                       # (the old picture is packed in the file: reloading it would only read the packed copy, so the material points at a new image instead)
+    new.pack(); print(f"[retarget] texture {big.name} replaced by {os.path.basename(TEXTURE)} ({tuple(new.size)})", flush=True)
 for o in [o for o in bpy.data.objects if o.type == "MESH" and o.name == "Icosphere"]: bpy.data.objects.remove(o, do_unlink=True)        # the glTF importer's bone-shape helper
 if T.animation_data: T.animation_data.action = None
 for a in list(bpy.data.actions): bpy.data.actions.remove(a)

@@ -230,8 +230,10 @@ def main():
         Log.info(f"[HMR4D] Elapsed: {Log.sync_time() - tic:.2f}s for data-length={data['length'] / 30:.1f}s")
         torch.save(pred, paths.hmr4d_results)
     import numpy as np
-    g = torch.load(paths.hmr4d_results, map_location="cpu")["smpl_params_global"]
+    res = torch.load(paths.hmr4d_results, map_location="cpu"); g = res["smpl_params_global"]
     npz = str(Path(paths.hmr4d_results).with_name("smpl_global.npz")); np.savez(npz, **{k: v.numpy() for k, v in g.items()})        # plain numpy for tools/smpl_to_bvh.py
+    if "smpl_params_incam" in res:      # the same body in the camera's own frame (x right, y down, z forward, metres): with a fixed camera, several dancers of one shot share it
+        np.savez(str(Path(paths.hmr4d_results).with_name("smpl_incam.npz")), **{k: v.numpy() for k, v in res["smpl_params_incam"].items()})
     print(f"[video_to_smpl] results: {paths.hmr4d_results} and {npz}: " + ", ".join(f"{k} {tuple(v.shape)}" for k, v in g.items()))
 
 
