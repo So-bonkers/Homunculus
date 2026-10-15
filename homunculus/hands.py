@@ -58,6 +58,22 @@ def clean(tracks):
     return out
 
 
+_video = {}
+
+
+def video_info(run, clip):
+    """{"fps", "duration"} of the clip's reference video (the one the model is shown), from ffprobe; None if there is none."""
+    c = _clip(run, clip); p = C.RUNS / run / c["ref"] if c and c.get("ref") else None
+    if not p or not p.exists(): return None
+    key = (str(p), p.stat().st_mtime)
+    if key not in _video:
+        try:
+            o = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate:format=duration", "-of", "json", str(p)], capture_output=True, text=True, timeout=20).stdout; j = json.loads(o)
+            a, b = (j["streams"][0]["avg_frame_rate"] + "/1").split("/")[:2]; _video[key] = {"fps": round(float(a) / float(b or 1), 3), "duration": round(float(j["format"]["duration"]), 2)}
+        except Exception: _video[key] = None
+    return _video[key]
+
+
 def info(run, clip):
     """What the editor needs: the poses, the saved tracks and the state of the last bake."""
     clip = os.path.basename(clip); tp, sp = _paths(run, clip); c = _clip(run, clip)
@@ -68,7 +84,8 @@ def info(run, clip):
     try: st = json.load(open(sp))
     except Exception: st = {"status": "idle", "error": None}
     if st.get("status") == "running" and time.time() - os.path.getmtime(sp) > 900: st = {"status": "failed", "error": "the bake stopped answering"}
-    return {"clip": clip, "poses": list(handpose.LIB), "tracks": saved["tracks"], "updated": saved.get("updated"), "meta": saved.get("meta"), "agreement": agreement(run, clip, saved["tracks"]), **st, "applied": bool(c.get("hands_glb"))}
+    from . import hands_llm
+    return {"clip": clip, "llm": hands_llm.status(run, clip), "video": video_info(run, clip), "llm_timing": hands_llm.timing(), "llm_models": [{"key": k, "label": v["label"]} for k, v in hands_llm.MODELS.items()], "chunk_frames": hands_llm.CHUNK, "poses": list(handpose.LIB), "tracks": saved["tracks"], "updated": saved.get("updated"), "meta": saved.get("meta"), "agreement": agreement(run, clip, saved["tracks"]), **st, "applied": bool(c.get("hands_glb"))}
 
 
 def agreement(run, clip, current):

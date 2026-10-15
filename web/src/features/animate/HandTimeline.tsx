@@ -1,9 +1,9 @@
 import * as React from "react";
 import { toast } from "sonner";
-import { ArrowLeftRight, Check, Hand, Loader2, RotateCcw, Search, Sparkles, Star, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowLeftRight, Bot, Check, Hand, Loader2, RotateCcw, Search, Sparkles, Square, Star, Trash2, TriangleAlert } from "lucide-react";
 import { api, useHandPoses, useHands, useInvalidate } from "@/lib/api";
 import type { HandCurve, HandKey, HandKeyOpts, HandLane, HandPose, HandTracks } from "@/lib/types";
-import { Badge, Button, Popover, PopoverContent, PopoverTrigger, Tip } from "@/components/ui";
+import { Badge, Button, Popover, PopoverContent, PopoverTrigger, Segmented, Tip } from "@/components/ui";
 import { cn, duration } from "@/lib/utils";
 import { GESTURES, WRIST_GESTURES, type Gesture } from "./handGestures";
 import type { Wave } from "./SyncPlayer";
@@ -45,6 +45,15 @@ function dedupe(ks: HandKey[]): HandKey[] { return ks.filter((k, i) => i === 0 |
 const sorted = (keys: HandKey[]) => keys.map((k) => [...k] as HandKey).sort((a, b) => a[0] - b[0]);
 
 /** The timeline with `pose` from time t on: a key within 60 ms is changed, an empty lane gets a relaxed start first, and a key that repeats the pose before it is not added. */
+/** The model's labels for the stretch [t0, t1) of one lane put into the lane: your keys before t0 stay, the model's keys inside the stretch come in (starting with its pose at t0), and what was after t1 stays (with the pose the lane had at t1). */
+function splice(mine: HandKey[], llm: HandKey[], t0: number, t1: number): HandKey[] {
+  const at = (ks: HandKey[], t: number) => { let p: HandKey | null = null; for (const k of ks) if (k[0] <= t + 1e-6) p = k; return p; };
+  const head = mine.filter((k) => k[0] < t0 - 1e-6); const mid: HandKey[] = []; const p0 = at(llm, t0); if (p0) mid.push([r3(t0), p0[1]] as HandKey);
+  for (const k of llm) if (k[0] > t0 + 1e-6 && k[0] < t1 - 1e-6) mid.push(k);
+  let tail = Number.isFinite(t1) ? mine.filter((k) => k[0] >= t1 - 1e-6) : [];
+  if (tail.length && tail[0][0] > t1 + 1e-6) { const s = at(mine, t1); if (s) tail = [[r3(t1), s[1]] as HandKey, ...tail]; }
+  return dedupe([...head, ...mid, ...tail]);
+}
 function setAt(keys: HandKey[], t: number, pose: string, o?: HandKeyOpts, start = "relaxed"): HandKey[] {
   const ks = sorted(keys); t = r3(Math.max(0, t));
   const near = ks.findIndex((k) => Math.abs(k[0] - t) < 0.06);
@@ -95,7 +104,7 @@ function WaveStrip({ wave, len, t, seek }: { wave: Wave | null | "none"; len: nu
   );
 }
 
-export function HandTimeline({ run, clip, t, len, seek, wave }: { run: string; clip: string; t: number; len: number; seek: (s: number) => void; wave?: Wave | null | "none" }) {
+export function HandTimeline({ run, clip, name, t, len, seek, wave }: { run: string; clip: string; name?: string; t: number; len: number; seek: (s: number) => void; wave?: Wave | null | "none" }) {
   const q = useHands(run, clip); const inv = useInvalidate(); const cat = useHandPoses();
   const all = cat.data ?? []; const byKey = React.useMemo(() => Object.fromEntries(all.map((p) => [p.key, p])), [all]);
   const [mode, setMode] = React.useState<Mode>("fingers"); const kind = MODES.find((m) => m.key === mode)!.kind;
@@ -117,6 +126,44 @@ export function HandTimeline({ run, clip, t, len, seek, wave }: { run: string; c
 
   // the saved timeline arrives (or the clip changes): start from it; later refetches while baking must not overwrite what is being edited
   React.useEffect(() => { if (q.data) { const tr = { ...EMPTY, ...q.data.tracks }; setTracks(tr); setSaved(JSON.stringify(tr)); setSel(null); } }, [clip, q.data?.updated]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // the vision-language model's labels land in the editor (unsaved) as it finishes each 5 s of the clip: the part just finished replaces that stretch of the timeline, everything you edited
+  // before it stays, and what was there after it stays too. A result that was already there when the clip was opened is not loaded again.
+  const llm = q.data?.llm; const llmRunning = llm?.status === "running"; const [fromLlm, setFromLlm] = React.useState(false);
+  const llmSeen = React.useRef<{ clip: string; started: number | null; chunk: number; upto: number; done: boolean; busy: boolean } | null>(null);
+  React.useEffect(() => {
+    if (!q.data) return; const st = llm?.status; const started = (llm as any)?.started ?? null; const chunk = llm?.chunk ?? 0;
+    let h = llmSeen.current;
+    if (!h || h.clip !== clip) { h = llmSeen.current = { clip, started, chunk: st === "running" ? 0 : chunk, upto: 0, done: st !== "running", busy: false }; setFromLlm(false); }
+    else if (h.started !== started && st === "running") h = llmSeen.current = { clip, started, chunk: 0, upto: 0, done: false, busy: false };      // a new job
+    if (h.done) return;
+    if (st === "failed") { h.done = true; toast.error("The LLM annotation failed: " + (llm?.error ?? "")); return; }
+    if (st === "stopped") { h.done = true; return; }
+    if (h.busy || !(st === "running" || st === "done")) return;
+    if (!(chunk > h.chunk || st === "done")) return;
+    h.busy = true;
+    api.handsLlmResult(run, clip).then((r) => {
+      const t0 = h!.upto, t1 = r.final === false ? (r.upto ?? t0) : Infinity; h!.upto = r.final === false ? (r.upto ?? t0) : t0; h!.chunk = r.chunk ?? chunk; h!.done = r.final !== false && st === "done"; h!.busy = false;
+      setTracks((T) => { const n = { ...T }; for (const l of Object.keys(EMPTY) as HandLane[]) n[l] = splice(T[l] ?? [], r.tracks[l] ?? [], t0, t1); return n; }); setSel(null); setFromLlm(true);
+      if (r.final === false) toast.message(`The LLM has labelled the first ${Math.round(r.upto ?? 0)} s; they are in the editor.`);
+      else toast.success("The LLM has labelled the whole clip. Nothing is saved yet: edit anything, then Apply to the model.");
+    }).catch((e) => { h!.busy = false; toast.error(e.message); });
+  }, [clip, llm?.status, llm?.chunk]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // what is sent to the model: how many frames per second of the reference video (never more than it has) and whether it thinks first; the time it will take is estimated from the jobs that ran before
+  const video = q.data?.video; const native = video?.fps ?? 30; const chunkFrames = q.data?.chunk_frames ?? 125;
+  const [llmOpt, setLlmOpt] = React.useState<{ fps: number | null; thinking: boolean; model: string }>(() => { try { const v = JSON.parse(localStorage.getItem("homunculus_llm_opts") || "null"); return { fps: v?.fps ?? null, thinking: v?.thinking ?? true, model: v?.model ?? "qwen38" }; } catch { return { fps: null, thinking: true, model: "qwen38" }; } });
+  const setOpt = (o: Partial<{ fps: number | null; thinking: boolean; model: string }>) => setLlmOpt((x) => { const n = { ...x, ...o }; try { localStorage.setItem("homunculus_llm_opts", JSON.stringify(n)); } catch { /* private mode */ } return n; });
+  const fpsChoices = React.useMemo(() => [...new Set([5, 10, 12.5, 15, 25, native].filter((f) => f <= native + 0.01))].sort((a, b) => a - b), [native]);
+  const sendFps = Math.min(llmOpt.fps ?? 25, native); const sendFpsShown = fpsChoices.reduce((b, f) => (Math.abs(f - sendFps) < Math.abs(b - sendFps) ? f : b), fpsChoices[0]);
+  const models = q.data?.llm_models ?? []; const modelKey = models.some((m) => m.key === llmOpt.model) ? llmOpt.model : "qwen38"; const tm = q.data?.llm_timing?.[`${modelKey}:${llmOpt.thinking ? "on" : "off"}`]; const requests = video ? Math.max(1, Math.ceil((video.duration * sendFpsShown) / chunkFrames)) : 0; const estSec = tm ? requests * tm.s + 30 : 0;
+  const estText = (s: number) => (s < 90 ? `${Math.round(s)} s` : `${Math.round(s / 60)} min`);
+  const [llmOpen, setLlmOpen] = React.useState(false);
+  const annotate = async (stop = false) => {
+    try {
+      if (stop) await api.handsLlm(run, clip, true);
+      else { await api.handsLlm(run, clip, false, { fps: sendFpsShown, thinking: llmOpt.thinking, model: modelKey }); setLlmOpen(false); toast.message("The LLM is watching the clip. Each part lands in the editor as it is labelled; you can keep editing."); }
+      inv(["hands", run, clip]);
+    } catch (e: any) { toast.error(e.message); }
+  };
   React.useEffect(() => {   // a bake that has just finished: the run's clip now points at the file with the fingers
     const s = q.data?.status; if (was.current === "running" && s && s !== "running") { inv(["run", run]); s === "done" ? toast.success("The fingers are set on the model") : toast.error("Could not set the fingers: " + (q.data?.error ?? "")); }
     was.current = s;
@@ -172,11 +219,14 @@ export function HandTimeline({ run, clip, t, len, seek, wave }: { run: string; c
     <div className="panel p-4" data-tour="hands">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Hand className="size-4 text-accent" /><h3 className="text-[14px] font-semibold">Hands</h3>
+        {name && <span className="min-w-0 break-words text-[13px] font-medium text-ink-2" title={clip}>· {name}</span>}
+        {video && <Tip content="The reference video you see here: its own frame rate and length (what the LLM can be shown)."><Badge>video {+video.fps.toFixed(2)} fps · {video.duration.toFixed(1)} s</Badge></Tip>}
         {q.data?.agreement && Object.entries(q.data.agreement).map(([ln, a]) => (
           <Tip key={ln} content={`${a.model ?? "The model"} proposed this lane; your labels keep its choice on ${a.agree} % of the clip. Always guessing your own most common label would score ${a.majority} %.${a.agree > a.majority ? " The model is ahead of that guess." : " The model is not ahead of that guess."}`}>
             <Badge tone={a.agree > a.majority ? "ok" : "warn"}>model vs you · {ln.replace("_", " ")} {a.agree} % <span className="opacity-70">(guess {a.majority} %)</span></Badge>
           </Tip>
         ))}
+        {fromLlm && dirty && <Badge tone="accent"><Bot className="size-3" /> LLM labels loaded: check them, edit, then Apply</Badge>}
         {q.data?.meta?.source === "draft" && !dirty && !baking && <Tip content={q.data.meta.how ?? ""}><Badge tone="accent"><Sparkles className="size-3" /> auto draft: check it</Badge></Tip>}
         {baking ? <Badge tone="accent"><Loader2 className="size-3 animate-spin" /> setting the fingers…</Badge>
           : q.data?.status === "failed" ? <Tip content={q.data.error ?? ""}><Badge tone="bad"><TriangleAlert className="size-3" /> failed</Badge></Tip>
@@ -192,6 +242,28 @@ export function HandTimeline({ run, clip, t, len, seek, wave }: { run: string; c
           </div>
           <Tip content={`Swap the left and right hand lanes (${MODES.find((m) => m.key === mode)!.label.toLowerCase()}), if they were labelled the wrong way round`}><Button size="icon" variant="ghost" onClick={swap} disabled={!tracks[laneOf("left", mode)].length && !tracks[laneOf("right", mode)].length} aria-label="Swap left and right"><ArrowLeftRight /></Button></Tip>
           <Tip content="Back to what is saved"><Button size="icon" variant="ghost" onClick={reset} disabled={!dirty}><RotateCcw /></Button></Tip>
+          {llmRunning
+            ? <Tip content="Stop after the request it is working on"><Button size="sm" variant="ghost" onClick={() => annotate(true)} className="text-accent"><Loader2 className="animate-spin" /> LLM {llm?.chunks ? `${llm.chunk ?? 0}/${llm.chunks}` : "starting"} <Square className="size-3" /></Button></Tip>
+            : (
+              <Popover open={llmOpen} onOpenChange={setLlmOpen}>
+                <PopoverTrigger asChild><Button size="sm" variant="ghost" disabled={baking || len <= 0}><Bot /> Annotate with LLM</Button></PopoverTrigger>
+                <PopoverContent align="end" className="w-[340px] p-4">
+                  <div className="mb-2 text-[13px] font-medium">Annotate this clip with the LLM</div>
+                  <p className="mb-3 text-[11.5px] text-ink-3">A vision-language model watches the clip and proposes every lane (all poses, wrists and palms). Each part lands in the editor unsaved; edit anything, then Apply.</p>
+                  <div className="mb-3 rounded-lg bg-white/5 px-3 py-2 text-[12px]">Reference video: <b>{video ? `${+video.fps.toFixed(2)} fps` : "unknown"}</b>{video && <> · {video.duration.toFixed(1)} s · {Math.round(video.duration * video.fps)} frames</>}</div>
+                  {models.length > 1 && <><div className="mb-1 text-[11.5px] text-ink-3">Model</div><Segmented value={modelKey} onValueChange={(v) => setOpt({ model: v })} options={models.map((m) => ({ value: m.key, label: m.label }))} /><div className="mb-3" /></>}
+                  <div className="mb-1 text-[11.5px] text-ink-3">Frames per second sent to the model</div>
+                  <Segmented value={String(sendFpsShown)} onValueChange={(v) => setOpt({ fps: +v })} options={fpsChoices.map((f) => ({ value: String(f), label: f === native ? `${+f.toFixed(1)} (all)` : String(f) }))} />
+                  <div className="mt-3 mb-1 text-[11.5px] text-ink-3">Thinking before it answers</div>
+                  <Segmented value={llmOpt.thinking ? "on" : "off"} onValueChange={(v) => setOpt({ thinking: v === "on" })} options={[{ value: "on", label: "On" }, { value: "off", label: "Off" }]} />
+                  <div className="mt-3 rounded-lg border border-line-strong px-3 py-2 text-[12px]">
+                    {video && tm ? <>About <b>{estText(estSec)}</b> · {requests} request{requests > 1 ? "s" : ""} of up to {chunkFrames} frames ({+(chunkFrames / sendFpsShown).toFixed(1)} s of video each)
+                      <div className="mt-0.5 text-[11px] text-ink-3">{tm.n ? `from ${tm.n} earlier run${tm.n > 1 ? "s" : ""} (${Math.round(tm.s)} s per request)` : `a guess (${Math.round(tm.s)} s per request) until one has run`}</div></> : "No reference video to look at."}
+                  </div>
+                  <Button variant="primary" size="sm" className="mt-3 w-full" onClick={() => annotate(false)} disabled={!video}><Bot /> Start</Button>
+                </PopoverContent>
+              </Popover>
+            )}
           <Button variant="primary" size="sm" onClick={apply} disabled={!dirty || baking || len <= 0}>{baking ? <Loader2 className="animate-spin" /> : <Check />} Apply to the model</Button>
         </div>
       </div>

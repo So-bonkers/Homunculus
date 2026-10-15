@@ -52,7 +52,7 @@ export const useVideoJobs = (name: string | null | undefined) =>
     refetchInterval: (qq) => (qq.state.data?.some((j) => j.status === "queued" || j.status === "running") ? 1500 : 8000) });
 export const useHands = (run: string, clip: string) =>
   useQuery({ queryKey: ["hands", run, clip], queryFn: () => get<HandsInfo>(`/api/hands/${encodeURIComponent(run)}/${encodeURIComponent(clip)}`),
-    refetchInterval: (qq) => (qq.state.data?.status === "running" ? 1200 : false) });
+    refetchInterval: (qq) => (qq.state.data?.status === "running" || qq.state.data?.llm?.status === "running" ? 1500 : false) });
 export const useHandPoses = () => useQuery({ queryKey: ["handposes"], queryFn: () => get<HandPose[]>(`/static/hands/catalogue.json?v=${Date.now() >> 16}`), staleTime: 3600_000 });
 export const useDoctor = (enabled: boolean) => useQuery({ queryKey: ["doctor"], queryFn: () => get<DoctorCheck[]>("/api/doctor"), enabled, staleTime: 0, gcTime: 0 });
 export const usePresetManifest = (enabled: boolean) =>
@@ -77,5 +77,7 @@ export const api = {
   retex: (run: string, body: Record<string, unknown>) => post<{ ok: true; job: string }>("/api/retex", { run, ...body }),
   accept: (run: string, formats: string[], cleanup: boolean) => post("/api/accept", { run, formats, cleanup }),
   hands: (run: string, clip: string, tracks: HandTracks) => post("/api/hands", { run, clip, tracks }),
+  handsLlm: (run: string, clip: string, stop = false, opts: { fps?: number; thinking?: boolean; model?: string } = {}) => post("/api/hands/llm", { run, clip, stop, ...opts }),
+  handsLlmResult: (run: string, clip: string) => get<{ tracks: HandTracks; meta: { how?: string }; finished: number | null; final?: boolean; upto?: number; chunk?: number }>(`/api/hands/${encodeURIComponent(run)}/${encodeURIComponent(clip)}/llm`),
   remove: (run: string) => post<{ ok: true; freed: number }>("/api/delete", { run }),
 };

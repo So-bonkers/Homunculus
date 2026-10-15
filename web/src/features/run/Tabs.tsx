@@ -87,7 +87,7 @@ function ClipPlayer({ clips, run }: { clips: Clip[]; run: string }) {
         <button key={x.id} onClick={() => setId(x.id)} className={cn("flex w-full min-w-0 items-center gap-3 rounded-xl border p-2 text-left transition", c?.id === x.id ? "border-accent/60 bg-accent/10" : "border-line hover:border-white/15")}>
           <Img src={x.thumb} className="size-12 shrink-0 rounded-lg" />
           <div className="min-w-0">
-            <div className="truncate text-[13px] font-medium">{x.prompt}</div>
+            <div className="line-clamp-3 break-words text-[13px] font-medium" title={x.prompt}>{x.prompt}</div>
             <div className="flex items-center gap-1.5 text-[11px] text-ink-3">{x.source === "video" ? <><Film className="size-3 text-cyan" /> from a video</> : `take ${x.rep + 1}`}{x.textured && " · textured"}</div>
           </div>
         </button>
@@ -97,7 +97,7 @@ function ClipPlayer({ clips, run }: { clips: Clip[]; run: string }) {
   if (c?.ref) return (        // a dance from a video: the video and the character play together
     <div className="grid gap-3 xl:grid-cols-[1fr_260px]">
       <SyncPlayer key={c.id} model={c.url} reference={c.ref} compare={c.compare} preview={c.video} fbx={c.fbx}>
-        {(p) => <HandTimeline run={run} clip={c.id} t={p.t} len={p.len} seek={p.seek} wave={p.wave} />}
+        {(p) => <HandTimeline run={run} clip={c.id} name={c.prompt} t={p.t} len={p.len} seek={p.seek} wave={p.wave} />}
       </SyncPlayer>
       {list}
     </div>

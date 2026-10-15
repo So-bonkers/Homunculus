@@ -59,8 +59,13 @@ class H(SimpleHTTPRequestHandler):
             from . import doctor; return self._json(200, doctor.checks())
         if path.startswith("/api/hands/"):        # the hand timeline of one clip: /api/hands/<run>/<clip>
             from . import hands
-            try: parts = path.split("/"); return self._json(200, hands.info(parts[3], parts[4]))
+            try:
+                parts = path.split("/")
+                if len(parts) > 5 and parts[5] == "llm":        # what the vision-language model proposed for this clip (hands_llm.py)
+                    from . import hands_llm; return self._json(200, hands_llm.result(os.path.basename(parts[3]), parts[4]))
+                return self._json(200, hands.info(parts[3], parts[4]))
             except (ValueError, IndexError) as e: return self._json(404, {"error": str(e) or "no such clip"})
+            except OSError: return self._json(404, {"error": "no annotation from the model yet"})
         if path.startswith("/api/video/"):       # dance-from-video jobs of a run: stages, estimates, reports
             from . import api; return self._json(200, api.video_jobs(os.path.basename(path)))
         if path.startswith("/api/retex/"):
@@ -145,6 +150,7 @@ class H(SimpleHTTPRequestHandler):
         if path == "/api/animate": return self.animate_job()
         if path == "/api/animate_video": return self.animate_video_job()
         if path == "/api/hands": return self.hands_job()
+        if path == "/api/hands/llm": return self.hands_llm_job()
         if path == "/api/repair": return self.repair_job()
         if path == "/api/repair_use": return self.repair_use()
         if path == "/api/repair_choose": return self.repair_choose()
@@ -425,6 +431,18 @@ class H(SimpleHTTPRequestHandler):
             d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}"); run = os.path.basename(str(d.get("run", "")))
             if run in live_runs(): return self._json(409, {"error": "This run is running; set the hands when it has finished."})
             hands.save(run, str(d.get("clip", "")), d.get("tracks")); self._json(200, {"ok": True})
+        except ValueError as e: self._json(400, {"error": str(e)})
+        except Exception as e: self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
+    def hands_llm_job(self):
+        """Annotate a clip's hands with the vision-language model: {run, clip} starts it (poll GET /api/hands/<run>/<clip>, field llm), {run, clip, stop: true} stops it after the request in progress.
+        The proposal is kept beside the clip's labels, never over them; the editor loads it."""
+        from . import hands_llm
+        try:
+            d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}"); run = os.path.basename(str(d.get("run", ""))); clip = str(d.get("clip", ""))
+            if d.get("stop"): hands_llm.stop(run, clip); return self._json(200, {"ok": True})
+            if live_runs(): return self._json(409, {"error": "A run is using the GPU; annotate when it has finished."})
+            hands_llm.start(run, clip, fps=d.get("fps", hands_llm.FPS), thinking=bool(d.get("thinking", True)), model=str(d.get("model", "qwen38"))); self._json(200, {"ok": True})
         except ValueError as e: self._json(400, {"error": str(e)})
         except Exception as e: self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
