@@ -13,7 +13,10 @@ from . import config as C, gpu, handpose, handshapes, hands, vlm
 
 FPS, SIZE, CHUNK = 25, 512, 125                    # default frames per second, picture side in px, frames per request (at 12.5 fps a request covers 10 s instead of 5 s)
 CTX, MAX_TOKENS = 65536, 26000                     # the model's context (it holds 35 000 tokens of pictures plus the thinking) and the most it may write per request
-def model_name(fps, thinking, model="qwen38"): return f"{MODELS[model]['label']} ({fps:g} fps, thinking {'on' if thinking else 'off'})"
+TEMPERATURE = 0.6                                  # how freely the model samples; lower repeats itself more
+
+
+def model_name(fps, thinking, model="qwen38", temperature=TEMPERATURE): return f"{MODELS[model]['label']} ({fps:g} fps, thinking {'on' if thinking else 'off'}{'' if temperature == TEMPERATURE else f', temperature {temperature:g}'})"
 _lock = threading.Lock(); _stop = {}
 MODELS = {"qwen38": {"label": "Qwen3.8 27B", "model": C.VLM_MODEL, "variant": C.VLM_VARIANT},
           "qwen36": {"label": "Qwen3.6 35B-A3B", "model": "unsloth/Qwen3.6-35B-A3B-MTP-GGUF", "variant": "UD-IQ4_NL"}}      # the vision-language models that can label a clip (all in Unsloth Studio)
@@ -59,18 +62,19 @@ def stop(run, clip):
     _stop[(run, os.path.basename(clip))] = True
 
 
-def start(run, clip, fps=FPS, thinking=True, model="qwen38"):
+def start(run, clip, fps=FPS, thinking=True, model="qwen38", temperature=TEMPERATURE):
     """Start the annotation in the background. Raises ValueError when it cannot (no such clip, no video, another annotation running)."""
     clip = os.path.basename(clip); c = hands._clip(run, clip)
     if c is None: raise ValueError("no such clip")
     if model not in MODELS: raise ValueError("unknown model " + str(model))
     if not c.get("ref") or not (C.RUNS / run / c["ref"]).exists(): raise ValueError("this clip has no reference video to look at")
     if not _lock.acquire(blocking=False): raise ValueError("another clip is being annotated; wait for it to finish")
-    fps = float(fps); v = hands.video_info(run, clip)
+    temperature = float(temperature); fps = float(fps); v = hands.video_info(run, clip)
     if v and fps > v["fps"] + 0.01: fps = v["fps"]              # the video has no more frames than its own rate
     if not (2 <= fps <= 60): _lock.release(); raise ValueError("fps must be between 2 and 60")
-    _stop.pop((run, clip), None); _set(run, clip, "running", chunk=0, chunks=0, started=time.time(), fps=fps, thinking=bool(thinking), model=model)
-    threading.Thread(target=_job, args=(run, clip, C.RUNS / run / c["ref"], fps, bool(thinking), model), daemon=True).start()
+    if not (0 <= temperature <= 1.5): _lock.release(); raise ValueError("temperature must be between 0 and 1.5")
+    _stop.pop((run, clip), None); _set(run, clip, "running", chunk=0, chunks=0, started=time.time(), fps=fps, thinking=bool(thinking), model=model, temperature=temperature)
+    threading.Thread(target=_job, args=(run, clip, C.RUNS / run / c["ref"], fps, bool(thinking), model, temperature), daemon=True).start()
 
 
 def _dump(path, obj, **kw):
@@ -154,11 +158,11 @@ def _tracks(at, lanes, fps):
     return tracks
 
 
-def _meta(dur, bad, fps, thinking, model):
-    return {"source": "draft", "model": model_name(fps, thinking, model), "duration": dur, "how": f"{MODELS[model]['label']} watched every frame of the clip at {fps:g} fps (thinking {'on' if thinking else 'off'}, {CHUNK} frames per request) and named a pose, wrist position and palm direction for each hand in each frame. {bad} answers were not in the library and were replaced by the previous label."}
+def _meta(dur, bad, fps, thinking, model, temperature=TEMPERATURE):
+    return {"source": "draft", "model": model_name(fps, thinking, model, temperature), "duration": dur, "how": f"{MODELS[model]['label']} watched every frame of the clip at {fps:g} fps (thinking {'on' if thinking else 'off'}, {CHUNK} frames per request) and named a pose, wrist position and palm direction for each hand in each frame. {bad} answers were not in the library and were replaced by the previous label."}
 
 
-def _job(run, clip, video, fps, thinking, model="qwen38"):
+def _job(run, clip, video, fps, thinking, model="qwen38", temperature=TEMPERATURE):
     global lane_names
     lane_names = {"fing": set(handpose.LIB), "wrist": set(handshapes.WRISTS), "palm": set(handshapes.PALMS) - {"as_clip"}}
     cols = ("fing", "wrist", "palm", "fing", "wrist", "palm"); lanes = ("left", "left_wrist", "left_palm", "right", "right_wrist", "right_palm")
@@ -174,7 +178,7 @@ def _job(run, clip, video, fps, thinking, model="qwen38"):
             fs = frames[ci * CHUNK:(ci + 1) * CHUNK]; n = len(fs); _set(run, clip, "running", chunk=ci, chunks=chunks, started=t0, frames=N)
             content = [{"type": "text", "text": _prompt(n, fps, thinking)}]
             for k, f in enumerate(fs): content += [{"type": "text", "text": f"frame {k}"}, _img(os.path.join(tmp, f))]
-            body = {"messages": [{"role": "user", "content": content}], "temperature": 0.6, "top_p": 0.95, "max_tokens": MAX_TOKENS if thinking else 8000, "chat_template_kwargs": {"enable_thinking": bool(thinking)}}
+            body = {"messages": [{"role": "user", "content": content}], "temperature": temperature, "top_p": 0.95, "max_tokens": MAX_TOKENS if thinking else 8000, "chat_template_kwargs": {"enable_thinking": bool(thinking)}}
             rows = []
             for attempt in range(3):               # a retry when the answer is cut off or not valid, or when the model server fell over (some builds crash with speculative decoding; Studio reloads them without it)
                 try:
@@ -189,9 +193,9 @@ def _job(run, clip, video, fps, thinking, model="qwen38"):
                 if 0 <= row[0] < n: at[ci * CHUNK + row[0]] = row[1:]
             bad += sum(v is None for row in rows for v in row[1:])
             if ci + 1 < chunks:                # what is labelled so far lands now: the editor takes each part as it arrives
-                upto = round((ci + 1) * CHUNK / fps, 2); _dump(_files(run, clip)[0], {"tracks": _tracks(at, lanes, fps), "meta": _meta(round(N / fps, 2), bad, fps, thinking, model), "finished": None, "final": False, "upto": upto, "chunk": ci + 1})
+                upto = round((ci + 1) * CHUNK / fps, 2); _dump(_files(run, clip)[0], {"tracks": _tracks(at, lanes, fps), "meta": _meta(round(N / fps, 2), bad, fps, thinking, model, temperature), "finished": None, "final": False, "upto": upto, "chunk": ci + 1})
             _set(run, clip, "running", chunk=ci + 1, chunks=chunks, started=t0, frames=N)
-        tracks = _tracks(at, lanes, fps); dur = round(N / fps, 2); meta = _meta(dur, bad, fps, thinking, model)
+        tracks = _tracks(at, lanes, fps); dur = round(N / fps, 2); meta = _meta(dur, bad, fps, thinking, model, temperature)
         tp, sp, dp = _files(run, clip)
         _dump(tp, {"tracks": tracks, "meta": meta, "finished": time.time(), "final": True, "upto": dur, "chunk": chunks}, indent=1)
         _dump(dp, {"tracks": {k: v for k, v in tracks.items() if v}, "duration": dur, "model": meta["model"]}, indent=1)       # only the proposal: the person's own labels file is not touched
