@@ -149,12 +149,12 @@ export function HandTimeline({ run, clip, name, t, len, seek, wave }: { run: str
     }).catch((e) => { h!.busy = false; toast.error(e.message); });
   }, [clip, llm?.status, llm?.chunk]);   // eslint-disable-line react-hooks/exhaustive-deps
   // what is sent to the model: how many frames per second of the reference video (never more than it has) and whether it thinks first; the time it will take is estimated from the jobs that ran before
-  const video = q.data?.video; const native = video?.fps ?? 30; const chunkFrames = q.data?.chunk_frames ?? 125;
+  const video = q.data?.video; const native = video?.fps ?? 30; const chunkSeconds = q.data?.chunk_seconds ?? 5;
   const [llmOpt, setLlmOpt] = React.useState<{ fps: number | null; thinking: boolean; model: string }>(() => { try { const v = JSON.parse(localStorage.getItem("homunculus_llm_opts") || "null"); return { fps: v?.fps ?? null, thinking: v?.thinking ?? true, model: v?.model ?? "qwen38" }; } catch { return { fps: null, thinking: true, model: "qwen38" }; } });
   const setOpt = (o: Partial<{ fps: number | null; thinking: boolean; model: string }>) => setLlmOpt((x) => { const n = { ...x, ...o }; try { localStorage.setItem("homunculus_llm_opts", JSON.stringify(n)); } catch { /* private mode */ } return n; });
   const fpsChoices = React.useMemo(() => [...new Set([5, 10, 12.5, 15, 25, native].filter((f) => f <= native + 0.01))].sort((a, b) => a - b), [native]);
   const sendFps = Math.min(llmOpt.fps ?? 25, native); const sendFpsShown = fpsChoices.reduce((b, f) => (Math.abs(f - sendFps) < Math.abs(b - sendFps) ? f : b), fpsChoices[0]);
-  const models = q.data?.llm_models ?? []; const modelKey = models.some((m) => m.key === llmOpt.model) ? llmOpt.model : "qwen38"; const tm = q.data?.llm_timing?.[`${modelKey}:${llmOpt.thinking ? "on" : "off"}`]; const requests = video ? Math.max(1, Math.ceil((video.duration * sendFpsShown) / chunkFrames)) : 0; const estSec = tm ? requests * tm.s + 30 : 0;
+  const models = q.data?.llm_models ?? []; const modelKey = models.some((m) => m.key === llmOpt.model) ? llmOpt.model : "qwen38"; const tm = q.data?.llm_timing?.[`${modelKey}:${llmOpt.thinking ? "on" : "off"}`]; const requests = video ? Math.max(1, Math.ceil(video.duration / chunkSeconds)) : 0; const framesSent = video ? Math.ceil(video.duration * sendFpsShown) : 0; const estSec = tm ? framesSent * tm.s + 30 : 0;
   const estText = (s: number) => (s < 90 ? `${Math.round(s)} s` : `${Math.round(s / 60)} min`);
   const [llmOpen, setLlmOpen] = React.useState(false);
   const annotate = async (stop = false) => {
@@ -257,8 +257,8 @@ export function HandTimeline({ run, clip, name, t, len, seek, wave }: { run: str
                   <div className="mt-3 mb-1 text-[11.5px] text-ink-3">Thinking before it answers</div>
                   <Segmented value={llmOpt.thinking ? "on" : "off"} onValueChange={(v) => setOpt({ thinking: v === "on" })} options={[{ value: "on", label: "On" }, { value: "off", label: "Off" }]} />
                   <div className="mt-3 rounded-lg border border-line-strong px-3 py-2 text-[12px]">
-                    {video && tm ? <>About <b>{estText(estSec)}</b> · {requests} request{requests > 1 ? "s" : ""} of up to {chunkFrames} frames ({+(chunkFrames / sendFpsShown).toFixed(1)} s of video each)
-                      <div className="mt-0.5 text-[11px] text-ink-3">{tm.n ? `from ${tm.n} earlier run${tm.n > 1 ? "s" : ""} (${Math.round(tm.s)} s per request)` : `a guess (${Math.round(tm.s)} s per request) until one has run`}</div></> : "No reference video to look at."}
+                    {video && tm ? <>About <b>{estText(estSec)}</b> · {requests} request{requests > 1 ? "s" : ""} of {chunkSeconds} s ({Math.round(chunkSeconds * sendFpsShown)} frames each)
+                      <div className="mt-0.5 text-[11px] text-ink-3">{tm.n ? `from ${tm.n} earlier run${tm.n > 1 ? "s" : ""} (${tm.s.toFixed(2)} s per frame sent)` : `a guess (${tm.s.toFixed(2)} s per frame sent) until one has run`}</div></> : "No reference video to look at."}
                   </div>
                   <Button variant="primary" size="sm" className="mt-3 w-full" onClick={() => annotate(false)} disabled={!video}><Bot /> Start</Button>
                 </PopoverContent>

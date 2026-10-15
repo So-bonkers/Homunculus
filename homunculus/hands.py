@@ -85,7 +85,7 @@ def info(run, clip):
     except Exception: st = {"status": "idle", "error": None}
     if st.get("status") == "running" and time.time() - os.path.getmtime(sp) > 900: st = {"status": "failed", "error": "the bake stopped answering"}
     from . import hands_llm
-    return {"clip": clip, "llm": hands_llm.status(run, clip), "video": video_info(run, clip), "llm_timing": hands_llm.timing(), "llm_models": [{"key": k, "label": v["label"]} for k, v in hands_llm.MODELS.items()], "chunk_frames": hands_llm.CHUNK, "poses": list(handpose.LIB), "tracks": saved["tracks"], "updated": saved.get("updated"), "meta": saved.get("meta"), "agreement": agreement(run, clip, saved["tracks"]), **st, "applied": bool(c.get("hands_glb"))}
+    return {"clip": clip, "llm": hands_llm.status(run, clip), "video": video_info(run, clip), "llm_timing": hands_llm.timing(), "llm_models": [{"key": k, "label": v["label"]} for k, v in hands_llm.MODELS.items()], "chunk_seconds": hands_llm.CHUNK_SECONDS, "poses": list(handpose.LIB), "tracks": saved["tracks"], "updated": saved.get("updated"), "meta": saved.get("meta"), "agreement": agreement(run, clip, saved["tracks"]), **st, "applied": bool(c.get("hands_glb"))}
 
 
 def agreement(run, clip, current):

@@ -442,7 +442,7 @@ class H(SimpleHTTPRequestHandler):
             d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}"); run = os.path.basename(str(d.get("run", ""))); clip = str(d.get("clip", ""))
             if d.get("stop"): hands_llm.stop(run, clip); return self._json(200, {"ok": True})
             if live_runs(): return self._json(409, {"error": "A run is using the GPU; annotate when it has finished."})
-            hands_llm.start(run, clip, fps=d.get("fps", hands_llm.FPS), thinking=bool(d.get("thinking", True)), model=str(d.get("model", "qwen38")), temperature=d.get("temperature", hands_llm.TEMPERATURE)); self._json(200, {"ok": True})
+            hands_llm.start(run, clip, fps=d.get("fps", hands_llm.FPS), thinking=bool(d.get("thinking", True)), model=str(d.get("model", "qwen38")), temperature=d.get("temperature", hands_llm.TEMPERATURE), chunking=str(d.get("chunking", "seconds")), expect=d.get("expect"), bpm=d.get("bpm"), vocab=str(d.get("vocab", "full"))); self._json(200, {"ok": True})
         except ValueError as e: self._json(400, {"error": str(e)})
         except Exception as e: self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
