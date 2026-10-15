@@ -1,6 +1,6 @@
 // The HTTP API of the Python server. POST bodies are JSON (the server reads the raw body); the two uploads send raw bytes with options in the query string.
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import type { AcceptInfo, DoctorCheck, PresetManifest, PurgeInfo, RepairJob, RetexInfo, RunDetail, RunSummary, VideoJob, HandsInfo, HandTracks, HandPose } from "./types";
+import type { AcceptInfo, DoctorCheck, PresetManifest, PurgeInfo, RepairJob, RetexInfo, RunDetail, RunSummary, VideoJob, HandsInfo, HandTracks, HandPose, HandMoves } from "./types";
 
 export class ApiError extends Error { status: number; constructor(msg: string, status: number) { super(msg); this.status = status; } }
 
@@ -53,6 +53,7 @@ export const useVideoJobs = (name: string | null | undefined) =>
 export const useHands = (run: string, clip: string) =>
   useQuery({ queryKey: ["hands", run, clip], queryFn: () => get<HandsInfo>(`/api/hands/${encodeURIComponent(run)}/${encodeURIComponent(clip)}`),
     refetchInterval: (qq) => (qq.state.data?.status === "running" || qq.state.data?.llm?.status === "running" ? 1500 : false) });
+export const useHandMoves = () => useQuery({ queryKey: ["handmoves"], queryFn: () => get<HandMoves>(`/static/hands/moves.json?v=${Date.now() >> 16}`), staleTime: 3600_000 });
 export const useHandPoses = () => useQuery({ queryKey: ["handposes"], queryFn: () => get<HandPose[]>(`/static/hands/catalogue.json?v=${Date.now() >> 16}`), staleTime: 3600_000 });
 export const useDoctor = (enabled: boolean) => useQuery({ queryKey: ["doctor"], queryFn: () => get<DoctorCheck[]>("/api/doctor"), enabled, staleTime: 0, gcTime: 0 });
 export const usePresetManifest = (enabled: boolean) =>

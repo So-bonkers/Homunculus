@@ -100,3 +100,8 @@ export interface HandPose { key: string; label: string; category: string; descri
 export type HandLane = "left" | "right" | "left_wrist" | "right_wrist" | "left_palm" | "right_palm";
 export type HandTracks = Record<HandLane, HandKey[]>;
 export interface HandsInfo { clip: string; video?: { fps: number; duration: number } | null; llm_timing?: Record<string, { s: number; n: number }>; llm_models?: { key: string; label: string }[]; chunk_seconds?: number; llm?: { status: "idle" | "running" | "done" | "failed" | "stopped"; chunk?: number; chunks?: number; error?: string; finished?: number; seconds?: number; fps?: number; thinking?: boolean; model?: string; started?: number }; poses: string[]; tracks: HandTracks; updated: number | null; meta?: { source?: string; how?: string; from?: string; similarity?: string } | null; agreement?: Record<string, { agree: number; majority: number; model?: string }> | null; status: "idle" | "running" | "done" | "failed"; error: string | null; applied: boolean }
+
+/** The hand moves of hand_moves: short timed runs of poses, wrist positions and palm directions that are dropped at the playhead of the hand editor (static/hands/moves.json, the one place they are defined). */
+export interface HandMoveKey { dt: number; pose: string; curve?: HandCurve; d?: number }
+export interface HandMove { key: string; label: string; style: string; text: string; check: "sourced" | "knowledge" | "estimate"; source: string; lanes: { fingers?: HandMoveKey[]; wrist?: HandMoveKey[]; palm?: HandMoveKey[] } }
+export interface HandMoves { note: string; styles: string[]; moves: HandMove[] }

@@ -1,0 +1,1180 @@
+{
+ "version": 1,
+ "note": "Short timed runs of poses, wrist positions and palm directions, dropped at the playhead in the hand editor (dt = seconds from the moment of the hit). check: sourced = the move and its hand action are named in a source; knowledge = from general knowledge, no source describes it; estimate = timing only. All timings are animation estimates; correct what looks wrong.",
+ "styles": [
+  "Basics (any style)",
+  "Locking",
+  "Popping and tutting",
+  "Krump",
+  "Party dances"
+ ],
+ "moves": [
+  {
+   "key": "snap",
+   "label": "Finger snap",
+   "style": "Basics (any style)",
+   "text": "Thumb loads on the middle finger, then the finger slaps the palm.",
+   "check": "estimate",
+   "source": "the editor's own gestures (timings are animation estimates)",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": -0.12,
+      "pose": "snap_ready",
+      "curve": "quick"
+     },
+     {
+      "dt": 0,
+      "pose": "snap_hit",
+      "curve": "snap"
+     },
+     {
+      "dt": 0.14,
+      "pose": "soft",
+      "curve": "quick"
+     }
+    ]
+   }
+  },
+  {
+   "key": "flick",
+   "label": "Finger flick",
+   "style": "Basics (any style)",
+   "text": "Index loaded under the thumb, then flicked out.",
+   "check": "estimate",
+   "source": "the editor's own gestures (timings are animation estimates)",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": -0.1,
+      "pose": "flick_ready",
+      "curve": "quick"
+     },
+     {
+      "dt": 0,
+      "pose": "point",
+      "curve": "snap"
+     },
+     {
+      "dt": 0.16,
+      "pose": "fist_loose",
+      "curve": "quick"
+     }
+    ]
+   }
+  },
+  {
+   "key": "pulse",
+   "label": "Clench and release",
+   "style": "Basics (any style)",
+   "text": "A hard clench, then the hand pops open.",
+   "check": "estimate",
+   "source": "the editor's own gestures (timings are animation estimates)",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": 0,
+      "pose": "fist_tight",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.14,
+      "pose": "spread",
+      "curve": "snap"
+     },
+     {
+      "dt": 0.36,
+      "pose": "soft",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "burst",
+   "label": "Burst",
+   "style": "Basics (any style)",
+   "text": "A tight fist explodes into wide fingers.",
+   "check": "estimate",
+   "source": "the editor's own gestures (timings are animation estimates)",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": -0.1,
+      "pose": "fist_tight",
+      "curve": "quick"
+     },
+     {
+      "dt": 0,
+      "pose": "spread_wide",
+      "curve": "snap"
+     },
+     {
+      "dt": 0.3,
+      "pose": "spread",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "wave",
+   "label": "Finger wave",
+   "style": "Basics (any style)",
+   "text": "The fingers close one after another from the pinky, then open.",
+   "check": "estimate",
+   "source": "the editor's own gestures (timings are animation estimates)",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": 0,
+      "pose": "wave1",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.06,
+      "pose": "wave2",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.12,
+      "pose": "wave3",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.18,
+      "pose": "wave4",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.42,
+      "pose": "open",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "shake",
+   "label": "Jazz-hands shake",
+   "style": "Basics (any style)",
+   "text": "Spread and claw alternating fast, about eight changes a second.",
+   "check": "estimate",
+   "source": "the editor's own gestures (timings are animation estimates)",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": 0,
+      "pose": "spread",
+      "curve": "linear",
+      "d": 0.0525
+     },
+     {
+      "dt": 0.075,
+      "pose": "claw_spread",
+      "curve": "linear",
+      "d": 0.0525
+     },
+     {
+      "dt": 0.15,
+      "pose": "spread",
+      "curve": "linear",
+      "d": 0.0525
+     },
+     {
+      "dt": 0.22499999999999998,
+      "pose": "claw_spread",
+      "curve": "linear",
+      "d": 0.0525
+     },
+     {
+      "dt": 0.3,
+      "pose": "spread",
+      "curve": "linear",
+      "d": 0.0525
+     },
+     {
+      "dt": 0.375,
+      "pose": "claw_spread",
+      "curve": "linear",
+      "d": 0.0525
+     },
+     {
+      "dt": 0.44999999999999996,
+      "pose": "spread",
+      "curve": "linear",
+      "d": 0.0525
+     },
+     {
+      "dt": 0.6,
+      "pose": "spread",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "tap",
+   "label": "Finger tap",
+   "style": "Basics (any style)",
+   "text": "The fingers drum, one after another: pinky, ring, middle, index.",
+   "check": "estimate",
+   "source": "the editor's own gestures (timings are animation estimates)",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": 0,
+      "pose": "wave1",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.08,
+      "pose": "open",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.12,
+      "pose": "wave2",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.2,
+      "pose": "open",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.24,
+      "pose": "wave3",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.32,
+      "pose": "open",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.36,
+      "pose": "point",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.44,
+      "pose": "open",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "wflick_down",
+   "label": "Wrist flick down",
+   "style": "Basics (any style)",
+   "text": "The hand cocks back, then flicks down.",
+   "check": "estimate",
+   "source": "the editor's own gestures (timings are animation estimates)",
+   "lanes": {
+    "wrist": [
+     {
+      "dt": -0.1,
+      "pose": "ext_40",
+      "curve": "quick"
+     },
+     {
+      "dt": 0,
+      "pose": "flex_40",
+      "curve": "snap"
+     },
+     {
+      "dt": 0.22,
+      "pose": "neutral",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "wflick_up",
+   "label": "Wrist flick up",
+   "style": "Basics (any style)",
+   "text": "The hand drops, then flicks up.",
+   "check": "estimate",
+   "source": "the editor's own gestures (timings are animation estimates)",
+   "lanes": {
+    "wrist": [
+     {
+      "dt": -0.1,
+      "pose": "flex_40",
+      "curve": "quick"
+     },
+     {
+      "dt": 0,
+      "pose": "ext_40",
+      "curve": "snap"
+     },
+     {
+      "dt": 0.22,
+      "pose": "neutral",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "wwave",
+   "label": "Wrist wave",
+   "style": "Basics (any style)",
+   "text": "The hand swings toward the thumb and the pinky and back, about three times a second.",
+   "check": "estimate",
+   "source": "the editor's own gestures (timings are animation estimates)",
+   "lanes": {
+    "wrist": [
+     {
+      "dt": 0,
+      "pose": "radial_20",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.17,
+      "pose": "ulnar_30",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.34,
+      "pose": "radial_20",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.51,
+      "pose": "ulnar_30",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.68,
+      "pose": "neutral",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "wcircle",
+   "label": "Wrist circle",
+   "style": "Basics (any style)",
+   "text": "The hand draws a circle: in, toward the pinky, back, toward the thumb.",
+   "check": "estimate",
+   "source": "the editor's own gestures (timings are animation estimates)",
+   "lanes": {
+    "wrist": [
+     {
+      "dt": 0,
+      "pose": "flex_40",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.15,
+      "pose": "flex_ulnar",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.3,
+      "pose": "ext_ulnar",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.45,
+      "pose": "ext_radial",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.6,
+      "pose": "flex_radial",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.75,
+      "pose": "neutral",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "lock_point",
+   "label": "Point",
+   "style": "Locking",
+   "text": "One arm shoots out from the opposite shoulder and the finger points, held for a moment (the hand is fist-loose before, relaxed after).",
+   "check": "sourced",
+   "source": "Wikipedia: Locking (dance), Moves section (the arm); the hand shape is my reading",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": -0.1,
+      "pose": "fist_loose",
+      "curve": "quick"
+     },
+     {
+      "dt": 0,
+      "pose": "point",
+      "curve": "snap"
+     },
+     {
+      "dt": 0.5,
+      "pose": "relaxed",
+      "curve": "smooth"
+     }
+    ],
+    "palm": [
+     {
+      "dt": -0.1,
+      "pose": "palm_down",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.6,
+      "pose": "as_clip",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "lock_wrist_twirl",
+   "label": "Wrist twirl",
+   "style": "Locking",
+   "text": "The wrists twirl while the arms move upward: the hand circles on the wrist, loose, about four times a second.",
+   "check": "sourced",
+   "source": "Wikipedia: Locking (dance), Moves section (named, with the wrists twirling); the timing is an estimate",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": 0,
+      "pose": "lax",
+      "curve": "smooth"
+     }
+    ],
+    "wrist": [
+     {
+      "dt": 0,
+      "pose": "flex_40",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.1,
+      "pose": "flex_ulnar",
+      "curve": "linear"
+     },
+     {
+      "dt": 0.2,
+      "pose": "ext_40",
+      "curve": "linear"
+     },
+     {
+      "dt": 0.3,
+      "pose": "ext_radial",
+      "curve": "linear"
+     },
+     {
+      "dt": 0.4,
+      "pose": "flex_40",
+      "curve": "linear"
+     },
+     {
+      "dt": 0.5,
+      "pose": "flex_ulnar",
+      "curve": "linear"
+     },
+     {
+      "dt": 0.6,
+      "pose": "ext_40",
+      "curve": "linear"
+     },
+     {
+      "dt": 0.7,
+      "pose": "ext_radial",
+      "curve": "linear"
+     },
+     {
+      "dt": 0.8,
+      "pose": "neutral",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "lock_pacing",
+   "label": "Pacing",
+   "style": "Locking",
+   "text": "The wrist stays loose and the arm tight: quick jabs to the side, the hand swinging toward the thumb and the little finger.",
+   "check": "sourced",
+   "source": "Wikipedia: Locking (dance), Moves section (wrist loose, arm tight); the timing is an estimate",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": 0,
+      "pose": "lax",
+      "curve": "smooth"
+     }
+    ],
+    "wrist": [
+     {
+      "dt": 0.0,
+      "pose": "radial_20",
+      "curve": "linear",
+      "d": 0.07
+     },
+     {
+      "dt": 0.1,
+      "pose": "ulnar_30",
+      "curve": "linear",
+      "d": 0.07
+     },
+     {
+      "dt": 0.2,
+      "pose": "radial_20",
+      "curve": "linear",
+      "d": 0.07
+     },
+     {
+      "dt": 0.3,
+      "pose": "ulnar_30",
+      "curve": "linear",
+      "d": 0.07
+     },
+     {
+      "dt": 0.4,
+      "pose": "radial_20",
+      "curve": "linear",
+      "d": 0.07
+     },
+     {
+      "dt": 0.5,
+      "pose": "ulnar_30",
+      "curve": "linear",
+      "d": 0.07
+     },
+     {
+      "dt": 0.6,
+      "pose": "neutral",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "lock_hitchhike",
+   "label": "Hitch hike",
+   "style": "Locking",
+   "text": "The thumb jabs out to the side, then back into the fist.",
+   "check": "sourced",
+   "source": "Wikipedia: Locking (dance), Moves section (the thumbs jab out right and left); one hand shown",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": -0.1,
+      "pose": "fist_thumb_in",
+      "curve": "quick"
+     },
+     {
+      "dt": 0,
+      "pose": "thumb_out",
+      "curve": "snap"
+     },
+     {
+      "dt": 0.3,
+      "pose": "fist_thumb_in",
+      "curve": "quick"
+     }
+    ],
+    "wrist": [
+     {
+      "dt": 0,
+      "pose": "ulnar_15",
+      "curve": "snap"
+     },
+     {
+      "dt": 0.3,
+      "pose": "neutral",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "lock_floor_sweep",
+   "label": "Floor sweep",
+   "style": "Locking",
+   "text": "A flat hand wipes across, palm down.",
+   "check": "sourced",
+   "source": "Wikipedia: Locking (dance), Moves section (one hand moves across the floor like wiping)",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": -0.05,
+      "pose": "flat",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.5,
+      "pose": "relaxed",
+      "curve": "smooth"
+     }
+    ],
+    "palm": [
+     {
+      "dt": -0.05,
+      "pose": "palm_down",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.5,
+      "pose": "as_clip",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "lock_up_lock",
+   "label": "Up lock (muscle man)",
+   "style": "Locking",
+   "text": "Fists raised above the shoulders in a macho pose, held, then loosened.",
+   "check": "sourced",
+   "source": "Wikipedia: Locking (dance), Moves section (arms raised above the shoulders); the fists are my reading",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": 0,
+      "pose": "fist_tight",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.6,
+      "pose": "fist_loose",
+      "curve": "smooth"
+     }
+    ],
+    "palm": [
+     {
+      "dt": 0,
+      "pose": "palm_in",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.6,
+      "pose": "as_clip",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "lock_guitar",
+   "label": "Funky guitar",
+   "style": "Locking",
+   "text": "The hand grips as if on a guitar neck.",
+   "check": "sourced",
+   "source": "Wikipedia: Locking (dance), Moves section (hands held as if gripping a guitar)",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": 0,
+      "pose": "grip",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.9,
+      "pose": "relaxed",
+      "curve": "smooth"
+     }
+    ],
+    "palm": [
+     {
+      "dt": 0,
+      "pose": "palm_in",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.9,
+      "pose": "as_clip",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "pop_hit",
+   "label": "Hit (hand pop)",
+   "style": "Popping and tutting",
+   "text": "A muscle contraction that jerks the hand: the fingers flare for an instant, the wrist kicks back, then everything relaxes.",
+   "check": "knowledge",
+   "source": "Wikipedia: Popping (dance) / Tutting (popping is a quick contraction and release); the hand detail is from general knowledge",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": -0.05,
+      "pose": "soft",
+      "curve": "quick"
+     },
+     {
+      "dt": 0,
+      "pose": "spread",
+      "curve": "snap"
+     },
+     {
+      "dt": 0.12,
+      "pose": "soft",
+      "curve": "quick"
+     }
+    ],
+    "wrist": [
+     {
+      "dt": 0,
+      "pose": "ext_20",
+      "curve": "snap"
+     },
+     {
+      "dt": 0.12,
+      "pose": "neutral",
+      "curve": "quick"
+     }
+    ]
+   }
+  },
+  {
+   "key": "tut_angle_in",
+   "label": "Tut angle: hand in",
+   "style": "Popping and tutting",
+   "text": "A right angle at the wrist: the flat hand folds in at about 70 degrees and holds.",
+   "check": "sourced",
+   "source": "Wikipedia: Popping (dance) / Tutting (tutting forms right angles with the arms, hands and wrists); the angle is my reading",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": -0.08,
+      "pose": "flat",
+      "curve": "quick"
+     }
+    ],
+    "wrist": [
+     {
+      "dt": -0.08,
+      "pose": "neutral",
+      "curve": "quick"
+     },
+     {
+      "dt": 0,
+      "pose": "flex_70",
+      "curve": "snap"
+     },
+     {
+      "dt": 0.5,
+      "pose": "neutral",
+      "curve": "quick"
+     }
+    ]
+   }
+  },
+  {
+   "key": "tut_angle_back",
+   "label": "Tut angle: hand back",
+   "style": "Popping and tutting",
+   "text": "A right angle the other way: the flat hand bends back and holds.",
+   "check": "sourced",
+   "source": "Wikipedia: Popping (dance) / Tutting (tutting forms right angles); the angle is my reading",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": -0.08,
+      "pose": "flat",
+      "curve": "quick"
+     }
+    ],
+    "wrist": [
+     {
+      "dt": -0.08,
+      "pose": "neutral",
+      "curve": "quick"
+     },
+     {
+      "dt": 0,
+      "pose": "ext_65",
+      "curve": "snap"
+     },
+     {
+      "dt": 0.5,
+      "pose": "neutral",
+      "curve": "quick"
+     }
+    ]
+   }
+  },
+  {
+   "key": "pop_wave",
+   "label": "Hand wave (waving)",
+   "style": "Popping and tutting",
+   "text": "A wave arriving in the hand: the wrist passes in, level, back, level.",
+   "check": "knowledge",
+   "source": "Wikipedia: Popping (dance) / Tutting (waving is named, not described); from general knowledge",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": 0,
+      "pose": "relaxed",
+      "curve": "smooth"
+     }
+    ],
+    "wrist": [
+     {
+      "dt": 0,
+      "pose": "flex_20",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.12,
+      "pose": "neutral",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.24,
+      "pose": "ext_20",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.36,
+      "pose": "neutral",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "pop_strobe",
+   "label": "Strobe",
+   "style": "Popping and tutting",
+   "text": "Stop-motion stutter: the fingers flick between open and soft in held steps, about eight a second.",
+   "check": "knowledge",
+   "source": "Wikipedia: Popping (dance) / Tutting (strobing is named, not described); from general knowledge",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": 0.0,
+      "pose": "open",
+      "curve": "hold",
+      "d": 0.084
+     },
+     {
+      "dt": 0.12,
+      "pose": "soft",
+      "curve": "hold",
+      "d": 0.084
+     },
+     {
+      "dt": 0.24,
+      "pose": "open",
+      "curve": "hold",
+      "d": 0.084
+     },
+     {
+      "dt": 0.36,
+      "pose": "soft",
+      "curve": "hold",
+      "d": 0.084
+     },
+     {
+      "dt": 0.48,
+      "pose": "open",
+      "curve": "hold",
+      "d": 0.084
+     },
+     {
+      "dt": 0.6,
+      "pose": "soft",
+      "curve": "hold",
+      "d": 0.084
+     },
+     {
+      "dt": 0.72,
+      "pose": "relaxed",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "pop_finger_gun",
+   "label": "Finger gun",
+   "style": "Popping and tutting",
+   "text": "The hand makes a gun, with a small recoil at the wrist.",
+   "check": "knowledge",
+   "source": "general knowledge (a common hip hop gesture)",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": -0.1,
+      "pose": "l_shape",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.5,
+      "pose": "relaxed",
+      "curve": "smooth"
+     }
+    ],
+    "wrist": [
+     {
+      "dt": 0,
+      "pose": "ext_20",
+      "curve": "snap"
+     },
+     {
+      "dt": 0.12,
+      "pose": "neutral",
+      "curve": "quick"
+     }
+    ]
+   }
+  },
+  {
+   "key": "krump_jab",
+   "label": "Jab",
+   "style": "Krump",
+   "text": "A short, sharp push out from the chest and back with the same energy: the fist tightens at the end.",
+   "check": "knowledge",
+   "source": "Wikipedia: Krumping (the jab is described as an arm movement; the fist is my reading)",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": -0.1,
+      "pose": "fist",
+      "curve": "quick"
+     },
+     {
+      "dt": 0,
+      "pose": "fist_tight",
+      "curve": "snap"
+     },
+     {
+      "dt": 0.25,
+      "pose": "fist",
+      "curve": "quick"
+     }
+    ],
+    "wrist": [
+     {
+      "dt": 0,
+      "pose": "neutral",
+      "curve": "snap"
+     }
+    ]
+   }
+  },
+  {
+   "key": "krump_arm_swing",
+   "label": "Arm swing (loose hand)",
+   "style": "Krump",
+   "text": "The arm sweeps with gravity and the hand trails behind it, then catches up.",
+   "check": "knowledge",
+   "source": "Wikipedia: Krumping (arm swings are described as sweeping, like a bat); the trailing hand is my reading",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": 0,
+      "pose": "lax",
+      "curve": "smooth"
+     }
+    ],
+    "wrist": [
+     {
+      "dt": 0,
+      "pose": "ext_20",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.3,
+      "pose": "flex_20",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.6,
+      "pose": "neutral",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "party_cabbage_patch",
+   "label": "Cabbage Patch",
+   "style": "Party dances",
+   "text": "Fists circle beside the head: closed hands, the wrist rolling around.",
+   "check": "knowledge",
+   "source": "general knowledge (named in Wikipedia: Hip-hop dance, not described)",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": 0,
+      "pose": "fist",
+      "curve": "quick"
+     },
+     {
+      "dt": 1.6,
+      "pose": "relaxed",
+      "curve": "smooth"
+     }
+    ],
+    "wrist": [
+     {
+      "dt": 0,
+      "pose": "flex_40",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.2,
+      "pose": "flex_ulnar",
+      "curve": "linear"
+     },
+     {
+      "dt": 0.4,
+      "pose": "ext_40",
+      "curve": "linear"
+     },
+     {
+      "dt": 0.6,
+      "pose": "ext_radial",
+      "curve": "linear"
+     },
+     {
+      "dt": 0.8,
+      "pose": "flex_40",
+      "curve": "linear"
+     },
+     {
+      "dt": 1.0,
+      "pose": "flex_ulnar",
+      "curve": "linear"
+     },
+     {
+      "dt": 1.2,
+      "pose": "ext_40",
+      "curve": "linear"
+     },
+     {
+      "dt": 1.4,
+      "pose": "ext_radial",
+      "curve": "linear"
+     },
+     {
+      "dt": 1.6,
+      "pose": "neutral",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "party_hair_stroke",
+   "label": "Dougie hair stroke",
+   "style": "Party dances",
+   "text": "The hand strokes the hair back from the forehead, palm in, wrist rolling.",
+   "check": "knowledge",
+   "source": "a dance guide's description (a hand raised near the head as if stroking the hair back); the wrist is my reading",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": 0,
+      "pose": "soft",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.8,
+      "pose": "relaxed",
+      "curve": "smooth"
+     }
+    ],
+    "wrist": [
+     {
+      "dt": 0,
+      "pose": "flex_20",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.3,
+      "pose": "ext_20",
+      "curve": "smooth"
+     },
+     {
+      "dt": 0.6,
+      "pose": "neutral",
+      "curve": "smooth"
+     }
+    ],
+    "palm": [
+     {
+      "dt": 0,
+      "pose": "palm_in",
+      "curve": "quick"
+     },
+     {
+      "dt": 0.8,
+      "pose": "as_clip",
+      "curve": "smooth"
+     }
+    ]
+   }
+  },
+  {
+   "key": "party_money",
+   "label": "Money rub",
+   "style": "Party dances",
+   "text": "The thumb rubs the fingertips, as counting money.",
+   "check": "knowledge",
+   "source": "general knowledge (a common hip hop gesture)",
+   "lanes": {
+    "fingers": [
+     {
+      "dt": 0.0,
+      "pose": "pinch_all",
+      "curve": "linear",
+      "d": 0.105
+     },
+     {
+      "dt": 0.15,
+      "pose": "pinch_open",
+      "curve": "linear",
+      "d": 0.105
+     },
+     {
+      "dt": 0.3,
+      "pose": "pinch_all",
+      "curve": "linear",
+      "d": 0.105
+     },
+     {
+      "dt": 0.45,
+      "pose": "pinch_open",
+      "curve": "linear",
+      "d": 0.105
+     },
+     {
+      "dt": 0.6,
+      "pose": "pinch_all",
+      "curve": "linear",
+      "d": 0.105
+     },
+     {
+      "dt": 0.75,
+      "pose": "pinch_open",
+      "curve": "linear",
+      "d": 0.105
+     },
+     {
+      "dt": 0.9,
+      "pose": "relaxed",
+      "curve": "smooth"
+     }
+    ]
+   }
+  }
+ ]
+}
