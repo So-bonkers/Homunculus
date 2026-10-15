@@ -22,7 +22,7 @@ function Hero({ runs }: { runs: RunSummary[] | undefined }) {
       <div className="relative mx-auto grid max-w-7xl items-center gap-10 px-4 py-14 lg:grid-cols-[1.05fr_1fr] lg:px-6 lg:py-20">
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.2, 0.8, 0.2, 1] }}>
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-line-strong bg-white/4 px-3 py-1 text-xs text-ink-2">
-            <span className="size-1.5 rounded-full bg-ok" /> Fully local · one 24 GB GPU · v1.6
+            <span className="size-1.5 rounded-full bg-ok" /> Fully local · one 24 GB GPU · v2.0
           </div>
           <h1 className="text-5xl leading-[1.02] font-semibold tracking-[-0.035em] sm:text-6xl lg:text-7xl">
             Picture in.<br /><span className="text-gradient">Character out.</span>

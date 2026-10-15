@@ -114,7 +114,7 @@ export default function App() {
           <Link to="/" className="flex items-center gap-2.5">
             <Logo />
             <span className="text-[15px] font-semibold tracking-tight">Homunculus</span>
-            <span className="rounded-md border border-line-strong px-1.5 py-0.5 font-mono text-[10px] text-ink-3">v1.6</span>
+            <span className="rounded-md border border-line-strong px-1.5 py-0.5 font-mono text-[10px] text-ink-3">v2.0</span>
           </Link>
           <nav className="ml-4 hidden items-center gap-1 md:flex" data-tour="nav">
             <NavLink to="/" end className={link}>Runs</NavLink>

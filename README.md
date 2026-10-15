@@ -2,7 +2,7 @@
 
 **One picture in, a rigged and animated 3D character out. Fully local, on one 24 GB GPU.**
 
-Give Homunculus a picture of a character (or a turnaround sheet, or an existing 3D model) and it builds a textured 3D model, rigs it with a 52-bone Mixamo skeleton (fingers included) and animates it: copy a dance straight from a video, describe a motion in plain words, or bring Mixamo and mocap clips. A local web app runs the pipeline, shows every step, and lets you (or local vision-language models, or nobody at all) decide at each gate. Current version: **v1.6** ([tags](https://github.com/So-bonkers/Homunculus/tags)).
+Give Homunculus a picture of a character (or a turnaround sheet, or an existing 3D model) and it builds a textured 3D model, rigs it with a 52-bone Mixamo skeleton (fingers included) and animates it: copy a dance straight from a video, describe a motion in plain words, or bring Mixamo and mocap clips. A local web app runs the pipeline, shows every step, and lets you (or local vision-language models, or nobody at all) decide at each gate. Current version: **v2.0** ([tags](https://github.com/So-bonkers/Homunculus/tags)).
 
 ## Showcase: *Miles Jackson*
 
@@ -231,6 +231,7 @@ Licences are taken from each model card at the time of writing; read them before
 | [REPAIR.md](docs/REPAIR.md) | Repair: regions, redraws, the graft and its seam |
 | [RETEXTURE.md](docs/RETEXTURE.md) | retexturing a brushed part |
 | [VIDEO_MOTION.md](docs/VIDEO_MOTION.md) | dance from a video: setup and what to expect |
+| [GROUP_DANCE.md](docs/GROUP_DANCE.md) | six dancers from one fixed-camera video, in one scene |
 | [research/](docs/research/00_synthesis.md) | a survey of the field (image to 3D, rigging, human motion, group choreography, image generation, applications) and what it means for this project |
 | [DECISIONS.md](docs/DECISIONS.md) | why the project is the way it is: decisions, their reasons, and open questions |
 | [PAIN_POINTS.md](docs/PAIN_POINTS.md) | the open problems, honestly |

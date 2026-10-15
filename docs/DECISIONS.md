@@ -10,7 +10,7 @@ How to add one: copy the template at the bottom, put it at the top of its sectio
 
 Stated by the author on 2026-10-13, in this order of priority:
 
-1. **Idea to visible product.** Largely achieved (v1.6: picture in, rigged and animated character out, a web app, a dance copied from a video).
+1. **Idea to visible product.** Largely achieved (v2.0: picture in, rigged and animated character out, a web app, a dance copied from a video).
 2. **More than one 3D model in a scene, group choreography.** See [ROADMAP.md](ROADMAP.md) (several characters in one scene).
 3. **Research what the project is genuinely useful for.** Applications first, features second.
 4. **Understand the domain, and through it the codebase.** The code is written largely with an AI assistant; the author's goal is to learn the domain (diffusion conditioning, SMPL and retargeting, mesh topology) and let that lead to understanding the code, not the other way round.
@@ -28,10 +28,10 @@ Stated by the author on 2026-10-13, in this order of priority:
 ## Process
 
 **D-24 · 2026-10-13 · Push one commit at a time, oldest first; tags only when asked.**
-Why: every commit stays reviewable on GitHub and a bad one can be reverted without untangling a batch. (The author's rule; reason partly inferred.) All tags v1.0–v1.6 were pushed on request.
+Why: every commit stays reviewable on GitHub and a bad one can be reverted without untangling a batch. (The author's rule; reason partly inferred.) All tags v1.0–v1.8 were pushed on request.
 
 **D-23 · 2026-10-13 · Versions are named after milestones, not release dates.**
-v1.0 is the early animation video (`4d4ac23`), then v1.1 `300c915`, v1.2 `7b555d1`, v1.3 `456e14e`, v1.4 `e8e6c80` (video to dance), v1.5 `ef37b72` (texture fill), v1.6 `ab254f4`. Why: the author's call; the first public thing that moved was the point at which it felt like a product.
+v1.0 is the early animation video (`4d4ac23`), then v1.1 `300c915`, v1.2 `7b555d1`, v1.3 `456e14e`, v1.4 `e8e6c80` (video to dance), v1.5 `ef37b72` (texture fill), v1.6 `ab254f4`, v1.7 `2906d4c` (hand labels from a vision-language model), v1.8 `d5f1a3d`, v2.0 (a group dance from one video, with the hand moves and body moves vocabularies; v1.9 was skipped because the LLM annotation it was held for is part of v2.0). Why: the author's call; the first public thing that moved was the point at which it felt like a product.
 
 **D-22 · 2026-10-13 · Two Claude sessions may work in the same repository; each stages only its own hunks.**
 Why: a second session fixed `smpl_to_bvh` and the video-to-dance path while the first built the UI; staging the whole tree would have mixed the two. Not a commit but a working rule.
