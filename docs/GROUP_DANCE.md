@@ -18,3 +18,11 @@ Six dancers in one shot (We Dem Boyz, 0:13–2:03, 110 s, 4K, steady camera) bec
 - Feet are not locked to the floor; floor work and fast spins are weaker (GVHMR).
 - LLM annotation costs about 35 s of wall time per second of video, per dancer (about 4 h for the six).
 - Neighbouring dancers in a crop can confuse the hand labels; masking them is not built.
+
+## Corrections made after the first render (what to know)
+- **The pelvis offset.** GVHMR's `transl` is the SMPL-X model's origin, not the pelvis: the pelvis is 0.39 m above it, in the body's own frame. Fitted to the ViTPose keypoints of all six dancers (2855 frames) the reprojection error fell from 0.243 m to 0.043 m. `tools/group_scene.py` applies it (`PELVIS`); before that every character stood 0.39 m too low.
+- **Gaps.** A frame outside a dancer's verified stretches used to keep the zero pose (a T-pose): the fill took a rounded interpolated index, which maps such a frame to itself. Poses are now held at the ends of the shot and blended (rotations by slerp, the root linearly) across the gaps.
+- **Nobody is hidden.** The render's camera is not the video's camera (which whip-pans, drops to the floor, and is blocked by other dancers), so `tools/render_group.py` draws every dancer in every frame (`--hide-gaps-over S` hides only gaps longer than S seconds). Blended frames are interpolated, not observed.
+- **Camera tilt.** `--pitch` (default 1.0 degree) turns the camera further down than the floor fit says: measured against the video's keypoints the render stood 21 px (waist) to 68 px (ankles) too low at 1080p, 1.0 degree is 38 px.
+- **Forcing a stretch.** `tools/group_segments.py --only K --accept "K:first-last"` takes frames the appearance check rejected although the dancer is clearly there (checked by eye). The check often rejects look-alikes' frames wrongly and, in the other direction, `tools/group_audit.py` (which compares every detected person with each dancer) picks look-alikes too: its candidates must be looked at.
+- **Neon stage.** `--neon` renders with EEVEE: a dark glossy floor, neon tubes on the back wall, coloured rim lights (about 0.85 s a frame at 1280x720).

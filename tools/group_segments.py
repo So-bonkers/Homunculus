@@ -10,7 +10,8 @@ import os, sys, json, argparse, subprocess
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); GV = os.path.join(ROOT, "gvhmr")
 sys.path[:0] = [os.path.join(GV, "shim"), os.path.join(GV, "repo")]
 ap = argparse.ArgumentParser(); ap.add_argument("--dir", required=True); ap.add_argument("--step", type=int, default=3); ap.add_argument("--min-height", type=float, default=0.16)
-ap.add_argument("--reuse", action="store_true", help="use the appearance features saved by an earlier run (feats.npz)"); ap.add_argument("--bridge", type=int, default=20); ap.add_argument("--min-seg", type=int, default=45); ap.add_argument("--sigma", type=float, default=3.5, help="a frame is dropped when its similarity is this many MADs under the dancer's median")
+ap.add_argument("--reuse", action="store_true", help="use the appearance features saved by an earlier run (feats.npz)"); ap.add_argument("--bridge", type=int, default=20); ap.add_argument("--min-seg", type=int, default=45); ap.add_argument("--accept", default="", help="k:first-last[,k:first-last] frames to take as the dancer although the check rejects them (looked at by eye); the stretches are then cut again")
+ap.add_argument("--only", default="", help="comma-separated dancer numbers to redo (the others stay as they are in segments.json)"); ap.add_argument("--sigma", type=float, default=3.5, help="a frame is dropped when its similarity is this many MADs under the dancer's median")
 a = ap.parse_args(); a.dir = os.path.abspath(a.dir)
 import cv2, numpy as np, torch, timm
 from hmr4d.utils.geo.hmr_cam import get_bbx_xys_from_xyxy
@@ -45,8 +46,12 @@ if a.reuse and os.path.exists(cache): z = np.load(cache); feats = [z[f"d{k}"] fo
 else:
     feats = [np.stack(x) for x in feats]; np.savez(cache, **{f"d{k}": feats[k] for k in range(K)})
 M = len(fr_idx)
+sj = os.path.join(a.dir, "segments.json"); old = json.load(open(sj)) if os.path.exists(sj) else {"dancers": []}; only = {int(x) for x in a.only.split(",") if x}
+acc = {}
+for t in [x for x in a.accept.split(",") if x]: kk, rg = t.split(":"); f0, f1 = rg.split("-"); acc.setdefault(int(kk), []).append((int(f0), int(f1)))
 out = {"frames": N, "fps": 30, "dancers": []}
 for k in range(K):
+    if only and k + 1 not in only: out["dancers"].append(next(d for d in old["dancers"] if d["k"] == k + 1)); continue
     F = feats[k] / np.linalg.norm(feats[k], axis=1, keepdims=True); hgt = np.array([(box[k][f][3] - box[k][f][1]) / H for f in fr_idx[:len(F)]])
     alone = np.array([all(j == k or iou(box[k][f], box[j][f]) < 0.1 for j in range(K)) for f in fr_idx[:len(F)]]); good = (hgt >= 0.33) & alone
     g = F[good].mean(0) if good.sum() >= 10 else F.mean(0); g /= np.linalg.norm(g)
@@ -56,6 +61,7 @@ for k in range(K):
     ok = (sim >= thr) & (hgt >= a.min_height) & (box[k][fr_idx[:len(F)], 0] < W - 8) & (box[k][fr_idx[:len(F)], 2] > 8)
     v = np.zeros(N, bool)
     for i, f in enumerate(fr_idx[:len(F)]): v[f:f + a.step] = ok[i]
+    for f0, f1 in acc.get(k + 1, []): v[f0:f1] = True
     d = np.diff(np.r_[0, v.astype(int), 0]); starts, ends = list(np.where(d == 1)[0]), list(np.where(d == -1)[0])      # close the short gaps, then drop the short stretches
     segs = []
     for s, e in zip(starts, ends):
@@ -66,6 +72,10 @@ for k in range(K):
     for i, (s, e) in enumerate(segs):
         ov = np.mean([any(iou(box[k][f], box[j][f]) > 0.3 for j in range(K) if j != k) for f in range(s, e, 3)])
         sd = os.path.join(a.dir, f"d{k + 1}", f"s{i:02d}"); os.makedirs(os.path.join(sd, "clip", "preprocess"), exist_ok=True)
+        was = next((x for d_ in old["dancers"] if d_["k"] == k + 1 for x in d_["segments"] if x["i"] == i), None)
+        if was is None or (was["start"], was["end"]) != (int(s), int(e)):                        # a stretch that changed: its GVHMR result is out of date
+            for fn in ("smpl_incam.npz", "smpl_global.npz", "hmr4d_results.pt", os.path.join("preprocess", "vitpose.pt"), os.path.join("preprocess", "vit_features.pt")):
+                if os.path.exists(os.path.join(sd, "clip", fn)): os.remove(os.path.join(sd, "clip", fn))
         t = torch.from_numpy(box[k][s:e]); torch.save({"bbx_xyxy": t.float(), "bbx_xys": get_bbx_xys_from_xyxy(t, base_enlarge=1.2).float()}, os.path.join(sd, "clip", "preprocess", "bbx.pt"))
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", os.path.join(a.dir, f"d{k + 1}", "clip.mp4"), "-vf", f"select='between(n\\,{s}\\,{e - 1})',setpts=N/30/TB", "-r", "30", "-an", "-c:v", "libx264", "-crf", "14", os.path.join(sd, "clip.mp4")], check=True)
         ent.append({"i": i, "start": int(s), "end": int(e), "frames": int(e - s), "overlapped": round(float(ov), 2)})

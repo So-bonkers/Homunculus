@@ -14,13 +14,30 @@ import smpl_to_bvh as B
 ap = argparse.ArgumentParser(); ap.add_argument("--dir", required=True); ap.add_argument("--out", default="scene"); a = ap.parse_args(); a.dir = os.path.abspath(a.dir); out = os.path.join(a.dir, a.out); os.makedirs(out, exist_ok=True)
 G = json.load(open(os.path.join(a.dir, "dancers.json"))); S = json.load(open(os.path.join(a.dir, "segments.json"))); N, W, H = G["frames"], G["width"], G["height"]
 F = np.diag([1.0, -1.0, -1.0])
+PELVIS = np.array([0.0, 0.39, 0.0])       # GVHMR's `transl` is the SMPL-X model's origin, not its pelvis: the pelvis is 0.39 m above it in the body's own frame (fitted to ViTPose keypoints over 2855 frames of six dancers: the reprojection error fell from 0.243 m to 0.043 m; before this the dancers stood 0.39 m too low)
 def to_gl(orient, transl):
     R = F @ Rot.from_rotvec(orient).as_matrix(); return Rot.from_matrix(R).as_rotvec(), transl @ F.T                      # R_gl = F R_c, t_gl = F t
+def fill_gaps(idx, N, go, bp, betas, tr):
+    """Frames outside the verified ones (idx) get a pose: before the first and after the last the nearest verified one; across a gap a blend (rotations by slerp, the root position linearly) of the pose before and the one after.
+    (An earlier version took the rounded interpolated index, which maps a gap frame to itself and left it as the zero pose, a T-pose.)"""
+    go, bp, betas, tr = go.copy(), bp.copy(), betas.copy(), tr.copy(); ok = np.zeros(N, bool); ok[idx] = True
+    for f in range(0, idx[0]): go[f], bp[f], betas[f], tr[f] = go[idx[0]], bp[idx[0]], betas[idx[0]], tr[idx[0]]
+    for f in range(idx[-1] + 1, N): go[f], bp[f], betas[f], tr[f] = go[idx[-1]], bp[idx[-1]], betas[idx[-1]], tr[idx[-1]]
+    for a, b in zip(idx[:-1], idx[1:]):
+        if b - a <= 1: continue
+        t = (np.arange(a + 1, b) - a) / (b - a)
+        def sl(r0, r1): return Rot.concatenate([Rot.from_rotvec(r0), Rot.from_rotvec(r1)])
+        from scipy.spatial.transform import Slerp
+        g = Slerp([0, 1], sl(go[a], go[b]))(t).as_rotvec(); go[a + 1:b] = g
+        P = bp[a].reshape(21, 3), bp[b].reshape(21, 3); out = np.zeros((b - a - 1, 21, 3))
+        for j in range(21): out[:, j] = Slerp([0, 1], sl(P[0][j], P[1][j]))(t).as_rotvec()
+        bp[a + 1:b] = out.reshape(-1, 63); tr[a + 1:b] = tr[a] + (tr[b] - tr[a]) * t[:, None]; betas[a + 1:b] = betas[a]
+    return go, bp, betas, tr
 D = []
 for d in S["dancers"]:
     k = d["k"]; arr = {x: np.zeros((N, n)) for x, n in (("global_orient", 3), ("body_pose", 63), ("betas", 10), ("transl", 3))}; valid = np.zeros(N, bool)
     for s in d["segments"]:
-        z = np.load(os.path.join(a.dir, f"d{k}", f"s{s['i']:02d}", "clip", "smpl_incam.npz")); L = min(len(z["transl"]), s["frames"]); go, tr = to_gl(z["global_orient"][:L], z["transl"][:L])
+        z = np.load(os.path.join(a.dir, f"d{k}", f"s{s['i']:02d}", "clip", "smpl_incam.npz")); L = min(len(z["transl"]), s["frames"]); go, tr = to_gl(z["global_orient"][:L], z["transl"][:L]); tr = tr + Rot.from_rotvec(go).apply(PELVIS)
         arr["global_orient"][s["start"]:s["start"] + L] = go; arr["transl"][s["start"]:s["start"] + L] = tr; arr["body_pose"][s["start"]:s["start"] + L] = z["body_pose"][:L]; arr["betas"][s["start"]:s["start"] + L] = z["betas"][:L]; valid[s["start"]:s["start"] + L] = True
     D.append((k, arr, valid)); print(f"dancer {k}: {valid.sum()} verified frames ({100 * valid.mean():.0f} %)")
 # the real vertical: feet low on one plane
@@ -48,8 +65,7 @@ for k, arr, valid in D:
     idx = np.where(valid)[0]
     if len(idx) == 0: continue
     go = Rot.from_matrix(R_fix @ Rot.from_rotvec(arr["global_orient"]).as_matrix()).as_rotvec(); tr = arr["transl"] @ R_fix.T; tr[:, 1] -= d_floor
-    for key in ("global_orient", "body_pose", "betas", "transl"):                                                  # outside the verified stretches: the nearest verified frame
-        v = go if key == "global_orient" else tr if key == "transl" else arr[key]; near = np.interp(np.arange(N), idx, idx).round().astype(int); v[:] = v[near]
+    go, arr["body_pose"], arr["betas"], tr = fill_gaps(idx, N, go, arr["body_pose"], arr["betas"], tr)                          # outside the verified stretches: held at the ends, blended across the gaps
     np.savez(os.path.join(out, f"d{k}_gravity.npz"), body_pose=arr["body_pose"], betas=arr["betas"], global_orient=go, transl=tr)
     ranges = [[int(s), int(e)] for s, e in zip(np.where(np.diff(np.r_[0, valid.astype(int)]) == 1)[0], np.where(np.diff(np.r_[valid.astype(int), 0]) == -1)[0] + 1)]
     scene["dancers"].append({"k": k, "valid_ranges": ranges, "first_valid": int(idx[0]), "start_xz": [float(tr[0, 0]), float(tr[0, 2])], "betas_mean": arr["betas"][idx].mean(0).tolist()})
