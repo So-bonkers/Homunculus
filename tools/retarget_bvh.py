@@ -19,6 +19,7 @@ def opt(flag, default=None, cast=str):
     if flag in argv: i = argv.index(flag); v = argv[i + 1]; del argv[i:i + 2]; return cast(v)
     return default
 OUT_FPS = opt("--fps", 60, int); MAP_NAME = opt("--map", "cmu"); F_START = opt("--start", None, int); SRC_FPS_OPT = opt("--src-fps", None, int); SRC_UNIT = opt("--src-scale", None, float); F_END = opt("--end", None, int); REPORT_ONLY_FLOOR = "--floor-lock" in argv
+TARGET = opt("--target", "mixamo")           # the target's skeleton: mixamo (default) or valorant (the game's own humanoid rig, from the community models)
 TEXTURE = opt("--texture", None)             # a picture to use as the character's base-colour texture instead of the one it came with (same size and layout: a recoloured copy of it)
 if "--floor-lock" in argv: argv.remove("--floor-lock")
 target_path, bvh_path, out_dir, name = argv[:4]; os.makedirs(out_dir, exist_ok=True)
@@ -55,7 +56,10 @@ for o in [o for o in bpy.data.objects if o.type == "MESH" and o.name == "Icosphe
 if T.animation_data: T.animation_data.action = None
 for a in list(bpy.data.actions): bpy.data.actions.remove(a)
 PFX = "mixamorig:" if T.data.bones.get("mixamorig:Hips") else ""
-tb = {k: T.data.bones.get(PFX + k) for k in MAP}
+TMAPS = {"valorant": {"Hips": "Pelvis", "Spine": "Spine1", "Spine1": "Spine2", "Spine2": "Spine3", "Neck": "Neck", "Head": "Head",            # Spine4 (a fourth spine bone) has no source: it follows Spine3
+                      **{f"{S_}{n}": f"{s_}_{v}" for S_, s_ in (("Left", "L"), ("Right", "R")) for n, v in (("Shoulder", "Clavicle"), ("Arm", "Shoulder"), ("ForeArm", "Elbow"), ("Hand", "Hand"), ("UpLeg", "Hip"), ("Leg", "Knee"), ("Foot", "Foot"), ("ToeBase", "Toe"))}}}
+TNAME = TMAPS.get(TARGET, {}); ROOTMOVE = "Splitter" if TARGET == "valorant" else None
+tb = {k: T.data.bones.get(TNAME.get(k, PFX + k)) for k in MAP}
 missing = [k for k, b in tb.items() if b is None]
 if missing: sys.exit(f"the character lacks bones {missing}: it needs a Mixamo-style skeleton")
 Tw = T.matrix_world; Tr = Tw.to_quaternion().to_matrix(); Tr_inv = Tr.inverted()
@@ -86,10 +90,32 @@ for k, sn in MAP.items():
 Sw = S.matrix_world; Sr = Sw.to_quaternion().to_matrix()
 
 def rest_rot(obj_w, bone): return (obj_w @ bone.matrix_local).to_3x3().normalized()
-Rs0 = {k: rest_rot(Sw, sb[k]) for k in MAP}; Rt0 = {k: rest_rot(Tw, tb[k]) for k in MAP}
+FACE = Matrix.Rotation(math.pi, 3, "Z") if TARGET == "valorant" else Matrix.Identity(3)      # the game's models face +Y at rest, the Mixamo ones and the sources -Y: the rest pose is turned about the vertical so the same world motion fits
+Rs0 = {k: rest_rot(Sw, sb[k]) for k in MAP}; Rt0 = {k: FACE @ rest_rot(Tw, tb[k]) for k in MAP}
 def rest_dir(obj_w, bone): return (obj_w.to_3x3() @ (bone.tail_local - bone.head_local)).normalized()
-Ccorr = {k: (rest_dir(Tw, tb[k]).rotation_difference(rest_dir(Sw, sb[k])).to_matrix() if k in LIMB else Matrix.Identity(3)) for k in MAP}
-swing = {k: math.degrees(rest_dir(Tw, tb[k]).angle(rest_dir(Sw, sb[k]))) for k in LIMB}
+NEXT = {"LeftArm": "LeftForeArm", "LeftForeArm": "LeftHand", "LeftUpLeg": "LeftLeg", "LeftLeg": "LeftFoot", "LeftFoot": "LeftToeBase", "RightArm": "RightForeArm", "RightForeArm": "RightHand", "RightUpLeg": "RightLeg", "RightLeg": "RightFoot", "RightFoot": "RightToeBase"}
+def t_dir(k):      # a bone's rest direction on the target: a game rig imported from glTF has meaningless bone tails (several children, arbitrary lengths), so the direction is taken to the next joint
+    if TARGET == "mixamo": return rest_dir(Tw, tb[k])
+    return (FACE @ (Tw.to_3x3() @ (tb[NEXT[k]].head_local - tb[k].head_local))).normalized()
+Ccorr = {k: (t_dir(k).rotation_difference(rest_dir(Sw, sb[k])).to_matrix() if k in LIMB else Matrix.Identity(3)) for k in MAP}
+swing = {k: math.degrees(t_dir(k).angle(rest_dir(Sw, sb[k]))) for k in LIMB}
+# A-pose rigs (arms far from the source's T-pose): the hand follows its forearm's correction (otherwise it keeps its own rest orientation and the wrist is bent by the whole swing), and the arm is also turned about its own
+# length so the rest palm faces down as the source's does (an A-pose rig's palms face the thighs).  The Mixamo and Make-It-Animatable rigs (arms within about 15 degrees) are left exactly as they were.
+for side in ("Left", "Right"):
+    if max(swing[side + "Arm"], swing[side + "ForeArm"]) < 30: continue
+    try:
+        hb, m1, i1, p1 = (tb[side + "Hand"].head_local, T.data.bones[PFX + side + "HandMiddle1"].head_local if not TNAME else T.data.bones[TNAME.get(side + "HandMiddle1", PFX + side + "HandMiddle1")].head_local,
+                          T.data.bones[PFX + side + "HandIndex1"].head_local, T.data.bones[PFX + side + "HandPinky1"].head_local)
+    except KeyError: hb = None
+    d = rest_dir(Sw, sb[side + "Arm"]); Csw = Ccorr[side + "Arm"]
+    if hb is not None:
+        ax = (Tw.to_3x3() @ (m1 - hb)).normalized(); ts = Tw.to_3x3() @ (i1 - p1); ts = (ts - ax * ts.dot(ax)).normalized(); n_t = ax.cross(ts).normalized(); n_t = n_t if side == "Left" else -n_t       # the palm's normal, as in blender_handpose.py
+        a_ = Csw @ n_t; a_ = (a_ - d * a_.dot(d)).normalized(); b_ = Vector((0, 0, -1)); b_ = (b_ - d * b_.dot(d)).normalized()
+        theta = math.atan2(d.dot(a_.cross(b_)), a_.dot(b_)); Tw_ = Matrix.Rotation(theta, 3, d)
+    else: Tw_ = Matrix.Identity(3)
+    for k in (side + "Arm", side + "ForeArm"): Ccorr[k] = Tw_ @ Ccorr[k]
+    Ccorr[side + "Hand"] = Ccorr[side + "ForeArm"]
+    print(f"[retarget] {side} arm is far from the source's T-pose ({swing[side + 'Arm']:.0f} degrees): the hand follows the forearm, arm turned {math.degrees(theta) if hb is not None else 0:.0f} degrees about its length", flush=True)
 print("[retarget] rest-pose direction difference corrected (degrees): " + ", ".join(f"{k} {v:.0f}" for k, v in swing.items()), flush=True)
 
 # scale: standing hip height above the soles, target against source
@@ -132,6 +158,10 @@ for i, (R, hp) in enumerate(samples):
                 w = Vector((hips_t0.x + K * (hp.x - p0.x), hips_t0.y + K * (hp.y - p0.y), fl_t + K * hp.z)); head = Tw.inverted() @ w
         else:
             rel = bone.parent.matrix_local.inverted() @ bone.matrix_local; head = (M_pose[bone.parent.name] @ rel).translation if bone.parent.name in M_pose else None
+        if bn == ROOTMOVE and bone.parent is not None and bone.parent.name in M_pose:      # a game rig: the root path goes to the bone that carries both the legs' and the spine's chains (Splitter), not to the hips
+            w = Vector((hips_t0.x + K * (hp.x - p0.x), hips_t0.y + K * (hp.y - p0.y), fl_t + K * hp.z)); M = Matrix.Translation(Tw.inverted() @ w) @ bone.matrix_local.to_3x3().to_4x4()
+            base = M_pose[bone.parent.name] @ (bone.parent.matrix_local.inverted() @ bone.matrix_local); B = base.inverted() @ M; pb.location = B.translation; pb.rotation_quaternion = (1, 0, 0, 0); M_pose[bn] = M
+            pb.keyframe_insert("location", frame=frame); pb.keyframe_insert("rotation_quaternion", frame=frame); continue
         if k is None:
             if head is None: continue
             rel = bone.parent.matrix_local.inverted() @ bone.matrix_local if bone.parent else Matrix.Identity(4)

@@ -67,16 +67,27 @@ def palm_at(track, f, ease=0.13):
     return prev, nxt, u
 
 
+VALORANT = {"Clavicle": "Shoulder", "Shoulder": "Arm", "Elbow": "ForeArm", "Hand": "Hand", "Hip": "UpLeg", "Knee": "Leg", "Foot": "Foot", "Toe": "ToeBase"}
+VALORANT_SPINE = {"Spine1": "Spine", "Spine2": "Spine1", "Spine3": "Spine2"}
+def canon(name):
+    """A bone's Mixamo-style name (without the prefix): the game rig of the community Valorant models (L_Hand, L_Index1, L_Elbow ...) is read as Mixamo's (LeftHand, LeftHandIndex1, LeftForeArm ...); (its Spine1-3 are Mixamo's Spine, Spine1, Spine2, see VALORANT_SPINE)."""
+    n = name.split(":")[-1]; m = re.match(r"^([LR])_(.+)$", n)
+    if not m: return n
+    side, rest = ("Left" if m.group(1) == "L" else "Right"), m.group(2); f = re.match(r"^(Thumb|Index|Middle|Ring|Pinky)([1-3])$", rest)
+    if f: return f"{side}Hand{f.group(1)}{f.group(2)}"
+    return side + VALORANT[rest] if rest in VALORANT else n
+
+
 class Fingers:
     """The finger bones of an armature and how each one curls (and spreads) in its own space."""
     def __init__(self, arm, lib):
         from mathutils import Vector, Quaternion
         self.Q, self.arm, self.lib = Quaternion, arm, lib; rx = re.compile(r"^(?:.*:)?(Left|Right)Hand(Thumb|Index|Middle|Ring|Pinky)([1-4])$"); chains = {}
         for b in arm.data.bones:
-            m = rx.match(b.name)
+            m = rx.match(canon(b.name))
             if m: chains.setdefault((m.group(1), m.group(2).lower()), {})[int(m.group(3))] = b
         if not chains: raise RuntimeError("no finger bones found (names)")
-        bone = {b.name.split(":")[-1]: b for b in arm.data.bones}; self._hand_frame = {}
+        game = arm.data.bones.get("Splitter") is not None; bone = {(VALORANT_SPINE.get(b.name) if game and b.name in VALORANT_SPINE else canon(b.name)): b for b in arm.data.bones if not (game and b.name == "Spine4")}; self._hand_frame = {}
         def palm_of(side):
             """The palm normal of a hand in the rest pose, in armature space, from the rig's own bones: the hand axis (wrist to the middle knuckle) x the way the thumb side lies (pinky knuckle to
             index knuckle), mirrored for the right hand. Rigs differ: a Mixamo T-pose has the palms down, a Make-It-Animatable one often forward with the thumbs up."""

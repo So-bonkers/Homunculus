@@ -89,7 +89,7 @@ def generate(R, video, start, end, label=None, title=None, yaw=180.0, log=None, 
         bvh = work / "clip.bvh"
         _sh([sys.executable, "-I", TOOLS / "smpl_to_bvh.py", use, bvh, "--yaw", f"{yaw:g}"], "converting to BVH", 600)
         rt = work / "rt"
-        rt_out = _sh([C.BLENDER, "-b", "--python", TOOLS / "retarget_bvh.py", "--", rig, bvh, rt, cid, "--map", "smpl", "--fps", "30"], "retargeting onto the rig", 1800)
+        rt_out = _sh([C.BLENDER, "-b", "--python", TOOLS / "retarget_bvh.py", "--", rig, bvh, rt, cid, "--map", "smpl", "--fps", "30", *(["--target", R.state["skeleton"]] if R.state.get("skeleton") else [])], "retargeting onto the rig", 1800)
         g, f = rt / f"{cid}.glb", rt / f"{cid}.fbx"
         if not g.exists(): raise RuntimeError("retargeting produced no clip")
         dst = animate._dir(R) / "clips" / f"{cid}.glb"; shutil.move(str(g), dst)
