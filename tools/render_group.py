@@ -13,6 +13,9 @@ def opt(flag, default=None, cast=str):
     return default
 HIDE_OVER = opt("--hide-gaps-over", 1e9, float)      # seconds: a dancer is hidden only in gaps (frames outside his verified stretches) longer than this; the poses across a gap are blended (tools/group_scene.py).  Default: never hidden, the camera of the video is not the render's camera
 PITCH = opt("--pitch", 1.0, float)                      # degrees the camera is turned further DOWN than the floor fit says (measured against the video's keypoints on 380 samples: the render stood 21 px (waist) to 68 px (ankles) too low at 1080p; 1.0 degree is 38 px)
+OVER = "--over-plate" in argv                          # characters only, on a transparent background (RGBA), lit with coloured lights like the room of the plate: composite them over tools/clean_plate.py's video (ffmpeg overlay)
+if OVER: argv.remove("--over-plate")
+LIGHTS = opt("--lights", "", str)                       # --over-plate: "r,g,b" of the key light (default a cool teal) and the ambient colour
 NEON = "--neon" in argv                                # the stage as in the Miles renders: a dark room, a glossy floor, neon tubes on the back wall, coloured rim lights, EEVEE (slower than the plain Workbench render)
 if NEON: argv.remove("--neon")
 LIFT = opt("--lift", 0.9919, float); FRAMES = opt("--frames", None); F0 = opt("--from", 0, int); F1 = opt("--to", None, int); STEP = opt("--step", 1, int); SIZE = opt("--size", "1280x720"); RW, RH = (int(x) for x in SIZE.split("x"))
@@ -46,11 +49,27 @@ sc.render.resolution_x, sc.render.resolution_y = RW, RH; sc.render.resolution_pe
 cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam")); sc.collection.objects.link(cam); sc.camera = cam; cam.data.sensor_fit = "HORIZONTAL"; cam.data.sensor_width = 36.0; cam.data.lens = SC["fx"] / W * 36.0
 cam.data.clip_start = 0.05; cam.data.clip_end = 400
 sk = sum(c[1] for c in clips) / len(clips)                                             # the characters' common scale: the camera's height scales with it
-up = Vector(SC["up_in_camera_frame"]); axis = up.cross(Vector((0, 1, 0))); ang = math.acos(max(-1.0, min(1.0, up.y)))
-Rg = Matrix.Rotation(ang, 3, axis.normalized()) if axis.length > 1e-9 else Matrix.Identity(3)                     # camera frame -> gravity frame, as in group_scene.py
-cam.matrix_world = Matrix.Translation(Vector((0.0, 0.0, SC["camera_height"] * sk))) @ ((M @ Rg) @ Matrix.Rotation(-math.radians(PITCH), 3, "X")).to_4x4()
+def cam_mat(upv, height):
+    up = Vector(upv); axis = up.cross(Vector((0, 1, 0))); ang = math.acos(max(-1.0, min(1.0, up.y)))
+    Rg = Matrix.Rotation(ang, 3, axis.normalized()) if axis.length > 1e-9 else Matrix.Identity(3)                     # camera frame -> gravity frame, as in group_scene.py
+    return Matrix.Translation(Vector((0.0, 0.0, height * sk))) @ ((M @ Rg) @ Matrix.Rotation(-math.radians(PITCH), 3, "X")).to_4x4()
+SHOTS = SC.get("shots") or [{"start": 0, "end": N, "camera_height": SC["camera_height"], "up_in_camera_frame": SC["up_in_camera_frame"]}]                        # a video with cuts: every shot has its own floor plane, so its own camera height and tilt
+CAMS = [cam_mat(sh["up_in_camera_frame"], sh["camera_height"]) for sh in SHOTS]
+def cam_for_frame(f):
+    for i, sh in enumerate(SHOTS):
+        if sh["start"] <= f < sh["end"]: return CAMS[i]
+    return CAMS[-1]
+cam.matrix_world = CAMS[0]
 # floor, light, world
-if not NEON:
+if OVER:
+    sc.render.engine = "BLENDER_EEVEE"; sc.eevee.taa_render_samples = 16; sc.render.film_transparent = True
+    for attr, val in (("use_shadows", True), ("use_gtao", True)):
+        if hasattr(sc.eevee, attr): setattr(sc.eevee, attr, val)
+    w = bpy.data.worlds.new("w"); w.use_nodes = True; sc.world = w; w.node_tree.nodes["Background"].inputs["Color"].default_value = (0.05, 0.07, 0.08, 1); w.node_tree.nodes["Background"].inputs["Strength"].default_value = 1.0
+    for nm_, pos_, col_, pw_, sz_ in (("key", (1.5, 1.5, 4.5), (0.9, 0.78, 0.65), 900, 6.0), ("teal", (-5.0, 4.0, 2.5), (0.2, 0.9, 0.75), 900, 3.0), ("warm", (4.0, 12.0, 3.0), (1.0, 0.55, 0.3), 1200, 4.0), ("violet", (0.0, 12.0, 4.0), (0.5, 0.25, 1.0), 700, 4.0)):
+        L_ = bpy.data.lights.new(nm_, "AREA"); L_.energy = pw_; L_.color = col_; L_.size = sz_; lo_ = bpy.data.objects.new(nm_, L_); sc.collection.objects.link(lo_); lo_.location = pos_; lo_.rotation_euler = (Vector((0, 6.0, 1.0)) - Vector(pos_)).to_track_quat("-Z", "Y").to_euler()
+    sc.view_settings.view_transform = "Standard"; sc.view_settings.look = "None"
+elif not NEON:
     bpy.ops.mesh.primitive_plane_add(size=200, location=(0, 0, -0.002)); fl = bpy.context.active_object; mat = bpy.data.materials.new("floor"); mat.diffuse_color = (0.36, 0.37, 0.40, 1.0); fl.data.materials.append(mat)
     w = bpy.data.worlds.new("w"); w.color = (0.17, 0.18, 0.20); sc.world = w
     sc.render.engine = "BLENDER_WORKBENCH"; sh = sc.display.shading; sh.light = "STUDIO"; sh.color_type = "TEXTURE"; sh.show_shadows = True; sh.shadow_intensity = 0.55; sh.show_cavity = False
@@ -82,8 +101,8 @@ else:
         L_ = bpy.data.lights.new(nm_, "AREA"); L_.energy = pw_; L_.color = col_; L_.size = sz_; lo_ = bpy.data.objects.new(nm_, L_); sc.collection.objects.link(lo_); lo_.location = pos_
         lo_.rotation_euler = (Vector((0, 8.0, 1.0)) - Vector(pos_)).to_track_quat("-Z", "Y").to_euler()
     sc.view_settings.view_transform = "Standard"; sc.view_settings.look = "None"; sc.view_settings.exposure = 0.0
-sc.render.image_settings.file_format = "PNG"; sc.render.image_settings.color_mode = "RGB"
+sc.render.image_settings.file_format = "PNG"; sc.render.image_settings.color_mode = "RGBA" if OVER else "RGB"
 for f in ([int(x) for x in FRAMES.split(",")] if FRAMES else range(F0, F1 + 1, STEP)):
-    sc.frame_set(f + FIRST); sc.render.filepath = os.path.join(out_dir, f"f{f:05d}.png"); bpy.ops.render.render(write_still=True)
+    cam.matrix_world = cam_for_frame(f); sc.frame_set(f + FIRST); sc.render.filepath = os.path.join(out_dir, f"f{f:05d}.png"); bpy.ops.render.render(write_still=True)
     if ((f - F0) // STEP) % 50 == 0: print(f"[render_group] frame {f}/{F1}", flush=True)
 print(f"[render_group] done: {out_dir}")

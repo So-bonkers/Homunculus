@@ -5,7 +5,8 @@ import bpy, sys, os, math
 from mathutils import Vector
 src, out_glb, out_fbx, tex_dir, thumb, skel = (sys.argv[sys.argv.index("--") + 1:] + ["", "", ""])[:6]
 bpy.ops.wm.read_factory_settings(use_empty=True)
-(bpy.ops.import_scene.gltf if src.lower().endswith((".glb", ".gltf")) else bpy.ops.import_scene.fbx)(filepath=src)
+if src.lower().endswith(".blend"): bpy.ops.wm.open_mainfile(filepath=src)
+else: (bpy.ops.import_scene.gltf if src.lower().endswith((".glb", ".gltf")) else bpy.ops.import_scene.fbx)(filepath=src)
 for o in [o for o in bpy.data.objects if o.type == "MESH" and o.name == "Icosphere"]: bpy.data.objects.remove(o, do_unlink=True)
 if tex_dir:
     tex_dir, _, explicit = tex_dir.partition("|"); files = {f.lower(): os.path.join(tex_dir, f) for f in os.listdir(tex_dir)}; byname = {f: os.path.join(tex_dir, f) for f in os.listdir(tex_dir)}
@@ -23,9 +24,12 @@ if tex_dir:
     meshes_ = [o for o in bpy.data.objects if o.type == "MESH" and o.data.materials]
     for mi, o in enumerate(meshes_):
         for m in o.data.materials:
-            if m is None or not m.node_tree or any(n.type == "TEX_IMAGE" and n.image is not None and n.image.has_data for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and any(l.to_socket.name == "Base Color" for l in n.outputs[0].links)): continue
-            low = m.name.lower(); path = chosen.get(mi) or (hair_file() if "hair" in low else None if "eye" in low else body_file())
+            if m is None or not m.node_tree: continue
             bsdf = next((n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+            if bsdf is None: continue
+            lk = bsdf.inputs["Base Color"].links
+            if mi not in chosen and lk and lk[0].from_node.type == "TEX_IMAGE" and lk[0].from_node.image is not None and lk[0].from_node.image.has_data: continue          # already has its colour picture (a material that goes through a node group does not count: the exporter cannot follow it)
+            low = m.name.lower(); path = chosen.get(mi) or (hair_file() if "hair" in low else None if "eye" in low else body_file())
             if path and bsdf:
                 t = m.node_tree.nodes.new("ShaderNodeTexImage"); t.image = bpy.data.images.load(path); t.image.pack(); m.node_tree.links.new(t.outputs["Color"], bsdf.inputs["Base Color"]); print("texture set", m.name, "<-", os.path.basename(path))
 def to_mixamo():
@@ -90,13 +94,17 @@ def to_mixamo():
     bpy.data.objects.remove(A, do_unlink=True)
     print(f"to_mixamo: {len(src)} bones, hips at the origin, faces -Y")
 if skel == "valorant": to_mixamo()
+for m in bpy.data.materials:                                                          # the viewport (and the thumbnail) shows the ACTIVE picture node: make it the one that feeds the base colour (not a normal map or a placeholder)
+    if m.node_tree:
+        for n in m.node_tree.nodes:
+            if n.type == "BSDF_PRINCIPLED" and n.inputs["Base Color"].links and n.inputs["Base Color"].links[0].from_node.type == "TEX_IMAGE": m.node_tree.nodes.active = n.inputs["Base Color"].links[0].from_node
 bpy.ops.object.select_all(action="SELECT")
 bpy.ops.export_scene.gltf(filepath=out_glb, export_format="GLB", use_selection=True)
 bpy.ops.export_scene.fbx(filepath=out_fbx, use_selection=True, object_types={"ARMATURE", "MESH"}, add_leaf_bones=False, path_mode="COPY", embed_textures=True)
 if thumb:                                                                    # a front render
     ms = [o for o in bpy.data.objects if o.type == "MESH"]; pts = [o.matrix_world @ Vector(c) for o in ms for c in o.bound_box]; lo = Vector(map(min, *[tuple(p) for p in pts])); hi = Vector(map(max, *[tuple(p) for p in pts])); mid = (lo + hi) / 2; h = hi.z - lo.z
     sc = bpy.context.scene; sc.render.engine = "BLENDER_WORKBENCH"; sc.render.resolution_x, sc.render.resolution_y = 768, 1024; sh = sc.display.shading; sh.light = "STUDIO"; sh.color_type = "TEXTURE"; sc.view_settings.view_transform = "Standard"
-    w = bpy.data.worlds.new("w"); w.color = (0.2, 0.2, 0.22); sc.world = w
+    w = bpy.data.worlds.new("w"); w.use_nodes = False; w.color = (0.2, 0.2, 0.22); sc.world = w
     cam = bpy.data.objects.new("c", bpy.data.cameras.new("c")); sc.collection.objects.link(cam); sc.camera = cam; cam.data.lens = 60; fy = -1; cam.location = Vector((mid.x, mid.y + fy * h * 2.1, mid.z)); cam.rotation_euler = (math.radians(90), 0, math.pi if fy > 0 else 0)
     sc.render.filepath = thumb; bpy.ops.render.render(write_still=True)
 print("converted", out_glb)

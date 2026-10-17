@@ -11,7 +11,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation as Rot
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); sys.path.insert(0, os.path.join(ROOT, "tools"))
 import smpl_to_bvh as B
-ap = argparse.ArgumentParser(); ap.add_argument("--dir", required=True); ap.add_argument("--out", default="scene"); a = ap.parse_args(); a.dir = os.path.abspath(a.dir); out = os.path.join(a.dir, a.out); os.makedirs(out, exist_ok=True)
+ap = argparse.ArgumentParser(); ap.add_argument("--dir", required=True); ap.add_argument("--out", default="scene"); ap.add_argument("--cuts", default="", help="comma-separated frames where the video cuts to another camera: each shot gets its own floor plane and camera (the render's camera is then set per shot)"); a = ap.parse_args(); a.dir = os.path.abspath(a.dir); out = os.path.join(a.dir, a.out); os.makedirs(out, exist_ok=True)
 G = json.load(open(os.path.join(a.dir, "dancers.json"))); S = json.load(open(os.path.join(a.dir, "segments.json"))); N, W, H = G["frames"], G["width"], G["height"]
 F = np.diag([1.0, -1.0, -1.0])
 PELVIS = np.array([0.0, 0.39, 0.0])       # GVHMR's `transl` is the SMPL-X model's origin, not its pelvis: the pelvis is 0.39 m above it in the body's own frame (fitted to ViTPose keypoints over 2855 frames of six dancers: the reprojection error fell from 0.243 m to 0.043 m; before this the dancers stood 0.39 m too low)
@@ -40,32 +40,59 @@ for d in S["dancers"]:
         z = np.load(os.path.join(a.dir, f"d{k}", f"s{s['i']:02d}", "clip", "smpl_incam.npz")); L = min(len(z["transl"]), s["frames"]); go, tr = to_gl(z["global_orient"][:L], z["transl"][:L]); tr = tr + Rot.from_rotvec(go).apply(PELVIS)
         arr["global_orient"][s["start"]:s["start"] + L] = go; arr["transl"][s["start"]:s["start"] + L] = tr; arr["body_pose"][s["start"]:s["start"] + L] = z["body_pose"][:L]; arr["betas"][s["start"]:s["start"] + L] = z["betas"][:L]; valid[s["start"]:s["start"] + L] = True
     D.append((k, arr, valid)); print(f"dancer {k}: {valid.sum()} verified frames ({100 * valid.mean():.0f} %)")
-# the real vertical: feet low on one plane
+# the real vertical: feet low on one plane (per shot when the video has cuts)
 pts = []; ups = []
 for k, arr, valid in D:
     idx = np.where(valid)[0]
     if len(idx) < 30: continue
     rots = [Rot.from_rotvec(np.concatenate([arr["global_orient"][idx][:, None], arr["body_pose"][idx].reshape(-1, 21, 3), np.zeros((len(idx), 2, 3))], 1)[:, j]) for j in range(24)]
-    pos = B.fk(rots, arr["transl"][idx]); feet = pos[:, [7, 8, 10, 11]]; head = pos[:, 15]; mid = pos[:, [7, 8]].mean(1); ups.append(head - mid); pts.append((feet, idx))
-u = np.concatenate(ups).mean(0); u /= np.linalg.norm(u)                                                              # first guess: the body's up, averaged over everybody (leaning averages out)
-for it in range(4):
-    low = []
-    for feet, idx in pts:
-        h = feet @ u; flat = h.reshape(-1); thr = np.percentile(flat, 12); sel = h <= thr; low.append(feet[sel])
-    P = np.concatenate(low); c = P.mean(0); U, Sv, Vt = np.linalg.svd(P - c, full_matrices=False); n = Vt[2]; n = n if n @ u > 0 else -n
-    spread = np.sqrt(np.mean(((P - c) @ n) ** 2)); u = n / np.linalg.norm(n)
-d_floor = float((c @ u))                                                                                            # the floor: u . p = d_floor (negative: it is below the camera)
-print(f"up vector in the camera frame (y up, z back): {u.round(3).tolist()}; tilt from the camera's own up {np.degrees(np.arccos(np.clip(u[1], -1, 1))):.1f} deg; the feet's distance from the plane {spread * 100:.1f} cm (rms); camera height {-d_floor:.2f} m")
-axis = np.cross(u, [0, 1, 0]); ang = np.arccos(np.clip(u[1], -1, 1)); R_fix = Rot.from_rotvec(axis / (np.linalg.norm(axis) + 1e-12) * ang).as_matrix() if ang > 1e-6 else np.eye(3)       # takes u to +y
-cam_R = R_fix                                                                                                       # camera -> gravity frame: a Blender camera looks along its own -z
-view = cam_R @ np.array([0, 0, -1.0]); pitch = float(np.degrees(np.arcsin(np.clip(view[1], -1, 1)))); yaw = float(np.degrees(np.arctan2(-view[0], -view[2])))
+    pos = B.fk(rots, arr["transl"][idx]); feet = pos[:, [7, 8, 10, 11]]; head = pos[:, 15]; mid = pos[:, [7, 8]].mean(1); pts.append((feet, idx, head - mid))
+def fit_floor(sel_lo, sel_hi, label):
+    ps = []; us = []
+    for feet, idx, up_ in pts:
+        m_ = (idx >= sel_lo) & (idx < sel_hi)
+        if m_.any(): ps.append((feet[m_], idx[m_])); us.append(up_[m_])
+    if not ps or sum(len(i) for _, i in ps) < 60: return None
+    u = np.concatenate(us).mean(0); u /= np.linalg.norm(u)                                                          # first guess: the body's up, averaged over everybody (leaning averages out)
+    for it in range(4):
+        low = []
+        for feet, idx in ps:
+            h = feet @ u; flat = h.reshape(-1); thr = np.percentile(flat, 12); sel = h <= thr; low.append(feet[sel])
+        P = np.concatenate(low); c = P.mean(0); U, Sv, Vt = np.linalg.svd(P - c, full_matrices=False); n = Vt[2]; n = n if n @ u > 0 else -n
+        spread = np.sqrt(np.mean(((P - c) @ n) ** 2)); u = n / np.linalg.norm(n)
+    d_floor = float((c @ u))                                                                                        # the floor: u . p = d_floor (negative: it is below the camera)
+    axis = np.cross(u, [0, 1, 0]); ang = np.arccos(np.clip(u[1], -1, 1)); R_fix = Rot.from_rotvec(axis / (np.linalg.norm(axis) + 1e-12) * ang).as_matrix() if ang > 1e-6 else np.eye(3)       # takes u to +y
+    view = R_fix @ np.array([0, 0, -1.0]); pitch = float(np.degrees(np.arcsin(np.clip(view[1], -1, 1))))
+    print(f"{label}: up vector {u.round(3).tolist()}, tilt {np.degrees(np.arccos(np.clip(u[1], -1, 1))):.1f} deg; feet {spread * 100:.1f} cm (rms) from the plane; camera height {-d_floor:.2f} m; pitch {pitch:.1f} deg")
+    return {"u": u, "d_floor": d_floor, "R_fix": R_fix, "spread": float(spread), "pitch": pitch}
+cut_frames = [int(x) for x in a.cuts.split(",") if x]; bounds = [0] + cut_frames + [N]
+fit_all = fit_floor(0, N, "all frames")
+fits = []
+for i, (lo, hi) in enumerate(zip(bounds[:-1], bounds[1:])):
+    f_ = fit_floor(lo, hi, f"shot {i} ({lo}-{hi})") if len(bounds) > 2 else fit_all
+    fits.append(f_ if f_ is not None else fit_all)
+shot_of = np.zeros(N, int)
+for i, (lo, hi) in enumerate(zip(bounds[:-1], bounds[1:])): shot_of[lo:hi] = i
+u, d_floor, R_fix, spread, pitch = fit_all["u"], fit_all["d_floor"], fit_all["R_fix"], fit_all["spread"], fit_all["pitch"]; yaw = 0.0
 scene = {"width": W, "height": H, "fps": 30, "frames": N, "fx": float((W ** 2 + H ** 2) ** 0.5), "fy": float((W ** 2 + H ** 2) ** 0.5), "cx": W / 2, "cy": H / 2, "camera_height": -d_floor, "camera_pitch_deg": pitch, "camera_yaw_deg": yaw,
-         "up_in_camera_frame": u.tolist(), "floor_rms_cm": float(spread * 100), "dancers": []}
+         "up_in_camera_frame": u.tolist(), "floor_rms_cm": float(spread * 100), "dancers": [],
+         "shots": [{"start": int(lo), "end": int(hi), "camera_height": -f_["d_floor"], "up_in_camera_frame": f_["u"].tolist(), "pitch_deg": f_["pitch"]} for f_, (lo, hi) in zip(fits, zip(bounds[:-1], bounds[1:]))]}
 for k, arr, valid in D:
     idx = np.where(valid)[0]
     if len(idx) == 0: continue
-    go = Rot.from_matrix(R_fix @ Rot.from_rotvec(arr["global_orient"]).as_matrix()).as_rotvec(); tr = arr["transl"] @ R_fix.T; tr[:, 1] -= d_floor
-    go, arr["body_pose"], arr["betas"], tr = fill_gaps(idx, N, go, arr["body_pose"], arr["betas"], tr)                          # outside the verified stretches: held at the ends, blended across the gaps
+    go = np.zeros((N, 3)); tr = np.zeros((N, 3))
+    for i, (lo, hi) in enumerate(zip(bounds[:-1], bounds[1:])):                                                       # every shot in its own gravity frame (camera at the origin, floor below it)
+        Rf, df = fits[i]["R_fix"], fits[i]["d_floor"]
+        go[lo:hi] = Rot.from_matrix(Rf @ Rot.from_rotvec(arr["global_orient"][lo:hi]).as_matrix()).as_rotvec(); tr[lo:hi] = arr["transl"][lo:hi] @ Rf.T; tr[lo:hi, 1] -= df
+    bp, bt = arr["body_pose"].copy(), arr["betas"].copy()
+    for lo, hi in zip(bounds[:-1], bounds[1:]):                                                                       # outside the verified stretches: held at the ends, blended across the gaps (inside one shot: a cut is not blended across)
+        ids = idx[(idx >= lo) & (idx < hi)]
+        if len(ids) == 0: continue
+        g_, p_, b_, t_ = fill_gaps(ids - lo, hi - lo, go[lo:hi], bp[lo:hi], bt[lo:hi], tr[lo:hi]); go[lo:hi], bp[lo:hi], bt[lo:hi], tr[lo:hi] = g_, p_, b_, t_
+    for lo, hi in zip(bounds[:-1], bounds[1:]):                                                                       # a shot where this dancer was never verified: the nearest verified frame of another shot
+        if not ((idx >= lo) & (idx < hi)).any():
+            near = idx[np.argmin(np.abs(idx - (lo + hi) // 2))]; go[lo:hi], bp[lo:hi], bt[lo:hi], tr[lo:hi] = go[near], bp[near], bt[near], tr[near]
+    arr["body_pose"], arr["betas"] = bp, bt
     np.savez(os.path.join(out, f"d{k}_gravity.npz"), body_pose=arr["body_pose"], betas=arr["betas"], global_orient=go, transl=tr)
     ranges = [[int(s), int(e)] for s, e in zip(np.where(np.diff(np.r_[0, valid.astype(int)]) == 1)[0], np.where(np.diff(np.r_[valid.astype(int), 0]) == -1)[0] + 1)]
     scene["dancers"].append({"k": k, "valid_ranges": ranges, "first_valid": int(idx[0]), "start_xz": [float(tr[0, 0]), float(tr[0, 2])], "betas_mean": arr["betas"][idx].mean(0).tolist()})
