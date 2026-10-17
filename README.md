@@ -12,9 +12,9 @@ https://github.com/user-attachments/assets/a6c291a1-b4cb-4171-97e5-f90ad6a3fa6d
 
 ## Showcase: a group dance from one video
 
-<video src="https://github.com/So-bonkers/Homunculus/raw/main/docs/media/popular_agents.mp4" controls muted width="100%"></video>
+[![The group dance: the video on the left, six agents on the right (an 8 s preview; click for the full 110 s with sound)](docs/media/popular_agents_preview.gif)](https://github.com/So-bonkers/Homunculus/blob/main/docs/media/popular_agents.mp4)
 
-*"We Dem Boyz" (a master-class video, 1:50 of it, one fixed camera, six dancers in different clothes) on the left; the six dancers followed through the whole shot, their motion read by GVHMR, put in one scene with the video's own camera and floor, and retargeted onto six handmade community characters (the Valorant agents Yoru, Tejo, Iso, Neon, Killjoy and Viper), with the hands set from labels, on a neon stage.  The sound is the video's.  How: [docs/GROUP_DANCE.md](docs/GROUP_DANCE.md) and [docs/READY_MADE_CHARACTERS.md](docs/READY_MADE_CHARACTERS.md).  The file is [docs/media/popular_agents.mp4](docs/media/popular_agents.mp4) (15 MB; the left half is the source video, shown only as a comparison).*
+*"We Dem Boyz" (a master-class video, 1:50 of it, one fixed camera, six dancers in different clothes) on the left; the six dancers followed through the whole shot, their motion read by GVHMR, put in one scene with the video's own camera and floor, and retargeted onto six handmade community characters (the Valorant agents Yoru, Tejo, Iso, Neon, Killjoy and Viper), with the hands set from labels, on a neon stage.  The sound is the video's.  How: [docs/GROUP_DANCE.md](docs/GROUP_DANCE.md) and [docs/READY_MADE_CHARACTERS.md](docs/READY_MADE_CHARACTERS.md).  The preview above is 8 s; click it for the full 110 s with sound ([docs/media/popular_agents.mp4](docs/media/popular_agents.mp4), 15 MB; the left half is the source video, shown only as a comparison).*
 
 ## How it works
 
