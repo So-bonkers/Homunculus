@@ -2,13 +2,19 @@
 
 **One picture in, a rigged and animated 3D character out. Fully local, on one 24 GB GPU.**
 
-Give Homunculus a picture of a character (or a turnaround sheet, or an existing 3D model) and it builds a textured 3D model, rigs it with a 52-bone Mixamo skeleton (fingers included) and animates it: copy a dance straight from a video, describe a motion in plain words, or bring Mixamo and mocap clips. A local web app runs the pipeline, shows every step, and lets you (or local vision-language models, or nobody at all) decide at each gate. Current version: **v2.0** ([tags](https://github.com/So-bonkers/Homunculus/tags)).
+Give Homunculus a picture of a character (or a turnaround sheet, or an existing 3D model) and it builds a textured 3D model, rigs it with a 52-bone Mixamo skeleton (fingers included) and animates it: copy a dance straight from a video (one dancer, or a whole group from one shot, put on several characters, even ready-made game characters), label the hands, describe a motion in plain words, or bring Mixamo and mocap clips. A local web app runs the pipeline, shows every step, and lets you (or local vision-language models, or nobody at all) decide at each gate. Current version: **v2.0** ([tags](https://github.com/So-bonkers/Homunculus/tags)).
 
 ## Showcase: *Miles Jackson*
 
 https://github.com/user-attachments/assets/a6c291a1-b4cb-4171-97e5-f90ad6a3fa6d
 
 *A Miles Morales character built by a Homunculus run from one picture, exported with the run's Mixamo zip, animated with Mixamo's Thriller clips, joined and rendered with a moving camera by `tools/join_clips.py` and `tools/render_dance.py`, then cut to music. The video is 2 minutes, with sound ([docs/media/miles_jackson.mp4](docs/media/miles_jackson.mp4)).*
+
+## Showcase: a group dance from one video
+
+<video src="docs/media/popular_agents.mp4" controls muted width="100%"></video>
+
+*"We Dem Boyz" (a master-class video, 1:50 of it, one fixed camera, six dancers in different clothes) on the left; the six dancers followed through the whole shot, their motion read by GVHMR, put in one scene with the video's own camera and floor, and retargeted onto six handmade community characters (the Valorant agents Yoru, Tejo, Iso, Neon, Killjoy and Viper), with the hands set from labels, on a neon stage.  The sound is the video's.  How: [docs/GROUP_DANCE.md](docs/GROUP_DANCE.md) and [docs/READY_MADE_CHARACTERS.md](docs/READY_MADE_CHARACTERS.md).  The file is [docs/media/popular_agents.mp4](docs/media/popular_agents.mp4) (15 MB; the left half is the source video, shown only as a comparison).*
 
 ## How it works
 
@@ -53,8 +59,11 @@ Diamonds are review gates: three local judges, you, or nobody (`--no-llm`).
 
 **Animation**
 - **Dance from a video** (the default source): one person dancing, a steady or moving camera. GVHMR reads the body motion, the camera's own motion is tracked from the background and taken out, and the dance is retargeted onto your rig, with a preview and a side-by-side with the video. In the app: the **Animate** page (`/ui#/animate`: any finished character + a new video, no new run: the job shows its stages with a report each, the time left, then the video and your character playing together), or a run's Animate tab; on the command line: `--anim-video clip.mp4 --anim-from 30 --anim-to 50`. [docs/VIDEO_MOTION.md](docs/VIDEO_MOTION.md)
+- **A group from one video:** a fixed-camera shot with several dancers (tested with six in different clothes): everybody is followed by what they wear, the body of each read by GVHMR, all of them put in one scene with the video's own camera and floor, and rendered together next to the video. A video with camera cuts gets one floor and camera per shot. [docs/GROUP_DANCE.md](docs/GROUP_DANCE.md)
+- **Hand labels for a dance:** a timeline editor for the fingers, wrist and palm of any clip (a pose library of 48 shapes, 15 wrists and 7 palms, 83 hip hop hand moves and a vocabulary of 105 full-body moves, mostly breaking, each with a picture); a vision-language model (Qwen3.8) can draft the labels from the dancer's video, a chunk at a time, landing in the editor as they finish. On our test clips its labels agree with a person's about 30-42% of the time, so treat them as a draft. [docs/VIDEO_MOTION.md](docs/VIDEO_MOTION.md)
+- **Ready-made characters:** handmade rigged models (the community Valorant agents) are rebuilt on the same 52-bone skeleton in about a minute (`tools/import_rigged.py`), so every clip, hand label and render works on them. [docs/READY_MADE_CHARACTERS.md](docs/READY_MADE_CHARACTERS.md)
 - **Text to animation** with UniMate: type a motion ("walks forward") or pick from a library of 190 prompts in 10 categories, each with a 3D preview.
-- **Fingers** set from a pose library matched to the motion (fist for a punch, grip for a sword, open for a wave).
+- **Fingers** set from a pose library matched to the motion (fist for a punch, grip for a sword, open for a wave), or from your own hand labels (above).
 - **Mixamo and mocap:** a Mixamo zip export, and tools to join Mixamo clips, retarget BVH mocap (CMU) and SMPL dance datasets (AIST++, FineDance) onto any rig, and render a clip to MP4 with a moving camera (see *Tools* below).
 
 **Running it**
@@ -130,6 +139,12 @@ Stand-alone scripts in `tools/`, used by the pipeline or on their own:
 | `video_to_smpl.py`, `track_camera.py`, `compensate_camera.py` | video → SMPL motion with GVHMR, and the camera's own motion taken out |
 | `join_clips.py` | Mixamo clips on one character, as single clips and one joined clip (GLB + FBX) |
 | `render_dance.py`, `make_mp4.py` | render an animated character to MP4 with a moving camera (or `--fixed`), Blender in parallel |
+| `track_raw.py`, `group_tracks.py`, `group_segments.py`, `gvhmr_segments.py`, `group_crops.py` | a group in one shot: track everyone, stitch the ids into dancers by what they wear, cut each dancer's verified stretches, GVHMR on every stretch, a 4K crop per dancer |
+| `group_scene.py`, `register_group.py`, `render_group.py`, `group_audit.py` | the dancers in one scene (the camera's floor and height, one set per shot when the video cuts), clips registered in the app, the group rendered together (Workbench, or `--neon`, or `--over-plate` onto the video's own room), a check for dancers the verification dropped |
+| `multi_track.py`, `extract_tracks.py`, `cast_clips.py` | every person of a shot, one clip each (fragments of one person re-linked across short gaps), then put on different characters in turn |
+| `import_rigged.py`, `convert_rigged.py`, `skin_from_donor.py` | a ready-made rigged model rebuilt as the app's 52-bone character; skin weights copied from a donor onto a mesh that has no rig |
+| `clean_plate.py` | a video with the people painted out (the room, to put rendered characters into) |
+| `annotate_clips.py` | label the hands of several clips with the vision-language model, one after another |
 | `depth_guided_views.py` | the depth-guided view experiments behind the depth phase |
 
 ## The app
@@ -232,7 +247,9 @@ Licences are taken from each model card at the time of writing; read them before
 | [RETEXTURE.md](docs/RETEXTURE.md) | retexturing a brushed part |
 | [VIDEO_MOTION.md](docs/VIDEO_MOTION.md) | dance from a video: setup and what to expect |
 | [GROUP_DANCE.md](docs/GROUP_DANCE.md) | six dancers from one fixed-camera video, in one scene |
-| [research/](docs/research/00_synthesis.md) | a survey of the field (image to 3D, rigging, human motion, group choreography, image generation, applications) and what it means for this project |
+| [GROUP_DANCE.md](docs/GROUP_DANCE.md) | six dancers from one fixed-camera video, in one scene; the corrections made after the first render |
+| [READY_MADE_CHARACTERS.md](docs/READY_MADE_CHARACTERS.md) | handmade rigged characters (the Valorant agents) rebuilt on the Mixamo skeleton |
+| [research/](docs/research/00_synthesis.md) | a survey of the field (image to 3D, rigging, human motion, group choreography, image generation, applications, hand datasets and label vocabularies, hip hop hand moves, body moves) and what it means for this project |
 | [DECISIONS.md](docs/DECISIONS.md) | why the project is the way it is: decisions, their reasons, and open questions |
 | [PAIN_POINTS.md](docs/PAIN_POINTS.md) | the open problems, honestly |
 | [ROADMAP.md](docs/ROADMAP.md) | ideas for later: several characters, props, non-human objects, high-poly |
@@ -240,10 +257,13 @@ Licences are taken from each model card at the time of writing; read them before
 ## Limitations
 
 - Tested on one AMD machine; `setup.sh` has not been run from a clean install.
-- One character at a time; humanoids only for the rig, the T-pose bake and the animation.
+- One character per run; a group is several runs or ready-made characters, one clip per dancer. Humanoids only for the rig, the T-pose bake and the animation.
 - Hands: fused-but-closed fingers are not detected automatically (Repair fixes them when you paint them).
 - Generated side, top and bottom views are not usable yet: the depth phase draws the back only.
-- Video motion is body only (no fingers), depth comes from one camera, fast spins and floor work are weaker.
+- Video motion is body only (fingers come from hand labels), depth comes from one camera, fast spins and floor work are weaker; dancers who are hidden or out of the picture are filled in by interpolation, not seen.
+- A group video needs the dancers to be told apart (by clothes); dancers in one costume (a crew) cannot be, and a moving camera is only handled shot by shot.
+- The language model's hand labels are a draft (about 30-42% agreement with a person's on our clips); a clip takes about an hour of GPU per minute of video.
+- Ready-made game models: cloth and hair bones are folded into the body; a model with no rig (Raze) could not be skinned cleanly yet.
 - Text-to-motion quality varies, and several model weights are non-commercial (see above).
 
 ## Project layout
