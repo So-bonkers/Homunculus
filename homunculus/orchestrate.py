@@ -71,29 +71,11 @@ def face_on(R):
     return (R.state.get("vlm", {}).get("plan") or {}).get("face_visible", True) is not False
 
 
-def face_fit(R, glb_in, src, glb_out, preview_dir, log, **kw):
-    """Fit the face texture. With face_source "original" (the default) the face of the user's own picture (upscaled) is first pasted into a copy of the redraw (the two pictures'
-    landmarks are matched against each other, which works even when the mesh render has no readable face yet), and that picture is what gets fitted to the model. If either picture
-    has no readable face the redraw's own face is used as before."""
-    ref = R.A.get("upscaled")
-    if R.state.get("face_source", C.FACE_SOURCE) == "original" and ref and os.path.exists(ref) and os.path.abspath(ref) != os.path.abspath(src):
-        try:
-            hy = os.path.join(os.path.dirname(glb_out), "face_from_original_" + os.path.basename(glb_out)[:-4] + ".png"); faceproj.hybrid_face(src, ref, hy, log); src = hy
-        except Exception as e: log(f"[texture] your picture's face could not be used ({type(e).__name__}: {str(e)[:100]}); using the redraw's face")
-    return faceproj.run(glb_in, src, glb_out, preview_dir, log, **kw)
-
-
-def texture_simple(R):
-    """Texture from the upscaled picture / chosen redraw alone (the default): no face close-up as the reference, no Qwen-cleaned side and back views, no Qwen face repaint.
-    "full" (--texture full) adds those extra generated images, which can make the model look worse than the picture it came from."""
-    return R.state.get("texture_mode", C.TEXTURE_MODE) == "simple" or bool(R.state.get("direct"))
-
-
 def texture_source(R):
-    """The picture the colour and texture projections read. A run set to use the picture as is (--direct) textures from that picture, upscaled but not redrawn:
-    the face close-up redraw only serves the 3D shape (it is in the Pixal3D input), its pixels are not used for the texture. Otherwise the redraw / mesh source."""
+    """The picture the colour projection and UltraTex read: the upscaled picture the run started from (not the redraw, and not the face close-up: that one only serves the 3D shape, it is in the Pixal3D input);
+    the redraw / mesh source when there is no such picture."""
     raw = R.A.get("edit_upscaled_raw")
-    if texture_simple(R) and raw and os.path.exists(raw): return raw
+    if raw and os.path.exists(raw): return raw
     return R.A.get("mesh_source") or R.A["edit_upscaled"]
 
 
@@ -675,52 +657,36 @@ def st_color(R):
     return note
 
 def st_texture(R):
-    """Last step: sharpen the face by projecting the redraw onto the (raw, textured) mesh, then put that texture on the rig."""
+    """Last step: UltraTex paints the character from the picture (six consistent views of the mesh as the rig holds it, baked into the layout the rig was built on), the result goes onto the rig and every clip.
+    Surfaces none of its six views sees get the plain projection of the picture. If UltraTex cannot run (a missing model, a ComfyUI error), the plain projection of the picture is the texture and the log says why."""
     faceproj.FRAME = R.A.get("frame_json") if mesh_mode(R) else None
     raw = R.A["mesh_glb"]; d = os.path.dirname(raw); src = texture_source(R)
-    plan = R.state["vlm"]["plan"]; sty = prompts.style_text(plan, R.state.get("look", "asis"))
-    # video tip: redraw a close-up of the face at full resolution and use it as the texture reference for the head
-    # (already done before the 3D step in new runs: mesh_source is that sharpened image)
-    if not R.state.get("face_refined_early") and face_redraw_on(R) and not texture_simple(R):      # as-is runs keep the picture's own face pixels
-      try:
-        style = R.state["vlm"]["plan"].get("style", "photo")
-        src, (fb, fa) = edit.refine_face(src, os.path.join(d, "source_face_refined.png"), prompts.FACE_REFINE.format(style=prompts.style_text(R.state["vlm"]["plan"], R.state.get("look", "asis"))), R.log)
-        progress.snap(R, "texture", "face close-up redrawn at full resolution (texture reference)", [fb, fa], ["face in the full-body redraw", "close-up redraw"])
-      except Exception as e:
-        R.log(f"face close-up failed ({type(e).__name__}: {str(e)[:100]}); projecting the full-body redraw instead")
-    base = raw
-    cg = R.A.get("colored_glb")
-    if R.state.get("sheet") and cg and os.path.exists(cg) and os.path.exists(cg[:-4] + "_basecolor.png"):
-        base = cg; R.log("[texture] the four views were already projected in the colour stage (same mesh, same views, same result): reusing it")      # identical to projecting again, ~50 s cheaper
-    elif C.TEXTURE_VIEWS:      # clothes and body: the redraw's front, projected (pixel-aligned with the mesh)
-        try: base = project_colours(R, raw, src, raw.replace(".glb", "_body.glb"), os.path.join(d, "texviews"), fill=True)
-        except Exception as e: R.log(f"[texture] body projection skipped ({type(e).__name__}: {str(e)[:120]})")
-    out = raw.replace(".glb", "_faceproj.glb")
-    before = after = None
-    if face_on(R):
-        glb, before, after = face_fit(R, base, src, out, os.path.join(d, "faceproj"), R.log, style=prompts.style_text(R.state["vlm"]["plan"], R.state.get("look", "asis")),
-                                          method="landmarks" if texture_simple(R) else C.FACE_FIT, face_desc=str(R.state["vlm"]["plan"].get("face", "")))
-    else:      # a helmet or mask: no face to fit, the body projection covers the head too
-        R.log("[texture] no visible face: face fit skipped")
-        shutil.copy(base, out); bp = base[:-4] + "_basecolor.png"
-        if os.path.exists(bp): shutil.copy(bp, out[:-4] + "_basecolor.png")
-    if C.TEXTURE_VIEWS and not texture_simple(R):      # turn the model; the image model cleans each view; project back where that view sees best
-        try:
-            desc = "; ".join(str(plan.get(k)) for k in ("hair", "clothing", "footwear", "accessories") if plan.get(k) and plan.get(k) != "none")[:500]
-            mv = faceproj.multiview(out, src, raw.replace(".glb", "_textured.glb"), os.path.join(d, "texviews"), R.log, style=sty, desc=desc, paint_grey=mesh_mode(R))
-            if mv:
-                # the extra views may have repainted the edges of the fitted face: fit the face once more so it has the final say
-                try:
-                    if not face_on(R): raise RuntimeError("no visible face")
-                    out2, before, after = face_fit(R, mv, src, raw.replace(".glb", "_final_tex.glb"), os.path.join(d, "faceproj2"), R.log, style=sty,
-                                                       method=C.FACE_FIT, face_desc=str(plan.get("face", "")))
-                    mv = out2
-                except Exception as e: R.log(f"[texture] final face pass skipped ({type(e).__name__}: {str(e)[:100]})")
-                out = mv; vd = os.path.join(d, "texviews")
-                shots = [os.path.join(vd, f) for f in sorted(os.listdir(vd)) if f.endswith("_fixed.png")]
-                if shots: progress.snap(R, "texture", "texture cleaned from more angles (head sides, body sides, back)", shots, [os.path.basename(x)[:-10] for x in shots])
-        except Exception as e: R.log(f"[texture] extra views skipped ({type(e).__name__}: {str(e)[:120]})")
-    # last step: the finished texture goes onto the rig and onto every animation clip (same UVs: the rig was built from this mesh)
+    classic = None
+    try: classic = project_colours(R, raw, src, raw.replace(".glb", "_body.glb"), os.path.join(d, "texviews"), fill=True)      # the plain projection: the fallback where no view of UltraTex looked, and the texture if UltraTex fails
+    except Exception as e: R.log(f"[texture] plain projection unavailable ({type(e).__name__}: {str(e)[:120]})")
+    final_png = raw.replace(".glb", "_ultratex_basecolor.png")
+    try:
+        from . import ultratex
+        work = os.path.join(d, "ultratex"); os.makedirs(work, exist_ok=True); rigglb = R.A.get("rig_glb")
+        tmesh = ultratex.rest_mesh(rigglb, os.path.join(work, "rest_pose_mesh.glb")) if rigglb and os.path.exists(rigglb) else raw         # paint the mesh as the rig holds it (arms away from the body), so the surfaces that show once it moves are seen
+        painted = os.path.join(work, f"{R.state['name']}_ultratex.glb")
+        if os.path.exists(painted) and os.path.getmtime(painted) > os.path.getmtime(tmesh): R.log("[ultratex] reusing the painted mesh of an earlier run (delete the folder " + work + " to paint again)")
+        else: painted = ultratex.paint(tmesh, src, work, R.log, name=R.state["name"], res=C.ULTRATEX_RES)
+        png = ultratex.to_layout(painted, tmesh, os.path.join(work, "rest_baked_basecolor.png"), R.log)       # UltraTex unwraps the mesh again: back into the layout the rig was built on
+        baked = ultratex.set_texture(tmesh, png, os.path.join(work, "rest_baked.glb"))
+        cov, _ = ultratex.coverage(baked, os.path.join(work, "cov"), R.log)
+        if classic and os.path.exists(classic[:-4] + "_basecolor.png"): ultratex.composite(png, classic[:-4] + "_basecolor.png", cov, final_png, R.log)
+        else: shutil.copy(png, final_png)
+        used = True
+    except Exception as e:
+        R.log(f"[texture] UltraTex failed ({type(e).__name__}: {str(e)[:300]}); the plain projection of the picture is the texture")
+        if not classic: raise
+        shutil.copy(classic[:-4] + "_basecolor.png", final_png); used = False
+    out = ultratex.set_texture(raw, final_png, raw.replace(".glb", "_ultratex.glb")) if used else classic
+    return _finish_texture(R, out, d, src, ultratex=used)
+
+def _finish_texture(R, out, d, src, ultratex=False):
+    """The texture is done (`out`: the raw mesh with it): put it on the rig and on every animation clip (the rig was built from this mesh, same UVs), then the final views."""
     R.A["textured_glb"] = out; png = out[:-4] + "_basecolor.png"
     if R.A.get("rig_fbx") and os.path.exists(R.A["rig_fbx"]):
         final = os.path.join(str(R.dir / "07_rig"), f"{R.state['name']}_final.fbx")
@@ -736,8 +702,7 @@ def st_texture(R):
     ref = os.path.join(d, "faceproj", "reference_face.png"); im = Image.open(src).convert("RGB"); W, H = im.size
     im.crop((W // 2 - H // 12, int(H * 0.06), W // 2 + H // 12, int(H * 0.06) + H // 6)).save(ref)
     views = blender.mesh_views(out, os.path.join(d, "final_views"), tag="final"); R.A["final_views"] = views
-    progress.snap(R, "texture", "final texture: body front from the redraw, fitted face, cleaned side and back views" if (C.TEXTURE_VIEWS and not texture_simple(R)) else "final texture: the picture projected, face fitted (no extra generated images)", ([before, after] if before else []) + [ref, views["front"], views["side"]],
-                  (["Pixal3D face", "after projection"] if before else []) + ["redraw", "final front", "final side"])
+    progress.snap(R, "texture", "final texture: painted by UltraTex from the picture (six consistent views, baked to the mesh's own layout)" if ultratex else "final texture: the picture projected (UltraTex did not run, see the log)", [ref, views["front"], views["side"]], ["reference", "final front", "final side"])
     return os.path.basename(out)
 
 def st_animate(R):
@@ -900,8 +865,6 @@ def main():
     ap.add_argument("--anim-reps", type=int, default=None, help="clips per prompt (default 2)")
     ap.add_argument("--zip", action="store_true", help="also write exports/mixamo_<name>.zip (OBJ+MTL+texture) for uploading to Mixamo")
     ap.add_argument("--review-grace", type=int, default=None, help="seconds to respond in override mode (default 60)")
-    ap.add_argument("--texture", choices=["simple", "full"], help="simple (default): texture from the upscaled picture / chosen redraw only; full: also the face close-up redraw and Qwen-cleaned side/back views")
-    ap.add_argument("--face-source", dest="face_source", choices=["original", "redraw"], help="original (default): fit the face texture from your own picture, upscaled (falls back to the redraw if its landmarks cannot be matched); redraw: from the redrawn picture")
     ap.add_argument("--auto-repair", dest="auto_repair", choices=["alert", "auto", "off"], help="broken hands (torn or cut-off fingers) in the finished 3D model: alert (default) warns and points to the Repair tab; auto repairs them before rigging; off")
     ap.add_argument("--face", choices=["auto", "on", "off"], help="auto (default): the planner decides whether a full-face helmet or mask hides the face; off: no face work at all (no face close-up, reshape or fit); on: always work on the face")
     ap.add_argument("--face-redraw", dest="face_redraw", choices=["on", "off"], help="on (default): redraw the face as a full-resolution close-up before the 3D step (a sharper face in the mesh and texture); off: use the full-body redraw as it is")
@@ -920,8 +883,6 @@ def main():
     if a.outfit: R.state["outfit"] = a.outfit; R.save()
     if a.face: R.state["face"] = a.face; R.save()
     if a.auto_repair: R.state["auto_repair"] = a.auto_repair; R.save()
-    if a.face_source: R.state["face_source"] = a.face_source; R.save()
-    if a.texture: R.state["texture_mode"] = a.texture; R.save()
     if a.face_redraw: R.state["face_redraw"] = a.face_redraw == "on"; R.save()
     if a.review: R.state["review_mode"] = a.review
     if a.review_grace is not None: R.state["review_grace"] = a.review_grace

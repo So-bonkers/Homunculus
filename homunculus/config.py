@@ -58,15 +58,12 @@ SHEET_FILL = os.environ.get("HOMUNCULUS_SHEET_FILL", "1") != "0"   # turnaround-
 SHEET_JUDGES = JUDGES[:1]     # turnaround-sheet runs: Qwen3.8 alone judges (it replaces the three-judge panel: about 4 minutes less in the shape check alone)
 MESH_FACES, MESH_TEX = 250000, 4096
 
-FACE_FIT = "auto"          # face texture fit: auto (landmark warp if both faces are readable, else repaint) | landmarks | repaint
 FACE_REFINE_EARLY = True   # redraw the face close-up before the 3D step (better face geometry), not only for the texture
 FACE_RESHAPE = True        # move the mesh's face features to where the reference has them (before rigging)
-FACE_SOURCE = "original"      # the face texture is fitted from: original = your own picture, upscaled (the face as it really is; falls back to the redraw when its landmarks are not readable) | redraw
 KEEP_FBX = False             # False: the pipeline writes GLB only; other formats (FBX, OBJ, STL, USD) are made on demand when you accept a run (Accept button), so no disk is spent on duplicates
 AUTO_REPAIR = "auto"        # broken hands (torn or cut-off fingers leave open edges) found in the finished 3D model: alert = warn and point to the Repair tab | auto = run the repair before rigging | off
 HAND_POSE_LAYER = True       # set the fingers of every animation clip from a hand-pose library chosen from the prompt (fist, open, grip, point, thumbs up): the motion models do not drive fingers
-TEXTURE_MODE = "simple"      # simple: texture from the upscaled picture / chosen redraw only (front projection + landmark face fit, no extra generated images); full: also the face close-up redraw as a reference and Qwen-cleaned side/back views
-TEXTURE_VIEWS = True       # texture: project the redraw onto the body front, then clean the head sides, body sides and back from extra views
+ULTRATEX_RES = 1024         # UltraTex: pixels per painted view (trained at 2048: sharper, slower)
 HAND_REFINE_EARLY = False  # (off) redraw each hand as a close-up before the 3D step
 SILHOUETTE_CARVE = True    # delete Pixal3D geometry outside the picture's front outline (fins/plates at the hands)
 

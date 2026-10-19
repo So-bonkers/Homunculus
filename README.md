@@ -46,7 +46,7 @@ Diamonds are review gates: three local judges, you, or nobody (`--no-llm`).
 | Colour | the picture projected onto the mesh, so the rig is built and checked on a coloured model; on sheet runs, surfaces no view sees are filled from their painted neighbours | Blender |
 | Auto-rig, Rig check | 52-bone Mixamo skeleton with skin weights; pose tests, wrist-bend check | Make-It-Animatable |
 | Animate | **the dance in a video** (default) and/or **text prompts**; finger poses from a pose library | GVHMR, UniMate |
-| Texture | face fit from your own picture, the finished texture put on the rig and on every clip | Blender |
+| Texture | UltraTex paints six consistent views of the character from your picture and bakes them into the rig's layout; the finished texture goes on the rig and on every clip | UltraTex (FLUX.2 Klein base 9B + LoRA, ComfyUI), Blender |
 
 ## Features
 
@@ -59,7 +59,7 @@ Diamonds are review gates: three local judges, you, or nobody (`--no-llm`).
 - **Depth phase before the shape:** the back of a single-picture character is drawn under the depth map of a proxy shape and checked against its outline, so Pixal3D does not have to guess it. [docs/DEPTH_VIEWS.md](docs/DEPTH_VIEWS.md)
 - **Repair any part:** paint over what came out wrong (fused fingers, a crumpled helmet top, a melted foot), say what it is, choose the redraw you like; the part is rebuilt with Pixal3D and grafted in with a clean planar cut, every loop at the seam bridged. Torn hands found by the geometric hand check are repaired automatically before rigging (`--auto-repair auto|alert|off`). [docs/REPAIR.md](docs/REPAIR.md)
 - **Retexture a part:** brush an area, then describe it or give a reference picture; it is projected onto the model, the rig and every clip. [docs/RETEXTURE.md](docs/RETEXTURE.md)
-- **Your own face:** the face texture comes from your picture (upscaled and fitted by landmarks), not from the redraw.
+- **Texture from your picture:** UltraTex paints the whole character, face, back and sides included, from your own picture (not from the redraw). The FLUX.2 Klein base model it uses is under a non-commercial licence; see [docs/DECISIONS.md](docs/DECISIONS.md) D-27.
 
 **Animation**
 - **Dance from a video** (the default source): one person dancing, a steady or moving camera. GVHMR reads the body motion, the camera's own motion is tracked from the background and taken out, and the dance is retargeted onto your rig, with a preview and a side-by-side with the video. In the app: the **Animate** page (`/ui#/animate`: any finished character + a new video, no new run: the job shows its stages with a report each, the time left, then the video and your character playing together), or a run's Animate tab; on the command line: `--anim-video clip.mp4 --anim-from 30 --anim-to 50`. [docs/VIDEO_MOTION.md](docs/VIDEO_MOTION.md)

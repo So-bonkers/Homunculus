@@ -20,7 +20,7 @@ export const STAGE_META: Record<string, { icon: LucideIcon; blurb: string }> = {
   rig: { icon: Bone, blurb: "Make-It-Animatable builds a 52-bone Mixamo skeleton with skin weights." },
   rig_check: { icon: PersonStanding, blurb: "Test poses and a wrist-bend check." },
   animate: { icon: Clapperboard, blurb: "A dance from a video and/or text prompts become clips for this rig." },
-  texture: { icon: Wand2, blurb: "The face is fitted from your picture; the final texture goes on the rig and every clip." },
+  texture: { icon: Wand2, blurb: "UltraTex paints the character from your picture; the final texture goes on the rig and every clip." },
   report: { icon: FileText, blurb: "Contact sheet, report and downloads." },
 };
 

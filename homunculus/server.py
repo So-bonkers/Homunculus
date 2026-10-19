@@ -123,6 +123,14 @@ class H(SimpleHTTPRequestHandler):
                  ".woff2": "font/woff2", ".woff": "font/woff", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".json": "application/json", ".glb": "model/gltf-binary", ".mp4": "video/mp4"}.get(os.path.splitext(p)[1], "application/octet-stream")
         data = open(p, "rb").read(); self.send_response(200); self.send_header("Content-Type", ctype); self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-cache" if "/vendor/" not in p else "max-age=86400"); self.end_headers(); self.wfile.write(data)
+    def end_headers(self):
+        """Run files (models, pictures, videos) are revalidated every time (the browser asks, the server answers 304 or the new file): a model whose texture was just replaced was otherwise shown from the browser's cache,
+        because a file served with only a Last-Modified date is kept by browsers for a heuristic time."""
+        if not getattr(self, "_cc_sent", False): self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+    def send_header(self, keyword, value):
+        if keyword.lower() == "cache-control": self._cc_sent = True
+        super().send_header(keyword, value)
     def send_head(self):
         """Run files with HTTP Range support: a browser can only seek in a video (scrub a preview, play the reference in step with a clip) when the server answers byte ranges."""
         import re
@@ -508,9 +516,7 @@ def _launch(name, img, q):
     cmd = [sys.executable, "-m", "homunculus.orchestrate", str(img), "--name", name, "--no-open"]
     if q.get("outfit") in ("keep", "shirtless", "nude"): cmd += ["--outfit", q["outfit"]]
     if q.get("face") in ("auto", "on", "off"): cmd += ["--face", q["face"]]
-    if q.get("texture") in ("simple", "full"): cmd += ["--texture", q["texture"]]
     if q.get("auto_repair") in ("alert", "auto", "off"): cmd += ["--auto-repair", q["auto_repair"]]
-    if q.get("face_source") in ("original", "redraw"): cmd += ["--face-source", q["face_source"]]
     if q.get("face_redraw") in ("1", "0", "on", "off"): cmd += ["--face-redraw", "on" if q["face_redraw"] in ("1", "on") else "off"]
     if q.get("style") in C.UPSCALERS: cmd += ["--style", q["style"]]
     if q.get("review") in ("off", "override", "manual"): cmd += ["--review", q["review"]]

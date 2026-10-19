@@ -115,3 +115,9 @@ Why: one picture should not leave the machine, and the card cannot hold the mode
 **D-N · YYYY-MM-DD · What was decided, in one line.**
 Why: the problem, the evidence (a number, a failure, a test), what else was considered. `commit`
 ```
+
+
+## D-27: UltraTex is the texture stage (2026-10-19)
+Texture: UltraTex (SIGGRAPH Asia 2026: FLUX.2 Klein base 9B + a LoRA, ComfyUI nodes of visualbruno) paints six consistent views of the mesh from the picture; they are baked into the layout the rig was built on (`homunculus/ultratex.py`), and surfaces none of the six views sees take the plain projection of the picture.
+It replaced the earlier texture stage (face fit with landmarks or a repaint, extra Qwen-cleaned views from several angles), which was removed. Why: on three test characters (Vex, Dez, Esme) the faces, the back and the sides were clearly better, in about 5 minutes on the AMD GPU without Triton; the GGUF and the fp8 base model gave the same picture (0.2 / 255 per pixel), so only fp8 is kept.
+Known problems: a dark brow band that reads as glasses (it is in UltraTex's raw output; likely the mesh's brow ridge), black patches on a face whose hair and face are separate layers (Esme), tan stripes down the sleeves and trouser seams on a black coat (surfaces no view sees), and the FLUX.2 Klein base model is under a non-commercial licence.
