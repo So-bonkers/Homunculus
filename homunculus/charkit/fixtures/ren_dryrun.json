@@ -1,0 +1,39 @@
+{
+ "name": "Ren, recorded 2026-10-24/25 (hand-made run: kits/ren_head, kits/ren_body, kits/ren_kit2, runs/ren_kit2, runs/ren_trellis)",
+ "artifacts": {
+  "x4": "runs/ren_trellis/ren_x4.png",
+  "rgba": {"figure": "runs/ren_trellis/ren_rgba.png", "dressed": "runs/ren_trellis/body961_rgba.png",
+           "body": "kits/ren_kit2/body_rgba.png", "hoodie": "kits/ren_kit2/hoodie_rgba.png", "joggers": "kits/ren_kit2/joggers_rgba.png", "shoes": "kits/ren_kit2/shoes_rgba.png",
+           "hair": "kits/ren_kit2/hair_rgba.png", "headphones": "kits/ren_kit2/headphones_rgba.png", "glasses": "kits/ren_kit2/glasses_rgba.png"},
+  "candidates": {"head/head": "kits/ren_head/front_s94*.png", "body/body": "kits/ren_body/front_s96*.png",
+                 "pictures/body": "kits/ren_kit2/body/front_s98*.png", "pictures/hoodie": "kits/ren_kit2/hoodie/front_s98*.png", "pictures/joggers": "kits/ren_kit2/joggers/front_s98*.png",
+                 "pictures/shoes": "kits/ren_kit2/shoes/front_s98*.png", "pictures/hair": "kits/ren_kit2/hair/front_s98*.png", "pictures/headphones": "kits/ren_kit2/headphones/front_s98*.png",
+                 "pictures/glasses": "kits/ren_kit2/glasses/front_s98*.png"},
+  "trellis": {"dressed": "runs/ren_trellis/body961", "body": "runs/ren_kit2/body", "hoodie": "runs/ren_kit2/hoodie", "joggers": "runs/ren_kit2/joggers", "shoes": "runs/ren_kit2/shoes",
+              "hair": "runs/ren_kit2/hair", "headphones": "runs/ren_kit2/headphones", "glasses": "runs/ren_kit2/glasses"},
+  "dressed_ref": "runs/ren_trellis/fused/ren_fused.glb",
+  "place": {"body": "runs/ren_kit2/place_body.json", "hoodie": "runs/ren_kit2/place_hoodie.json", "joggers": "runs/ren_kit2/place_joggers.json", "hair": "runs/ren_kit2/place_hair.json"},
+  "assembled": "runs/ren_kit2/ren_kit_v1.blend"
+ },
+ "answers": {
+  "describe": {"sex": "male", "age": "adult", "who": "young man", "build": "slight, narrow shoulders, a slim build", "skin": "warm brown",
+               "hair": {"present": true, "description": "short black hair with a swept fringe"},
+               "garments": [{"key": "hoodie", "region": "upper", "description": "dark grey hoodie with the hood down behind the neck, two yellow drawstrings with aglets, a kangaroo pocket and ribbed cuffs and hem"},
+                            {"key": "joggers", "region": "lower", "description": "black jogger trousers with an elastic waistband and cuffed ankles"}],
+               "shoes": {"present": true, "description": "white sneakers with yellow soles"},
+               "accessories": [{"key": "headphones", "region": "neck", "description": "black over-ear headphones worn around the neck"},
+                               {"key": "glasses", "region": "face", "description": "rectangular dark glasses with a straight brow bar over the bridge"}]},
+  "head:head": {"pick": "front_s941.png"},
+  "body:body": {"pick": "front_s961.png"},
+  "pictures:body": {"pick": "front_s980.png"},
+  "pictures:hoodie": {"pick": "front_s982.png", "fail": {"front_s980.png": ["mannequin_visible"], "front_s981.png": ["mannequin_visible", "person_visible"]}},
+  "pictures:joggers": {"pick": "front_s983.png"},
+  "pictures:shoes": {"pick": "front_s982.png"},
+  "pictures:hair": {"pick": "front_s982.png"},
+  "pictures:headphones": {"pick": "front_s982.png"},
+  "pictures:glasses": {"pick": "front_s982.png"},
+  "trellis:dressed": {"pick": "s42/textured.glb"},
+  "trellis:body": {"pick": "s42/textured.glb"}, "trellis:hoodie": {"pick": "s42/textured.glb", "fail": {"s7/textured.glb": ["lid"]}}, "trellis:joggers": {"pick": "s42/textured.glb"}, "trellis:shoes": {"pick": "s42/textured.glb"},
+  "trellis:hair": {"pick": "s42/textured.glb"}, "trellis:headphones": {"pick": "s42/textured.glb"}, "trellis:glasses": {"pick": "s42/textured.glb"}
+ }
+}
