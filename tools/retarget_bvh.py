@@ -1,6 +1,6 @@
 """Retarget a BVH mocap clip (CMU and similar) onto a rigged Mixamo-skeleton character, and export it as GLB and FBX.
 
-blender -b --python tools/retarget_bvh.py -- <rigged_character.fbx|glb> <clip.bvh> <out_dir> <name> [--fps 60] [--map cmu|mixamo] [--start N] [--end N] [--floor-lock] [--src-fps N] [--src-scale S]
+blender -b --python tools/retarget_bvh.py -- <rigged_character.fbx|glb> <clip.bvh> <out_dir> <name> [--fps 60] [--map cmu|mixamo] [--start N] [--end N] [--floor-lock] [--neutral-head] [--src-fps N] [--src-scale S]
 
 How it works (world-space, no add-on):
   * Every mapped bone of the character is given the WORLD orientation of its source bone:  R_target(f) = D(f) * C * R_target_rest,  D(f) = R_source(f) * R_source_rest^-1.
@@ -9,6 +9,7 @@ How it works (world-space, no add-on):
   * C corrects the REST POSE for the limb bones (arm, forearm, thigh, shin, foot): the rotation that turns the character's rest bone direction onto the source's. Without it a character whose rest pose is
     not the source's (Mixamo: arms ~15 degrees below horizontal, feet pointing ~55 degrees down; CMU: a T-pose with flat feet) keeps that difference in every frame (toes always pointing down).
   * The hips follow the source's root path, scaled by the ratio of standing hip heights (so it works at any unit: the Thriller character is 0.009 m tall in glTF units), starting at the character's own place.
+  * --neutral-head: the neck and head keep the clip's motion around the chest but lose its average posture (a captured subject's habitual head nod and tilt, which on another body looks like a constant bow): the mean of each bone's rotation relative to the chest over the clip is taken out.
   * Fingers, and any bone not mapped, stay at their rest pose. Foot sliding is not corrected (--floor-lock is only a report of how much the feet slide).
 Prints the facts it measured; writes <out_dir>/<name>.glb and .fbx (one animation each)."""
 import bpy, sys, os, math, numpy as np
@@ -18,10 +19,11 @@ argv = sys.argv[sys.argv.index("--") + 1:]
 def opt(flag, default=None, cast=str):
     if flag in argv: i = argv.index(flag); v = argv[i + 1]; del argv[i:i + 2]; return cast(v)
     return default
-OUT_FPS = opt("--fps", 60, int); MAP_NAME = opt("--map", "cmu"); F_START = opt("--start", None, int); SRC_FPS_OPT = opt("--src-fps", None, int); SRC_UNIT = opt("--src-scale", None, float); F_END = opt("--end", None, int); REPORT_ONLY_FLOOR = "--floor-lock" in argv
+OUT_FPS = opt("--fps", 60, int); MAP_NAME = opt("--map", "cmu"); F_START = opt("--start", None, int); SRC_FPS_OPT = opt("--src-fps", None, int); SRC_UNIT = opt("--src-scale", None, float); F_END = opt("--end", None, int); REPORT_ONLY_FLOOR = "--floor-lock" in argv; NEUTRAL_HEAD = "--neutral-head" in argv
 TARGET = opt("--target", "mixamo")           # the target's skeleton: mixamo (default) or valorant (the game's own humanoid rig, from the community models)
 TEXTURE = opt("--texture", None)             # a picture to use as the character's base-colour texture instead of the one it came with (same size and layout: a recoloured copy of it)
 if "--floor-lock" in argv: argv.remove("--floor-lock")
+if "--neutral-head" in argv: argv.remove("--neutral-head")
 target_path, bvh_path, out_dir, name = argv[:4]; os.makedirs(out_dir, exist_ok=True)
 
 # target bone (without the "mixamorig:" prefix) <- source bone
@@ -134,6 +136,14 @@ step = SRC_FPS / OUT_FPS; frames = [int(round(f0 + i * step)) for i in range(int
 sc.frame_set(f0); p0 = hips_world(); samples = []
 for f in frames:
     sc.frame_set(f); R = {k: (Sw @ S.pose.bones[sb[k].name].matrix).to_3x3().normalized() for k in MAP}; samples.append((R, hips_world()))
+if NEUTRAL_HEAD:
+    from mathutils import Quaternion
+    def chest_delta(R, k): return (R["Spine2"] @ Rs0["Spine2"].inverted()).inverted() @ (R[k] @ Rs0[k].inverted())      # the bone's rotation from rest, seen from the chest
+    for k in ("Neck", "Head"):
+        qs = [chest_delta(R, k).to_quaternion() for R, _ in samples]
+        qs = [q if q.dot(qs[0]) >= 0 else -q for q in qs]; m = Quaternion((sum(q.w for q in qs), sum(q.x for q in qs), sum(q.y for q in qs), sum(q.z for q in qs))).normalized(); m_inv = m.to_matrix().inverted()
+        for R, _ in samples: R[k] = (R["Spine2"] @ Rs0["Spine2"].inverted()) @ (chest_delta(R, k) @ m_inv) @ Rs0[k]
+        print(f"[retarget] neutral head: {k} average posture {math.degrees(m.angle):.0f} degrees from rest taken out", flush=True)
 print(f"[retarget] {len(frames)} output frames at {OUT_FPS} fps = {len(frames) / OUT_FPS:.2f} s", flush=True)
 
 # ---- apply to the target
