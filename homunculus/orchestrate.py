@@ -498,7 +498,7 @@ def st_upscale_edit(R):
     if face_redraw_on(R):      # a sharp face in Pixal3D's input gives the mesh real eye sockets, nose and lips
         try:
             ref, (fb, fa) = edit.refine_face(R.A["edit_upscaled"], R.p("04_upscale_edit", "edit_face_refined.png"),
-                                             prompts.FACE_REFINE.format(style=prompts.style_text(R.state["vlm"]["plan"], R.state.get("look", "asis"))), R.log)
+                                             prompts.FACE_REFINE.format(style=prompts.style_text(R.state["vlm"]["plan"], R.state.get("look", "asis"))), R.log, symmetry=bool(R.state.get("face_symmetry")))
             R.A["edit_upscaled_raw"] = R.A["edit_upscaled"]; R.A["edit_upscaled"] = ref; R.state["face_refined_early"] = True
             progress.snap(R, "upscale_edit", "face redrawn at full resolution before the 3D step", [fb, fa], ["face in the redraw", "close-up redraw"])
         except Exception as e:
@@ -516,9 +516,9 @@ def st_upscale_edit(R):
     return style
 
 def _shape_sheet(sviews, out):
-    """one image per shape candidate: front, face and every hand view, for the review box"""
+    """one image per shape candidate: front, side, face and every hand view, for the review box (the side view is where an invented bun or ponytail shows)"""
     from PIL import ImageDraw
-    keys = ["front", "face"] + ([k for k in sviews if k.startswith(("handR_", "handL_"))] if C.HAND_VIEWS else [])
+    keys = ["front", "side", "face"] + ([k for k in sviews if k.startswith(("handR_", "handL_"))] if C.HAND_VIEWS else [])
     cell = 220; cols = 5; rows = (len(keys) + cols - 1) // cols
     sh = Image.new("RGB", (cell * cols, (cell + 18) * rows), (245, 245, 245)); d = ImageDraw.Draw(sh)
     for i, k in enumerate(keys):
@@ -534,22 +534,38 @@ def st_mesh_from_input(R):
     progress.snap(R, "mesh", "your 3D model (kept as it is)", [views["front"], views["side"], views["face"]], ["front", "side", "face"])
     return "mesh input used as is"
 
+def candidate_hands(R, c):
+    """The hand check (torn or cut-off fingers leave open edges) on one shape candidate, CPU, from its carved preview if there is one."""
+    src = c["glb"]; out = str(R.dir / "06_mesh_check" / f"try{c['try']}" / "hands.json")
+    try:
+        subprocess.run([C.BLENDER, "-b", "--python", str(C.ROOT / "homunculus" / "blender_handcheck.py"), "--", src, out], capture_output=True, text=True, timeout=600, stdin=subprocess.DEVNULL)
+        r = json.load(open(out)); R.log(f"try {c['try']}: hand check L {r['left']['open_per_1000']}/1000 {'BROKEN' if r['left']['broken'] else 'ok'}, R {r['right']['open_per_1000']}/1000 {'BROKEN' if r['right']['broken'] else 'ok'}"); return r
+    except Exception as e: R.log(f"try {c['try']}: hand check failed ({type(e).__name__}: {str(e)[:80]})"); return None
+
+def hand_verdict(hc):
+    """pass = neither hand is broken; score = 10 minus the open edges per 1000 vertices of both hands (a clean hand has about none)."""
+    tot = hc["left"]["open_per_1000"] + hc["right"]["open_per_1000"]; broken = hc["left"]["broken"] or hc["right"]["broken"]
+    return {"pass": not broken, "score": round(max(0.0, 10.0 - tot), 1), "tally": f"hand check: open edges per 1000 L {hc['left']['open_per_1000']} / R {hc['right']['open_per_1000']}", "problems": ["torn or cut-off fingers"] if broken else []}
+
 def st_mesh_and_check(R):
     if mesh_mode(R): return st_mesh_from_input(R)
     """Best-of-N: each round makes SHAPE_SEEDS shape-only candidates in one ComfyUI session, drops any with extra fingers
     (digit gate), asks every judge about all survivors in ONE model load each, then you can pick on the page."""
     tries = R.state.setdefault("mesh_tries", 0)
+    if R.state.get("use_try"):
+        n = int(R.state["use_try"]); R.log(f"using shape candidate try {n} (your choice, no new candidates)")
+        return _full_mesh(R, str(R.dir / "05_mesh" / f"try{n}"), f"{R.state['name']}_{n}", 42 + 11 * n, time.time()) + f" (try {n}, chosen by you)"
     cands_img = [R.A["chosen_edit"]] + [e for e in R.state.get("ranked_edits", [])[1:2]]
-    last = None
+    last = None; seen = []
     for ci, cand in enumerate(cands_img):
         if ci > 0:
             R.log(f"falling back to next-best redraw {os.path.basename(cand)}"); R.A["chosen_edit"] = cand; st_upscale_edit(R)
         for rnd in range(C.MESH_ATTEMPTS if not manual(R) else 12):
             t0 = time.time(); shapes = []
             with gpu.watchdog(R.log) as wd:
-                for k in range(1 if manual(R) else C.SHEET_SHAPE_SEEDS if R.state.get("sheet") else C.SHAPE_SEEDS):
+                for k in range(1 if manual(R) else (R.state.get("shape_seeds") or (C.SHEET_SHAPE_SEEDS if R.state.get("sheet") else C.SHAPE_SEEDS))):
                     tries += 1; R.state["mesh_tries"] = tries; tag = f"{R.state['name']}_{tries}"; seed = 42 + 11 * tries
-                    tdir = str(R.dir / "05_mesh" / f"try{tries}"); sh = comfy.shape(R.A["edit_upscaled"], tdir, tag, seed, R.log, views=sheet_views(R))
+                    tdir = str(R.dir / "05_mesh" / f"try{tries}"); sh = shape_gen(R).shape(R.A["edit_upscaled"], tdir, tag, seed, R.log, views=sheet_views(R))
                     sh = carve(R, sh)
                     shapes.append({"try": tries, "tdir": tdir, "tag": tag, "seed": seed, "glb": sh}); last = (tdir, tag, seed)
             gpu.free_all(R.log)
@@ -557,6 +573,7 @@ def st_mesh_and_check(R):
                 vd = str(R.dir / "06_mesh_check" / f"try{c['try']}"); c["views"] = blender.mesh_views(c["glb"], vd, grey=True)
                 c["digits"] = digits.count(vd, "mesh") if C.HAND_VIEWS else {"right": 5, "left": 5}; c["sheet"] = _shape_sheet(c["views"], os.path.join(vd, "sheet.png"))
                 if C.HAND_VIEWS: R.log(f"try {c['try']}: digit count R{c['digits']['right']} / L{c['digits']['left']}")
+                if R.state.get("shape_seeds") or R.state.get("sheet"): c["hands"] = candidate_hands(R, c)
             ok = [c for c in shapes if c["digits"]["right"] <= 5 and c["digits"]["left"] <= 5]
             for c in shapes:
                 if c not in ok: c["verdict"] = {"pass": False, "score": 0, "tally": "digit gate", "problems": [f"extra finger (R{c['digits']['right']}/L{c['digits']['left']})"]}
@@ -568,7 +585,11 @@ def st_mesh_and_check(R):
             if manual(R):        # you are the judge; the finger count is still shown on each candidate
                 for c in ok: c["verdict"] = {"pass": True, "score": 0, "tally": "your call", "problems": []}
             elif nollm(R):        # no judges: every candidate that passed the (geometric) gates is accepted
-                for c in ok: c["verdict"] = {"pass": True, "score": 0, "tally": "no LLM judging", "problems": []}
+                for c in ok:
+                    hc = c.get("hands")
+                    if hc: c["verdict"] = hand_verdict(hc)
+                    else: c["verdict"] = {"pass": True, "score": 0, "tally": "no LLM judging", "problems": []}
+                    seen.append((float(c["verdict"]["score"]), c))
             elif ok:
                 queries = []
                 for c in ok:
@@ -597,6 +618,8 @@ def st_mesh_and_check(R):
             R.log(f"no shape candidate accepted in round {rnd + 1}")
     R.log("no shape passed; texturing the last attempt anyway (flagged)")
     tdir, tag, seed = last
+    if seen:
+        bs = max(seen, key=lambda t: t[0])[1]; tdir, tag, seed = bs["tdir"], bs["tag"], bs["seed"]; R.log(f"the candidate with the cleanest hands is taken: try {bs['try']} ({bs['verdict'].get('tally')})")
     return _full_mesh(R, tdir, tag, seed, time.time()) + " - no shape passed the judges (flagged)"
 
 def carve(R, glb):
@@ -614,9 +637,16 @@ def carve(R, glb):
     except Exception as e: R.log(f"[carve] skipped ({type(e).__name__}: {str(e)[:100]})")
     return glb
 
+def shape_gen(R):
+    """The 3D shape generator for this run: Pixal3D (stages/comfy.py) or TRELLIS.2 (stages/trellis.py); --shape-gen, else config SHAPE_GEN."""
+    if (R.state.get("shape_gen") or C.SHAPE_GEN) == "trellis":
+        from .stages import trellis; return trellis
+    return comfy
+
+
 def _full_mesh(R, tdir, tag, seed, t0):
     with gpu.watchdog(R.log) as wd:
-        glb = comfy.mesh(R.A["edit_upscaled"], tdir, tag, seed, R.log, views=sheet_views(R), **sheet_base(R))
+        glb = shape_gen(R).mesh(R.A["edit_upscaled"], tdir, tag, seed, R.log, views=sheet_views(R), **sheet_base(R))
     R.A["mesh_glb"] = glb; R.save()          # the textured mesh is viewable as soon as Pixal3D has made it; the steps below refine it
     glb = carve(R, glb)
     R.A["mesh_glb"] = glb; R.save()
@@ -777,6 +807,25 @@ def wrist_check(R, fbx):
         R.log(f"[wrist] check skipped ({type(e).__name__}: {str(e)[:80]})"); return []
 
 
+def glb_depth_ratio(path):
+    """Front-to-back depth over height of the biggest mesh in a GLB (y up), read from the position ranges (no mesh load). None when it cannot be read."""
+    import struct
+    try:
+        b = open(path, "rb").read(); n = struct.unpack("<I", b[12:16])[0]; j = json.loads(b[20:20 + n]); best = None
+        for m in j["meshes"]:
+            for pr in m["primitives"]:
+                a = j["accessors"][pr["attributes"]["POSITION"]]; lo, hi = a["min"], a["max"]
+                if best is None or hi[1] - lo[1] > best[0]: best = (hi[1] - lo[1], (hi[2] - lo[2]) / max(hi[1] - lo[1], 1e-6))
+        return best[1] if best else None
+    except Exception: return None
+
+def rig_leans(R, rig_glb):
+    """A rig whose mesh leans (the rigger's pose-to-rest step went wrong): depth/height is about 0.23 to 0.26 for an upright character and was 0.50 for a rig that leaned about 25 degrees, which the judges (they only see test poses) passed. Returns a problem text or None."""
+    r = glb_depth_ratio(rig_glb); s = glb_depth_ratio(R.A.get("colored_glb") or R.A["mesh_glb"])
+    if r is None: return None
+    R.log(f"[rig] depth/height of the rigged mesh {r:.2f}" + (f" (the mesh it was built from: {s:.2f})" if s else ""))
+    return f"the rigged mesh leans (depth/height {r:.2f}, upright is about 0.25)" if r > 0.40 or (s and r > 1.6 * s) else None
+
 def rig_once(R, variant, extra):
     t0 = time.time()
     with gpu.watchdog(R.log) as wd:
@@ -789,6 +838,8 @@ def rig_once(R, variant, extra):
     keys = ("rest_front", "walk_front", "walk_34", "wave_front") + (("wave_hand", "fist_Left_a", "fist_Right_a") if C.HAND_VIEWS else ())
     open_review(R, "rig_check", f"rig ({variant}) test poses", [views[k] for k in keys], RIG_CAPS[:len(keys)])
     v = {"pass": True, "score": 0, "tally": "no LLM judging", "problems": [], "votes": {}} if nollm(R) else {"pass": True, "score": 0, "tally": "your call", "problems": [], "votes": {}} if manual(R) else vlm.majority_pass(vlm.panel(fp(R, prompts.RIG_CHECK if C.HAND_VIEWS else prompts.RIG_CHECK_NOHANDS), [views[k] for k in keys], required=("pass",), log=R.log, cancel=decided(R), human_notes=R.state.get("human_notes", "")), R.log)
+    lean = rig_leans(R, R.A["rig_glb"]) if R.A.get("rig_glb") else None
+    if lean: v["pass"] = False; v.setdefault("problems", []).append(lean); R.log(f"[rig] {lean}: this variant is rejected")
     R.state["vlm"][f"rig_check_{variant}"] = v; R.save()
     for side, r_ in wrist_check(R, fbx): v.setdefault("problems", []).append(f"the {side} hand is detached from the forearm (gap {r_['gap_bent_cm']} cm when the wrist bends): repair it in the Repair tab")
     R.state["needs_repair"] = [side for side in ("left", "right") if side in (R.state.get("wrist_check") or {}) and not R.state["wrist_check"][side].get("ok", True)]; R.save()
@@ -843,6 +894,9 @@ RUNNERS = {"ingest": st_ingest, "upscale": st_upscale, "plan": st_plan, "edit": 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("image"); ap.add_argument("--name", required=True)
     ap.add_argument("--from", dest="frm", choices=STAGES); ap.add_argument("--only", choices=STAGES); ap.add_argument("--style", choices=list(C.UPSCALERS))
+    ap.add_argument("--shape-gen", dest="shape_gen", choices=["pixal3d", "trellis"], help="3D shape generator (default: config SHAPE_GEN, pixal3d). trellis = TRELLIS.2 from one picture (a sheet's front view)")
+    ap.add_argument("--shape-seeds", dest="shape_seeds", type=int, help="how many shape candidates to generate per round (default: 3 for a single picture, 1 for a turnaround sheet). The candidates are checked for torn or cut-off fingers (the hand check, CPU) and the one with the cleanest hands is taken: best of N instead of repairing a bad mesh afterwards")
+    ap.add_argument("--until", choices=STAGES, help="stop after this stage (inclusive), e.g. --until mesh to get the 3D shape and stop before colour and rigging; later: python -m homunculus.adopt_mesh, then --from rig")
     ap.add_argument("--no-open", action="store_true", help="don't open the live progress page in the browser")
     ap.add_argument("--depth-views", dest="depth_views", choices=["on", "off"], help="single-picture runs: the depth phase before the 3D shape (default on): a proxy shape, depth maps of it, the back and side views drawn under them with Qwen-Image Turbo, kept only where their outline agrees")
     ap.add_argument("--back-view", dest="back_view", metavar="PICTURE", help="single-picture runs: your own picture of the same character from behind (same pose, same costume, plain background), used as the back view for the 3D shape instead of one drawn under a depth map (the depth phase is skipped)")
@@ -868,6 +922,8 @@ def main():
     ap.add_argument("--auto-repair", dest="auto_repair", choices=["alert", "auto", "off"], help="broken hands (torn or cut-off fingers) in the finished 3D model: alert (default) warns and points to the Repair tab; auto repairs them before rigging; off")
     ap.add_argument("--face", choices=["auto", "on", "off"], help="auto (default): the planner decides whether a full-face helmet or mask hides the face; off: no face work at all (no face close-up, reshape or fit); on: always work on the face")
     ap.add_argument("--face-redraw", dest="face_redraw", choices=["on", "off"], help="on (default): redraw the face as a full-resolution close-up before the 3D step (a sharper face in the mesh and texture); off: use the full-body redraw as it is")
+    ap.add_argument("--face-symmetry", dest="face_symmetry", action="store_true", help="the face close-up redraw is made symmetric: the two eyes and the two nostrils become mirror images (the right eye and the left nostril are the models)")
+    ap.add_argument("--use-try", dest="use_try", type=int, metavar="N", help="build the full mesh from the shape candidate try N of an earlier round (the folder 05_mesh/tryN) instead of making and judging new ones: for when the judges and you picked a shape you do not want (a bun the shape model invented, say) and a different one was fine")
     ap.add_argument("--outfit", choices=["keep", "shirtless", "nude"], help="keep: outfit from the image (default); shirtless: bare torso and arms (avoids sleeve/cuff layers at the wrists); nude: unclothed, anatomy preserved")
     a = ap.parse_args()
     # one run at a time: runs share the GPU, ComfyUI and Studio, and each frees the GPU between stages
@@ -882,6 +938,10 @@ def main():
     R = Run(os.path.abspath(a.image), a.name, a.style)
     if a.outfit: R.state["outfit"] = a.outfit; R.save()
     if a.face: R.state["face"] = a.face; R.save()
+    if a.use_try: R.state["use_try"] = a.use_try; R.save()
+    if a.face_symmetry: R.state["face_symmetry"] = True; R.save()
+    if a.shape_seeds: R.state["shape_seeds"] = a.shape_seeds; R.save()
+    if a.shape_gen: R.state["shape_gen"] = a.shape_gen; R.save()
     if a.auto_repair: R.state["auto_repair"] = a.auto_repair; R.save()
     if a.face_redraw: R.state["face_redraw"] = a.face_redraw == "on"; R.save()
     if a.review: R.state["review_mode"] = a.review
@@ -907,6 +967,9 @@ def main():
     elif "look" not in R.state and not R.done("edit"): R.state["look"] = "choose"
     R.save(); server.ensure_service()
     todo = [a.only] if a.only else STAGES[STAGES.index(a.frm):] if a.frm else STAGES
+    if a.until:
+        if a.until not in todo: raise SystemExit(f"--until {a.until}: that stage is not in the stages this run would do ({todo})")
+        todo = todo[:todo.index(a.until) + 1]
     if a.frm or a.only:
         for s in todo: R.state["stages"].pop(s, None)
         if any(s in todo for s in ("edit", "pick")):

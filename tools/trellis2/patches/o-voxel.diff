@@ -1,0 +1,22 @@
+diff -ru '--exclude=build' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=*.so' /home/shubhankar/trellis2_test/TRELLIS.2/o-voxel/setup.py /home/shubhankar/trellis2_test/ext/o-voxel/setup.py
+--- /home/shubhankar/trellis2_test/TRELLIS.2/o-voxel/setup.py	2026-10-24 18:43:30.318708378 +0530
++++ /home/shubhankar/trellis2_test/ext/o-voxel/setup.py	2026-10-24 18:54:48.222254156 +0530
+@@ -56,8 +56,8 @@
+                 os.path.join(ROOT, "third_party/eigen"),
+             ],
+             extra_compile_args={
+-                "cxx": ["-O3", "-std=c++17"],
+-                "nvcc": ["-O3","-std=c++17"] + cc_flag,
++                "cxx": ["-O3", "-std=c++20"],
++                "nvcc": ["-O3","-std=c++20"] + cc_flag,
+             }
+         )
+     ],
+Only in /home/shubhankar/trellis2_test/ext/o-voxel/src/hash: hash.hip
+Only in /home/shubhankar/trellis2_test/ext/o-voxel/src/rasterize: auxiliary_hip.h
+Only in /home/shubhankar/trellis2_test/ext/o-voxel/src/rasterize: rasterize.hip
+Only in /home/shubhankar/trellis2_test/ext/o-voxel/src/serialize: api.hip
+Only in /home/shubhankar/trellis2_test/ext/o-voxel/src/serialize: hilbert.hip
+Only in /home/shubhankar/trellis2_test/ext/o-voxel/src/serialize: hilbert_hip.h
+Only in /home/shubhankar/trellis2_test/ext/o-voxel/src/serialize: z_order.hip
+Only in /home/shubhankar/trellis2_test/ext/o-voxel/src/serialize: z_order_hip.h

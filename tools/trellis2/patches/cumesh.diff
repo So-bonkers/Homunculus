@@ -1,0 +1,168 @@
+diff --git a/setup.py b/setup.py
+index 8849b10..bbf5894 100644
+--- a/setup.py
++++ b/setup.py
+@@ -29,17 +29,17 @@ if IS_WINDOWS:
+     # Required for MSVC + nvcc + torch headers
+     cxx_flags += [
+         "/O2",
+-        "/std:c++17",
++        "/std:c++20",
+         "/EHsc", 
+         "/permissive-", 
+         "/Zc:__cplusplus"
+     ]
+     nvcc_flags += [
+         "-O3",
+-        "-std=c++17",
++        "-std=c++20",
+         "--expt-relaxed-constexpr",
+         "--extended-lambda",
+-        "-Xcompiler=/std:c++17",
++        "-Xcompiler=/std:c++20",
+         "-Xcompiler=/EHsc", 
+         "-Xcompiler=/permissive-", 
+         "-Xcompiler=/Zc:__cplusplus"
+@@ -47,11 +47,11 @@ if IS_WINDOWS:
+ else:
+     cxx_flags += [
+         "-O3", 
+-        "-std=c++17"
++        "-std=c++20"
+     ]    
+     nvcc_flags += [
+         "-O3",
+-        "-std=c++17"
++        "-std=c++20"
+     ]
+ 
+ # -------------------------------------------------
+@@ -118,7 +118,7 @@ ext_modules = [
+             "nvcc": nvcc_flags + [
+                 # The following definitions must be undefined
+                 # since we need half-precision operation.
+-                "--extended-lambda",
++                *([] if IS_HIP else ["--extended-lambda"]),
+                 "-U__CUDA_NO_HALF_OPERATORS__",
+                 "-U__CUDA_NO_HALF_CONVERSIONS__",
+                 "-U__CUDA_NO_HALF2_OPERATORS__",
+diff --git a/src/atlas.cu b/src/atlas.cu
+index d48031f..5207751 100644
+--- a/src/atlas.cu
++++ b/src/atlas.cu
+@@ -324,7 +324,11 @@ static void get_chart_connectivity(
+     ));
+ 
+     #if CUDART_VERSION >= 12090
++#if defined(__HIP_PLATFORM_AMD__) || defined(USE_ROCM)
++        auto reduce_op = hipcub::Sum();
++#else
+         auto reduce_op = ::cuda::std::plus();
++#endif
+     #else
+         auto reduce_op = cub::Sum();
+     #endif
+diff --git a/src/clean_up.cu b/src/clean_up.cu
+index a72b1d0..511e490 100644
+--- a/src/clean_up.cu
++++ b/src/clean_up.cu
+@@ -239,9 +239,17 @@ static __global__ void select_first_in_each_group_kernel(
+ 
+ struct int3_decomposer
+ {
++#if defined(__HIP_PLATFORM_AMD__) || defined(USE_ROCM)
++    __host__ __device__ ::rocprim::tuple<int&, int&, int&> operator()(int3& key) const
++#else
+     __host__ __device__ ::cuda::std::tuple<int&, int&, int&> operator()(int3& key) const
++#endif
+     {
++#if defined(__HIP_PLATFORM_AMD__) || defined(USE_ROCM)
++        return ::rocprim::tuple<int&, int&, int&>(key.x, key.y, key.z);
++#else
+         return {key.x, key.y, key.z};
++#endif
+     }
+ };
+ 
+@@ -447,6 +455,17 @@ struct LessThanOp {
+ };
+ 
+ 
++// set_flag_kernel with a bounds check: fill_holes computes the offsets of the kept loops from per-loop counts and the flag array from per-boundary masks;
++// on a non-manifold mesh (a loop of zero boundaries shares its offset with the next) the two disagree and an offset can point past the array.
++// NVIDIA allocations happened to absorb the overrun; on AMD it is an illegal address. Out-of-range writes are dropped.
++__global__ void set_flag_bounded_kernel(const int* indices, const size_t N, int* output, const size_t size) {
++    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
++    if (tid >= N) return;
++    const int i = indices[tid];
++    if (i >= 0 && (size_t)i < size) output[i] = 1;
++}
++
++
+ void CuMesh::fill_holes(float max_hole_perimeter) {
+     cudaStream_t stream = current_stream();
+     if (this->loop_boundaries.is_empty() || this->loop_boundaries_offset.is_empty()) {
+@@ -551,9 +570,9 @@ void CuMesh::fill_holes(float max_hole_perimeter) {
+     CUDA_CHECK(cudaMalloc(&cu_loop_bound_loop_ids, E * sizeof(int)));
+     CUDA_CHECK(cudaMemsetAsync(cu_loop_bound_loop_ids, 0, E * sizeof(int), stream));
+     if (L > 1) {
+-        set_flag_kernel<<<(L-1+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
++        set_flag_bounded_kernel<<<(L-1+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+             this->loop_boundaries_offset.ptr + 1, L - 1,
+-            cu_loop_bound_loop_ids
++            cu_loop_bound_loop_ids, E
+         );
+         CUDA_CHECK(cudaGetLastError());
+     }
+@@ -624,9 +643,9 @@ void CuMesh::fill_holes(float max_hole_perimeter) {
+     CUDA_CHECK(cudaMalloc(&cu_new_loop_bound_loop_ids, new_num_loop_boundaries * sizeof(int)));
+     CUDA_CHECK(cudaMemsetAsync(cu_new_loop_bound_loop_ids, 0, new_num_loop_boundaries * sizeof(int), stream));
+     if (new_num_bound_loops > 1) {
+-        set_flag_kernel<<<(new_num_bound_loops-1+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
++        set_flag_bounded_kernel<<<(new_num_bound_loops-1+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+             cu_new_loop_boundaries_offset+1, new_num_bound_loops-1,
+-            cu_new_loop_bound_loop_ids
++            cu_new_loop_bound_loop_ids, (size_t)new_num_loop_boundaries
+         );
+         CUDA_CHECK(cudaGetLastError());
+     }
+diff --git a/src/dtypes.cuh b/src/dtypes.cuh
+index bff560c..e895802 100644
+--- a/src/dtypes.cuh
++++ b/src/dtypes.cuh
+@@ -13,9 +13,9 @@ namespace cumesh {
+ struct __align__(16) Vec3f {
+     float x, y, z;
+ 
+-    __device__ __forceinline__ Vec3f();
+-    __device__ __forceinline__ Vec3f(float x, float y, float z);
+-    __device__ __forceinline__ Vec3f(float3 v);
++    __host__ __device__ __forceinline__ Vec3f();
++    __host__ __device__ __forceinline__ Vec3f(float x, float y, float z);
++    __host__ __device__ __forceinline__ Vec3f(float3 v);
+     __device__ __forceinline__ Vec3f operator+(const Vec3f& o) const;
+     __device__ __forceinline__ Vec3f& operator+=(const Vec3f& o);
+     __device__ __forceinline__ Vec3f operator-(const Vec3f& o) const;
+@@ -55,19 +55,19 @@ struct __align__(16) QEM
+ };
+ 
+ 
+-__device__ __forceinline__ Vec3f::Vec3f() {
++__host__ __device__ __forceinline__ Vec3f::Vec3f() {
+     x = 0.0f;
+     y = 0.0f;
+     z = 0.0f;
+ }
+ 
+-__device__ __forceinline__ Vec3f::Vec3f(float x, float y, float z) {
++__host__ __device__ __forceinline__ Vec3f::Vec3f(float x, float y, float z) {
+     this->x = x;
+     this->y = y;
+     this->z = z;
+ }
+ 
+-__device__ __forceinline__ Vec3f::Vec3f(float3 v) {
++__host__ __device__ __forceinline__ Vec3f::Vec3f(float3 v) {
+     x = v.x;
+     y = v.y;
+     z = v.z;

@@ -49,6 +49,9 @@ FACE_SIZE = 1024              # face close-up redraw (square)
 EDIT_SEEDS = 4
 EDIT_ROUNDS = 3               # first round + up to 2 VLM-guided retries
 MESH_ATTEMPTS = 2             # rounds of shape candidates per chosen redraw
+SHAPE_GEN = os.environ.get("HOMUNCULUS_SHAPE_GEN", "pixal3d")      # 3D shape generator: pixal3d (ComfyUI, takes turnaround sheets) | trellis (TRELLIS.2, one picture, sharper faces/hands; stages/trellis.py)
+TRELLIS_DIR = Path(os.environ.get("HOMUNCULUS_TRELLIS_DIR", str(Path.home() / "trellis2_test")))
+TRELLIS_TYPE = "1024_cascade"; TRELLIS_TEX = 4096; TRELLIS_MEM = "38G"
 SHAPE_SEEDS = 3               # shape candidates generated per round (best of N)
 SHEET_SHAPE_SEEDS = 1         # turnaround-sheet runs: one shape per round (the four real views already pin the shape down); a defect is fixed afterwards with Repair
 IMAGE_TURBO = os.environ.get("HOMUNCULUS_IMAGE_TURBO", os.environ.get("HOMUNCULUS_REPAIR_TURBO", "1")) != "0"   # every redraw (redraw, face and hand close-ups, Repair, Retexture) comes from Qwen-Image 2.1 Turbo in ComfyUI (8 steps, about 6 s a picture); 0 = the 30-step model in Unsloth Studio
